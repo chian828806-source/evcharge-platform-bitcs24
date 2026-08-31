@@ -1,99 +1,95 @@
 # 系统架构规范
 
-## 1. 总体原则
+本文档以 `docs/00-SRS-V1.0.md` 为上位需求基线，定义 EVCharge 的模块边界、运行架构、通信模型和关键工程约束。
 
-本项目采用前后端分离、模块化、敏捷迭代的开发方式。
+## 1. 架构原则
 
-系统主要包括：
+1. 优先保证 SRS 中的 MUST 需求和主业务闭环。
+2. 采用前后端分离、模块化、单仓库管理。
+3. Qt 用户端、Qt 管理端和 Web 大屏不得直接修改主业务数据库。
+4. Linux Qt 用户端和 Qt 管理端使用 TCP Socket 完成核心业务通信。
+5. Web 大屏和 Python ML 模块使用 REST API 与后端交互。
+6. 设备接入层使用 TCP Socket / Serial 与模拟充电桩通信。
+7. API、Socket 应用层消息协议、数据库结构、公共状态枚举、设备协议均属于公共契约。
+8. 不引入与 5 人 1 周项目目标无关的重型架构。
 
-- Qt 用户端
-- Qt 管理端
-- Spring Boot 后端
-- MySQL 数据库
-- Web 数据可视化大屏
-- Python 机器学习模块
+## 2. 系统上下文
 
-所有模块围绕统一数据库结构和 RESTful API 协作。
+系统内部模块：
 
-核心原则：
+- Qt User Client
+- Qt Admin Client
+- Spring Boot Backend
+- MySQL Database
+- Web Dashboard
+- Python ML Module
+- Device Gateway
+- Device Simulator
 
-1. 优先保证完整业务闭环，再增加附加功能。
-2. 禁止各客户端绕过后端直接修改核心业务数据。
-3. 所有公共数据结构、数据库字段和 API 接口必须统一。
-4. 已确定的接口不得由个人随意修改。
-5. 每天必须产生至少一个可运行、可集成版本。
-6. Agent 生成代码必须符合项目规范后才能提交。
-7. 不进行与项目目标无关的过度设计。
+系统外部依赖：
 
-## 2. 系统数据闭环
+- 腾讯地图 Web API
+- 可选天气数据源
+- GitHub
+- Linux 虚拟机
 
-最终系统必须形成真实数据闭环：
-
-```text
-Qt 用户端产生业务行为
-        ↓
-Spring Boot 处理业务
-        ↓
-MySQL 更新数据
-        ↓
-Qt 管理端读取变化
-        ↓
-Web 大屏读取统计数据
-        ↓
-ML 使用历史数据预测
-        ↓
-预测结果重新进入系统
-```
-
-项目评价标准不是单个页面数量，而是整个系统是否真正协同运行。
-
-## 3. 模块职责
-
-### 3.1 Qt 用户端
-
-面向新能源汽车车主，负责用户充电业务流程，包括登录、附近充电站查询、地图导航、充电桩选择、订单创建、充电模拟、计费结算和未完成订单检查。
-
-Qt 用户端不得直接访问 MySQL，必须通过后端 API 获取和修改业务数据。
-
-### 3.2 Qt 管理端
-
-面向平台运营管理人员，负责管理员登录、营收统计、充电桩状态统计、充电桩管理、充电站管理、用户管理、用户冻结/解冻和电桩远程重启模拟。
-
-Qt 管理端不得直接访问 MySQL，必须通过后端 API 操作业务数据。
-
-### 3.3 后端服务
-
-后端采用 Spring Boot，负责统一业务逻辑、数据校验、事务处理、数据库访问封装和 REST API 输出。
-
-所有客户端原则上通过统一后端 API 访问业务数据，不直接修改核心数据库。
-
-### 3.4 MySQL 数据库
-
-数据库负责存储平台核心业务数据，包括用户、管理员、充电站、充电桩、充电订单、充值记录、设备运行记录和机器学习预测结果。
-
-数据库结构由 `database/schema.sql` 作为唯一正式版本。
-
-### 3.5 Web 数据可视化大屏
-
-Web 大屏使用 HTML、CSS、JavaScript 和 ECharts 展示用户规模、充电订单、充电量、营收数据、充电桩状态、充电站运行情况和负荷预测结果。
-
-Web 大屏必须通过 HTTP API 获取数据，禁止直接连接 MySQL。
-
-### 3.6 Python 机器学习模块
-
-机器学习模块负责历史充电数据预处理、充电负荷预测、空闲充电桩数量预测、高峰充电时段预测，并将预测结果写入 `prediction` 表或通过后端接口提供给其他模块。
-
-第一阶段优先实现：
+## 3. 运行架构
 
 ```text
-数据库 → 数据预处理 → 模型训练 → 预测 → prediction 表
+Qt User ──────┐
+              ├── TCP Socket ──┐
+Qt Admin ─────┘                │
+                               │
+Web Dashboard ── REST ─────────┼── Spring Boot ── MySQL
+                               │
+Python ML ───── REST ──────────┘
+                               │
+                        Device Gateway
+                               │
+                         Serial / TCP
+                               │
+                      Simulated Charging Pile
 ```
 
-不强制第一阶段部署独立在线推理服务。
+## 4. 主业务闭环
 
-## 4. 后端分层架构
+```text
+Qt 用户端产生充电行为
+        ↓
+Spring Boot 执行业务规则
+        ↓
+MySQL 保存订单、用户、站点和设备数据
+        ↓
+Qt 管理端读取运营变化
+        ↓
+Web 大屏展示统计指标
+        ↓
+Python ML 使用历史数据预测
+        ↓
+预测结果写回系统
+        ↓
+用户端推荐低拥堵站点，管理端展示负荷预警
+```
 
-Spring Boot 后端统一采用：
+## 5. 模块职责
+
+### 5.1 Qt 用户端
+
+负责车主侧充电流程：手机号登录、资料维护、钱包充值、定位、站点查询、地图导航、电桩选择、订单创建、充电模拟、计费结算、订单查看和预测推荐展示。
+
+Qt 用户端通过统一 `SocketClient` / `NetworkClient` 与服务端通信，不直接访问 MySQL。
+
+### 5.2 Qt 管理端
+
+负责运营管理：管理员登录、营收统计、趋势图表、充电桩状态统计、电桩管理、电站管理、用户管理、冻结/解冻、手机号模糊查询、远程重启和负荷预警展示。
+
+Qt 管理端通过统一 `SocketClient` / `NetworkClient` 与服务端通信并操作业务数据。
+
+### 5.3 Spring Boot 后端
+
+负责认证与授权、Qt TCP Socket 业务服务、REST API、参数校验、业务规则、事务处理、数据访问、错误处理、文件上传、地图 API 代理、设备命令转发或设备状态接入。
+
+分层结构：
 
 ```text
 Controller
@@ -105,143 +101,64 @@ Mapper
 MySQL
 ```
 
-推荐目录：
+### 5.4 MySQL 数据库
 
-```text
-backend/src/main/java/.../
+作为主业务数据库，保存用户、管理员、站点、电桩、订单、充值流水、预测结果、设备日志和操作日志。
 
-├── common/
-├── config/
-├── controller/
-├── service/
-│   └── impl/
-├── mapper/
-├── entity/
-├── dto/
-├── vo/
-├── exception/
-└── util/
-```
+任务书中的 QSQLite 是否为硬性要求仍需确认。若必须体现，SQLite 只作为 Qt 本地缓存或配置存储，不作为主业务数据库。
 
-## 5. 技术栈
+### 5.5 Web 大屏
 
-### Qt 客户端
+通过 HTTP API 获取数据，使用 ECharts 展示运营指标、状态分布、趋势排行和 ML 预测结果。
 
-- C++
-- Qt
-- Qt Widgets
-- Qt Network
-- Qt WebEngine
-- Qt Charts
-- 腾讯地图 Web API
+### 5.6 Python ML 模块
 
-HTTP 请求统一使用 `QNetworkAccessManager`。
+采用预置模拟历史数据 + 运行时真实订单追加数据进行训练和预测，输出未来 1h / 6h / 24h 负荷、空闲桩数量和高峰时段，并写回 `prediction` 数据。
 
-JSON 数据统一使用：
+V1 不强制部署在线推理服务。
 
-- `QJsonDocument`
-- `QJsonObject`
-- `QJsonArray`
+### 5.7 设备接入模块
 
-### 后端
+设备模块包含 Device Gateway 和 Device Simulator。
 
-- Java
-- Spring Boot
-- Maven
-- MyBatis-Plus
-- RESTful API
-- OpenAPI / Swagger
+V1 优先使用 TCP Socket，以 JSON Lines 传输设备消息，支持 `HELLO`、`HEARTBEAT`、`STATUS`、`TELEMETRY`、`START`、`STOP`、`RESTART`、`ACK`。
 
-推荐基础组件：
+详细协议见 `docs/07-DEVICE-PROTOCOL.md`。
 
-- Spring Web
-- MyBatis-Plus
-- MySQL Driver
-- Lombok
-- Validation
-- SpringDoc OpenAPI
+## 6. 多线程模型
 
-一周开发周期内暂不引入：
+系统应体现合理多线程能力：
+
+- Qt UI 线程不得执行阻塞网络请求或长任务。
+- Qt 网络请求使用异步机制或 worker。
+- 管理端远程重启不阻塞 UI。
+- Device Gateway 使用独立接收、心跳监控和命令派发逻辑。
+- ML 任务作为独立 Python 进程或脚本运行。
+
+## 7. 外部服务
+
+### 腾讯地图
+
+用于地址转经纬度和路线导航。
+
+推荐由后端代理腾讯地图 Key，避免 Key 散落到客户端。
+
+### 天气数据
+
+V1 默认使用模拟天气字段或预置历史数据；真实天气 API 是可选项。
+
+## 8. 不采用的架构
+
+V1 不引入：
 
 - Spring Cloud
-- Redis
-- Kafka
-- RabbitMQ
-- Nacos
-- Elasticsearch
 - 微服务网关
-- 复杂权限框架
+- Kafka / RabbitMQ
+- Redis Cluster
+- Elasticsearch
+- Kubernetes
+- 完整 OCPP
+- 复杂 RBAC
+- GraphQL
 
-### 数据库
-
-- MySQL 8.x
-
-### Web 大屏
-
-- HTML
-- CSS
-- JavaScript
-- ECharts
-
-### 机器学习
-
-- Python
-- NumPy
-- pandas
-- scikit-learn
-- XGBoost
-- matplotlib
-
-如后续需要深度学习，可根据实际情况增加 PyTorch。
-
-## 6. 项目目录
-
-本项目采用单 Git 仓库管理：
-
-```text
-ev-charging-platform/
-
-├── backend/
-│   └── Spring Boot 后端
-│
-├── qt-user/
-│   └── Qt 用户端
-│
-├── qt-admin/
-│   └── Qt 管理端
-│
-├── web-dashboard/
-│   └── Web 数据可视化大屏
-│
-├── ml/
-│   └── 机器学习模块
-│
-├── database/
-│   ├── schema.sql
-│   ├── init_data.sql
-│   └── README.md
-│
-├── docs/
-│   ├── 01-ARCHITECTURE.md
-│   ├── 02-DEVELOPMENT-GUIDE.md
-│   ├── 03-API.md
-│   ├── 04-DATABASE.md
-│   ├── 05-GIT-WORKFLOW.md
-│   └── 06-AGENT-GUIDE.md
-│
-├── README.md
-└── .gitignore
-```
-
-禁止以下无法明确含义的目录进入正式仓库：
-
-```text
-final/
-final2/
-new/
-new2/
-测试/
-临时/
-最新版/
-真的最终版/
-```
+除非 SRS 变更，否则不得由个人或 Agent 自行引入。

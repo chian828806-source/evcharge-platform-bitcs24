@@ -1,8 +1,18 @@
 # 开发规范
 
-## 1. Spring Boot 分层规范
+本文档以 `docs/00-SRS-V1.0.md` 为需求基线，约束编码、配置、日志、线程、测试和模块实现方式。
 
-后端统一采用：
+## 1. 通用原则
+
+1. 所有实现必须能追踪到 SRS 需求编号。
+2. 先完成 P0 / MUST，再投入 P1 / SHOULD。
+3. 不为简单功能引入新框架。
+4. 不重构无关模块。
+5. 不直接修改公共契约，契约包括 Socket 业务消息、REST API、数据库、状态枚举和设备协议。
+
+## 2. 后端分层
+
+统一采用：
 
 ```text
 Controller
@@ -14,122 +24,60 @@ Mapper
 MySQL
 ```
 
-### 1.1 Controller
+推荐目录：
 
-Controller 只负责：
+```text
+backend/src/main/java/.../
 
-- 接收 HTTP 请求
-- 参数校验
-- 调用 Service
-- 返回结果
+├── common/
+├── config/
+├── controller/
+├── service/
+│   └── impl/
+├── mapper/
+├── entity/
+├── dto/
+├── vo/
+├── exception/
+└── util/
+```
 
-Controller 中禁止：
+### 2.1 Controller
+
+Controller 只负责接收请求、参数校验、调用 Service 和返回结果。
+
+Controller 禁止：
 
 - 编写复杂业务逻辑
 - 直接操作 Mapper
 - 编写 SQL
 - 直接修改数据库
 
-错误示例：
+### 2.2 Service
 
-```java
-@PostMapping("/charge")
-public Result charge(...) {
-    User user = userMapper.selectById(...);
+核心业务逻辑必须放在 Service。
 
-    if (...) {
-        ...
-    }
+涉及多个持久化操作且需要保持业务一致性的操作必须使用事务，例如：
 
-    chargerMapper.updateById(...);
-    orderMapper.insert(...);
-}
-```
-
-正确示例：
-
-```java
-@PostMapping("/charge")
-public Result<?> startCharging(@RequestBody StartChargingDTO dto) {
-    return Result.success(chargingService.startCharging(dto));
-}
-```
-
-### 1.2 Service
-
-所有核心业务逻辑必须放在 Service。
-
-例如开始充电必须在 Service 中完成：
-
-```text
-检查用户
-↓
-检查未完成订单
-↓
-检查电桩状态
-↓
-创建订单
-↓
-修改电桩状态
-```
-
-涉及多个数据库操作的核心业务，应使用事务：
-
-```java
-@Transactional
-public OrderVO startCharging(StartChargingDTO dto) {
-    ...
-}
-```
-
-重点事务包括：
-
-- 开始充电
-- 结束充电
-- 钱包结算
+- 用户自动注册
 - 用户充值
-- 新增电站和电桩
+- 开始充电
+- 停止充电
+- 钱包结算
+- 新增电站和自动建桩
+- 远程重启状态落库
 
-### 1.3 Mapper
+### 2.3 Mapper
 
 Mapper 只负责数据库访问。
 
-简单 CRUD 优先使用 MyBatis-Plus：
+简单 CRUD 优先使用 MyBatis-Plus；复杂统计可以自定义 SQL，但禁止在多个位置重复实现相同 SQL。
 
-```java
-public interface UserMapper extends BaseMapper<User> {
-}
-```
+## 3. Entity / DTO / VO
 
-复杂统计允许自定义 SQL，例如：
+Entity 对应数据库表，原则上只用于数据库层。
 
-- 近 7 日营收
-- 近 30 日营收
-- 今日营收
-- 电桩状态统计
-
-禁止在多个位置重复编写相同 SQL。
-
-## 2. Entity / DTO / VO 规范
-
-三个概念必须严格区分。
-
-### 2.1 Entity
-
-Entity 对应数据库表，例如：
-
-```text
-User
-Station
-Charger
-ChargingOrder
-```
-
-Entity 原则上只用于数据库层。
-
-### 2.2 DTO
-
-DTO 表示客户端传给后端的数据，例如：
+DTO 表示客户端到后端的输入，例如：
 
 ```text
 LoginDTO
@@ -139,11 +87,7 @@ StartChargingDTO
 FinishChargingDTO
 ```
 
-客户端没有提交的字段，不应该为了方便全部放进 Entity。
-
-### 2.3 VO
-
-VO 表示后端返回给客户端的数据，例如：
+VO 表示后端到客户端的输出，例如：
 
 ```text
 UserVO
@@ -153,129 +97,32 @@ RevenueVO
 PredictionVO
 ```
 
-使用 VO 可以避免把数据库内部字段直接暴露给客户端。
+禁止为了省事直接把 Entity 作为所有请求和响应对象。
 
-## 3. 错误处理规范
+## 4. 状态值
 
-统一使用全局异常处理：
+代码中禁止出现无法理解的裸数字状态值。
 
-```text
-BusinessException
-GlobalExceptionHandler
-```
+统一状态见 SRS：
 
-业务层示例：
+- `UserStatus`: `NORMAL`, `FROZEN`
+- `PileStatus`: `AVAILABLE`, `CHARGING`, `FAULT`, `OFFLINE`, `RESTARTING`
+- `OrderStatus`: `CREATED`, `CHARGING`, `PENDING_PAYMENT`, `COMPLETED`, `CANCELLED`
+- `DeviceStatus`: `ONLINE`, `OFFLINE`, `FAULT`, `RESTARTING`
 
-```java
-throw new BusinessException(4001, "用户存在未完成订单");
-```
+状态值一旦进入联调，修改必须走公共契约变更流程。
 
-禁止：
+## 5. 时间与金额
 
-```java
-return "失败";
-```
+数据库时间字段使用 `DATETIME`。
 
-也不要只使用：
-
-```java
-System.out.println("出错了");
-```
-
-## 4. 状态值规范
-
-禁止在代码中出现无法理解的数字状态值：
-
-```text
-0
-1
-2
-3
-```
-
-例如电桩状态应统一定义：
-
-```text
-AVAILABLE
-CHARGING
-FAULT
-OFFLINE
-```
-
-数据库可以保存：
-
-```text
-available
-charging
-fault
-offline
-```
-
-或者保存整数枚举，但必须全项目统一。
-
-Java 示例：
-
-```java
-public enum ChargerStatus {
-    AVAILABLE,
-    CHARGING,
-    FAULT,
-    OFFLINE
-}
-```
-
-同理：
-
-用户状态：
-
-```text
-NORMAL
-FROZEN
-```
-
-订单状态：
-
-```text
-CHARGING
-COMPLETED
-CANCELLED
-```
-
-## 5. 时间规范
-
-所有数据库时间字段统一使用：
-
-```text
-DATETIME
-```
-
-命名示例：
-
-```text
-created_at
-updated_at
-start_time
-end_time
-```
-
-前后端接口统一：
+接口时间格式：
 
 ```text
 yyyy-MM-dd HH:mm:ss
 ```
 
-避免不同模块各自使用不同格式。
-
-## 6. 金额规范
-
-金额涉及：
-
-- 钱包余额
-- 充电价格
-- 订单金额
-- 充值金额
-
-禁止使用 `float`。
+金额禁止使用 `float` 或 `double` 做最终业务计算。
 
 Java 使用：
 
@@ -289,93 +136,130 @@ MySQL 使用：
 DECIMAL(10,2)
 ```
 
-字段示例：
+## 6. 配置管理
+
+敏感配置不得提交到 Git。
+
+包括：
+
+- 数据库密码
+- 腾讯地图 Key
+- JWT Secret
+- 上传目录绝对路径
+- 生产环境配置
+
+推荐：
+
+- `application.yml` 保存非敏感默认配置。
+- `application-local.yml` 或环境变量保存本机配置。
+- 仓库只提交 `application-example.yml`。
+
+## 7. 日志规范
+
+后端、设备网关和 ML 模块都必须记录关键日志。
+
+至少记录：
+
+- 登录失败
+- 自动注册
+- 充值
+- 开始充电
+- 停止充电
+- 结算失败
+- 管理员操作
+- 用户冻结 / 解冻
+- 设备上线 / 离线
+- 设备故障
+- 远程重启
+- ML 任务异常
+
+日志中不得输出明文密码、Token、数据库密码或地图 Key。
+
+## 8. 错误处理
+
+后端统一使用：
 
 ```text
-balance DECIMAL(10,2)
-amount DECIMAL(10,2)
-price_per_kwh DECIMAL(10,2)
+BusinessException
+GlobalExceptionHandler
+Result<T>
 ```
 
-## 7. Qt 开发规范
+业务错误必须返回明确错误码和错误信息。
 
-类名使用 PascalCase，例如：
+禁止返回纯字符串表示失败，也禁止只使用 `System.out.println` 处理错误。
+
+## 9. 文件上传
+
+头像上传 V1 推荐保存到：
+
+```text
+backend/uploads/avatar/
+```
+
+数据库保存：
+
+```text
+avatar_url
+```
+
+必须限制文件类型、文件大小、保存路径和文件名冲突。
+
+禁止允许上传文件覆盖任意服务器路径。
+
+## 10. Qt 开发规范
+
+类名使用 PascalCase，函数名使用 camelCase，成员变量统一使用 `m_` 前缀。
+
+示例：
 
 ```text
 LoginWindow
 StationPage
 ChargingPage
 OrderPage
-ApiClient
-```
+NetworkClient
 
-函数名使用 camelCase，例如：
-
-```text
 loadStations()
 startCharging()
 updateUserInfo()
-```
 
-成员变量统一使用：
-
-```text
 m_userId
 m_stationList
 m_networkManager
 ```
 
-推荐 UI 类和业务逻辑适度分离。
+Qt UI 类和业务逻辑适度分离。不要把 Socket 通信、消息解析、页面绘制和业务判断全部写进一个按钮槽函数。
 
-不要把以下内容全部写进一个按钮槽函数：
+## 11. Qt 网络与线程
 
-```text
-网络请求
-JSON 解析
-页面绘制
-业务判断
-```
-
-## 8. Qt 网络请求规范
-
-Qt 两个客户端尽量共同维护一致的网络层设计。
-
-推荐使用：
+Qt 网络通信统一封装：
 
 ```text
-ApiClient
+SocketClient / NetworkClient
 ```
 
 负责：
 
 ```text
-GET
-POST
-PUT
-DELETE
+连接管理
+请求发送
+响应解析
+错误处理
+重连或超时处理
 ```
 
-业务页面不得重复实现 HTTP 底层请求。
+业务页面不得直接操作 `QTcpSocket`。
 
-页面示例：
+UI 线程不得被 Socket 请求、地图加载、设备命令或长计算阻塞。
 
-```text
-StationPage
-```
+涉及耗时操作时，使用 Qt 异步网络机制、`QThread` 或 `QtConcurrent`。
 
-调用：
+Qt 业务通信使用 `QTcpSocket`。服务端 Socket 接入可使用 Java Socket / Netty / Spring Integration 等轻量方案，具体实现需在后端工程创建时确认。
 
-```text
-ApiClient::getStations(...)
-```
-
-而不是页面自己重新创建一套 `NetworkManager`。
-
-## 9. Web 开发规范
+## 12. Web 开发规范
 
 所有业务数据必须来自 API。
-
-ECharts 图表配置和 API 请求代码适度分离。
 
 推荐目录：
 
@@ -391,12 +275,9 @@ web-dashboard/
 └── assets/
 ```
 
-其中：
+`api.js` 负责访问后端，`charts.js` 负责图表配置。
 
-- `api.js` 负责访问后端。
-- `charts.js` 负责图表配置。
-
-## 10. ML 模块规范
+## 13. ML 模块规范
 
 推荐目录：
 
@@ -414,117 +295,78 @@ ml/
 └── README.md
 ```
 
-禁止把训练代码、测试代码、数据清洗和绘图全部堆在一个 `.py` 文件。
+禁止把训练、测试、清洗、绘图全部堆在一个 `.py` 文件。
 
-模型输出至少统一包含：
+预测结果必须进入数据库或通过后端 API 进入系统。
 
-```text
-stationId
-predictionTime
-horizon
-predictedLoad
-predictedAvailableCount
-```
+## 14. Device 模块规范
 
-并写入统一 `prediction` 表。
-
-## 11. 功能优先级
-
-项目使用三级优先级。
-
-### P0
-
-核心功能，没有就无法完成项目，例如：
-
-- 登录
-- 查询充电站
-- 查看电桩
-- 充电
-- 订单结算
-- 管理员管理
-- 数据库
-- 后端 API
-
-### P1
-
-任务书明确要求的重要功能，例如：
-
-- 地图导航
-- 营收趋势
-- 用户冻结
-- 大数据大屏
-- ML 负荷预测
-
-### P2
-
-加分和优化功能，例如：
-
-- 更漂亮动画
-- 智能推荐
-- 负荷预警
-- 预约
-- 多模型比较
-- UI 主题切换
-
-原则：P0 未完成前不得大规模投入 P2。
-
-## 12. Definition of Done
-
-一个功能不能以“代码写完了”作为完成标准。
-
-必须同时满足：
+推荐目录：
 
 ```text
-代码完成
-+
-能够运行
-+
-接口联通
-+
-数据正确
-+
-基本异常处理
-+
-已提交 Git
-+
-已合并 develop
+device/
+
+├── gateway/
+└── simulator/
 ```
 
-才能标记为 Done。
+协议必须遵循 `docs/07-DEVICE-PROTOCOL.md`。
 
-## 13. 每日敏捷开发规范
+不得自行增加未记录的消息类型、状态值或字段。
 
-项目采用“一天一个小迭代”。
+## 15. 测试规范
 
-每天开始前进行约 10 分钟同步，每人只说明：
+每个 P0 功能至少完成基本自测。
 
-```text
-昨天完成了什么
-今天完成什么
-现在有什么阻塞
-```
+优先测试：
 
-禁止长时间开会。
+- 手机号登录与自动注册
+- 冻结用户限制
+- 充值
+- 未完成订单拦截
+- 开始充电
+- 停止充电
+- 钱包结算
+- 管理员登录
+- 站点和电桩管理
+- API 统一返回
+- ML 预测结果写回
+- 设备心跳和远程重启
 
-每天结束前进行一次集成。
+## 16. Definition of Ready
 
-标准：
+一个任务开始开发前至少应明确：
 
-```text
-每天结束时 develop 必须处于能够运行的状态。
-```
+- 对应 SRS 需求编号。
+- 输入和输出。
+- 涉及 API。
+- 涉及数据表。
+- 禁止修改范围。
+- 验收标准。
 
-## 14. 禁止事项
+## 17. Definition of Done
 
-项目期间禁止：
+一个功能 Done 至少要求：
+
+- 代码完成。
+- 本地可运行。
+- API 联通。
+- 数据正确。
+- 基本异常处理完成。
+- 必要测试通过。
+- 文档同步更新。
+- 已提交 Git。
+- 已合并或准备合并 `develop`。
+
+## 18. 禁止事项
 
 1. 未讨论自行修改数据库结构。
 2. 未通知自行修改 API。
 3. 客户端直接操作核心数据库。
-4. main 分支直接开发。
+4. `main` 分支直接开发。
 5. 提交无法编译的代码。
 6. Agent 大规模重写已有模块。
-7. 为一个简单功能随意添加新框架。
+7. 为简单功能随意添加新框架。
 8. 最后一天才第一次联调。
 9. 只在个人电脑能够运行。
 10. ML、大屏等模块使用完全脱离系统的假数据作为最终成果。
