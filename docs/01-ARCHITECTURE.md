@@ -97,6 +97,42 @@ PC 服务与管理端至少应划分：
 
 如老师要求 pthread，应在后续实现中补充 pthread 示例；否则优先使用 Qt 原生 `QThread`。
 
+### 5.1 通信模块结构
+
+通信相关代码按以下方式分层：
+
+~~~text
+shared/protocol
+  ├── Message Types
+  ├── Error Codes
+  ├── Request / Response
+  └── JsonLineCodec
+
+qt-user/network
+  └── SocketClient
+
+qt-server-admin/network
+  ├── SocketServer
+  ├── ClientSession
+  ├── SessionManager
+  ├── MessageDispatcher
+  └── DashboardWebSocketServer
+~~~
+
+shared/protocol是公共代码，不是业务Service。它不能访问UI、Service或SQLite。
+
+### 5.2 通信线程边界
+
+- Socket线程负责连接、字节收发、分帧和消息投递；
+- Business Worker负责业务规则；
+- Database Worker或Repository所属线程负责SQLite；
+- WebSocket服务负责订阅关系和推送，不自行统计数据；
+- UI线程只响应信号并更新界面；
+- 跨线程通过Qt信号槽或线程安全队列传递普通数据；
+- QTcpSocket、QWebSocket和QSqlDatabase不得跨线程直接使用。
+
+具体实现规范和联调验收见docs/03-API.md第16至24节。
+
 ## 6. 不采用的主架构
 
 V1 不采用：
