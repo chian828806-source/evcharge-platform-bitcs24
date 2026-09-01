@@ -117,11 +117,8 @@ evcharge-platform/
 ├── qt-user/
 ├── qt-admin/
 ├── qt-server/
-├── qt-server-admin/        # zly 分支历史合并目录，后续迁移拆分
 ├── database/
-│   ├── schema.sql
-│   ├── init_data.sql
-│   └── README.md
+│   └── .gitkeep            # 当前分支仅保留目录；数据库设计见 docs/04-DATABASE.md
 ├── web-dashboard/
 ├── ml/
 ├── docs/

@@ -331,7 +331,6 @@ shared/protocol/                 公共消息、错误码、JSON Lines
 qt-user/network/                 Qt用户端SocketClient
 qt-admin/network/                Qt管理端SocketClient
 qt-server/network/               TCP服务、Session、Dispatcher、WebSocket
-qt-server-admin/network/         zly分支历史合并目录，后续迁移到qt-server
 tests/network/                   通信层自动化测试
 ~~~
 

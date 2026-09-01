@@ -11,9 +11,6 @@
 ## 2. Qt/C++ 目录建议
 
 ```text
-qt-server-admin/
-└── README.md              # 过渡说明，后续迁移拆分
-
 qt-server/
 ├── main.cpp
 ├── network/

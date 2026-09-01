@@ -33,5 +33,4 @@ qt-server/
 ├── worker/
 └── util/
 ```
-
-`zly` 分支当前的 `qt-server-admin/network` 已实现部分服务端通信骨架，后续应迁移到本目录。
+服务端实现仅放在本目录；管理界面实现放在 `qt-admin/`。
