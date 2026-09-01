@@ -1,433 +1,291 @@
-# API 规范
+# Socket 消息与数据交换规范
 
-本文档定义 Web / ML REST API 设计，以及 Qt Socket 业务消息与 REST API 共用的认证、错误码、分页、幂等和变更规则。具体接口清单将在 SRS 冻结后继续细化。
+本文档定义 Qt 用户端与 Qt/C++ PC 服务端之间的 Socket 应用层协议、Web 大屏 WebSocket 消息，以及 ML 的数据交换方式。
 
 ## 1. 基本原则
 
-1. Linux Qt 用户端和 Qt 管理端通过 TCP Socket 访问核心业务数据。
-2. Web 大屏和 Python ML 模块通过 REST API 访问后端数据。
-3. 设备通信不放入本业务接口规范，独立见 `docs/07-DEVICE-PROTOCOL.md`。
-4. Socket 业务消息和 REST API 都属于公共契约，一旦进入联调不得私自修改。
-5. 所有 Socket 业务消息或 REST API 必须能追踪到 SRS 需求编号。
+1. 主业务通信使用 TCP Socket。
+2. 用户端不得绕过 PC 服务端直接访问 SQLite。
+3. Web 大屏通过 WebSocket 连接 PC 服务端，不直接读取数据库。
+4. ML 可读取 SQLite、CSV 或 JSON，输出结果写回 SQLite 或导出 JSON。
+5. 消息类型、字段、错误码属于公共契约。
 
-## 2. Qt Socket 业务消息规范
+## 2. Socket 封装
 
-Qt 业务客户端不得直接在页面中操作 `QTcpSocket`，必须统一封装 `SocketClient` / `NetworkClient`。
+用户端统一封装：
 
-V1 推荐采用 JSON Lines 格式，一条 JSON 消息以 `\n` 结束。
+```text
+SocketClient / NetworkClient
+```
 
-请求结构建议：
+服务端统一封装：
+
+```text
+SocketServer / ClientSession
+```
+
+业务页面不得直接操作 `QTcpSocket`。
+
+## 3. 消息帧格式
+
+V1 推荐 JSON Lines：
+
+```text
+一条 JSON 消息 + \n
+```
+
+如果出现粘包、拆包处理困难，可改为长度前缀：
+
+```text
+uint32 length + JSON body
+```
+
+格式一旦进入联调不得私自修改。
+
+## 4. 请求结构
 
 ```json
 {
-  "requestId": "REQ-20260831-000001",
+  "requestId": "REQ-20260901-000001",
   "type": "USER_LOGIN",
-  "token": null,
+  "sessionId": null,
   "payload": {
     "phone": "13800138000"
   }
 }
 ```
 
-响应结构建议：
+## 5. 响应结构
 
 ```json
 {
-  "requestId": "REQ-20260831-000001",
+  "requestId": "REQ-20260901-000001",
   "code": 200,
   "message": "success",
   "data": {}
 }
 ```
 
-Socket 消息类型应按业务域命名，例如：
+## 6. 核心消息类型
+
+用户：
 
 ```text
 USER_LOGIN
 USER_PROFILE_GET
+USER_PROFILE_UPDATE
+USER_AVATAR_UPLOAD
 USER_RECHARGE
+USER_ORDER_LIST
+```
+
+站点与导航：
+
+```text
 STATION_LIST_NEARBY
 STATION_DETAIL_GET
+MAP_GEOCODE
+```
+
+充电订单：
+
+```text
+ORDER_ACTIVE_CHECK
 ORDER_CREATE
+ORDER_CANCEL
 ORDER_START
 ORDER_STOP
 ORDER_SETTLE
+```
+
+管理：
+
+```text
 ADMIN_LOGIN
 ADMIN_REVENUE_SUMMARY
+ADMIN_REVENUE_TREND
+ADMIN_PILE_STATUS_SUMMARY
+ADMIN_PILE_LIST
+ADMIN_PILE_RESTART
+ADMIN_STATION_LIST
+ADMIN_STATION_CREATE
+ADMIN_USER_LIST
 ADMIN_USER_FREEZE
-CHARGER_RESTART
+ADMIN_USER_UNFREEZE
 ```
 
-## 3. REST 路径规范
-
-统一前缀：
+ML 展示：
 
 ```text
-/api
+PREDICTION_LIST
+PREDICTION_RECOMMENDATION
+PREDICTION_WARNING
 ```
 
-推荐资源路径：
+## 7. 认证
 
-```text
-/api/auth
-/api/users
-/api/stations
-/api/chargers
-/api/orders
-/api/admin
-/api/statistics
-/api/predictions
-/api/devices
-/api/files
-```
+登录成功后返回随机 `sessionId`。受保护消息必须携带 `sessionId`。
 
-## 4. REST 命名规范
+管理员和普通用户 session 必须区分权限。
 
-查询列表：
+## 8. 错误码
 
-```http
-GET /api/stations
-```
-
-查询单个：
-
-```http
-GET /api/stations/{id}
-```
-
-新增：
-
-```http
-POST /api/stations
-```
-
-修改：
-
-```http
-PUT /api/stations/{id}
-```
-
-删除：
-
-```http
-DELETE /api/stations/{id}
-```
-
-业务动作可以使用：
-
-```http
-POST /api/users/{id}/recharge
-POST /api/orders/{id}/start
-POST /api/orders/{id}/stop
-POST /api/orders/{id}/settle
-POST /api/chargers/{id}/restart
-POST /api/users/{id}/freeze
-POST /api/users/{id}/unfreeze
-```
-
-禁止：
-
-```text
-/getStation
-/getAllStation
-/addStation
-/doDeleteStation
-/changeStationInformation
-```
-
-## 5. JSON 命名
-
-Socket 业务消息和 REST API 的 JSON 字段统一使用 camelCase。
-
-示例：
-
-```json
-{
-  "stationId": 1,
-  "stationName": "中关村充电站",
-  "availableCount": 6,
-  "totalCount": 10,
-  "pricePerKwh": 1.5
-}
-```
-
-禁止混用：
-
-```text
-station_id
-stationId
-StationID
-stationID
-```
-
-## 6. 统一返回结构
-
-Socket 响应和 REST API 响应统一使用以下语义结构：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {}
-}
-```
-
-成功示例：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "userId": 1,
-    "nickname": "用户1234"
-  }
-}
-```
-
-失败示例：
-
-```json
-{
-  "code": 4001,
-  "message": "用户存在未完成订单",
-  "data": null
-}
-```
-
-后端统一实现：
-
-```java
-Result<T>
-```
-
-## 7. 认证与授权
-
-V1 推荐轻量 JWT。
-
-角色至少包括：
-
-```text
-USER
-ADMIN
-```
-
-Qt 用户端 Socket 登录消息：
-
-```text
-USER_LOGIN
-```
-
-Qt 管理端 Socket 登录消息：
-
-```text
-ADMIN_LOGIN
-```
-
-REST 登录接口仅在 Web 或调试需要时保留：
-
-```http
-POST /api/auth/user-login
-POST /api/auth/admin-login
-```
-
-需要登录的 REST API 应携带：
-
-```http
-Authorization: Bearer <token>
-```
-
-安全要求：
-
-- 管理员密码不得明文存储。
-- 冻结用户不得登录或执行业务操作。
-- 管理端 Socket 消息和管理类 REST API 必须校验 ADMIN 权限。
-
-## 8. 错误码建议
-
-| 范围 | 含义 |
+| code | 含义 |
 | --- | --- |
 | 200 | 成功 |
-| 4000-4099 | 用户与认证错误 |
-| 4100-4199 | 订单与充电业务错误 |
-| 4200-4299 | 站点和电桩错误 |
-| 4300-4399 | 管理端错误 |
-| 4400-4499 | 设备通信错误 |
-| 4500-4599 | ML 和预测错误 |
-| 5000-5999 | 系统错误 |
+| 4001 | 手机号格式非法 |
+| 4002 | 用户已被冻结 |
+| 4003 | 未登录或 session 无效 |
+| 4101 | 用户存在未完成订单 |
+| 4102 | 电桩不可用 |
+| 4103 | 钱包余额不足 |
+| 4104 | 非法订单状态 |
+| 4105 | 订单不可取消 |
+| 4201 | 站点不存在 |
+| 4202 | 电桩不存在 |
+| 4301 | 管理员账号或密码错误 |
+| 4401 | Socket 消息格式错误 |
+| 4402 | Socket 请求超时 |
+| 4501 | 预测结果不存在 |
+| 5001 | 数据库错误 |
+| 5002 | 系统内部错误 |
 
-示例：
+## 9. 示例：用户登录
 
-```text
-4001 手机号格式非法
-4002 用户已被冻结
-4101 用户存在未完成订单
-4102 电桩不可用
-4103 钱包余额不足
-4401 设备离线
-4402 设备命令超时
-4501 预测结果不存在
-```
-
-## 9. 分页规范
-
-列表接口如用户、电桩、订单应支持分页。
-
-请求参数：
-
-```text
-page
-pageSize
-keyword
-```
-
-响应建议：
+Request:
 
 ```json
 {
-  "code": 200,
-  "message": "success",
-  "data": {
-    "records": [],
-    "total": 100,
-    "page": 1,
-    "pageSize": 10
+  "requestId": "REQ-001",
+  "type": "USER_LOGIN",
+  "sessionId": null,
+  "payload": {
+    "phone": "13800138000"
   }
 }
 ```
 
-## 10. 幂等与并发
-
-必须重点保护：
-
-- 用户自动注册
-- 创建充电订单
-- 开始充电
-- 停止充电
-- 钱包结算
-- 远程重启命令
-
-规则：
-
-- 手机号必须唯一。
-- 用户同一时刻最多 1 个活动订单。
-- 充电桩同一时刻最多服务 1 个订单。
-- 结算接口重复调用不得重复扣款。
-
-## 11. 文件上传接口
-
-头像上传建议：
-
-```http
-POST /api/files/avatar
-```
-
-要求：
-
-- 限制图片类型。
-- 限制文件大小。
-- 返回可访问的 `avatarUrl`。
-- 禁止任意路径写入。
-
-## 12. 地图接口
-
-推荐由后端代理腾讯地图地理编码：
-
-```http
-GET /api/map/geocode?address=...
-```
-
-Qt 导航页面可使用 `QWebEngineView` 加载腾讯地图路线页面。
-
-## 13. 接口文档格式
-
-每个 Socket 业务消息或 REST API 至少描述：
-
-```text
-需求编号
-功能
-Message Type 或 URL
-Transport
-Method，REST API 需要
-权限
-请求参数
-响应参数
-成功示例
-失败情况
-```
-
-示例：
-
-```text
-Requirement:
-FR-U-001
-
-功能：
-手机号登录/自动注册
-
-Transport:
-TCP Socket
-
-Message Type:
-USER_LOGIN
-
-Request:
-{
-  "phone": "13800138000"
-}
-
 Response:
+
+```json
 {
+  "requestId": "REQ-001",
   "code": 200,
   "message": "success",
   "data": {
-    "token": "...",
+    "sessionId": "S-8f4a9c",
     "user": {
       "userId": 1,
       "nickname": "用户8000",
-      "balance": 0.00
+      "balanceFen": 0
     }
   }
 }
 ```
 
-SpringDoc Swagger 用于 REST API 实时接口测试。
+## 10. 示例：创建订单
 
-`docs/03-API.md` 用于团队确定 Qt Socket 业务消息和 REST API 的正式接口协议。
-
-## 14. 接口修改流程
-
-一旦 Socket 消息或 REST API 进入联调阶段，任何人不得直接修改：
-
-```text
-Message Type
-URL
-HTTP Method
-请求字段
-响应字段
-状态含义
-错误码
-权限规则
+```json
+{
+  "requestId": "REQ-002",
+  "type": "ORDER_CREATE",
+  "sessionId": "S-8f4a9c",
+  "payload": {
+    "pileId": 1
+  }
+}
 ```
 
-确需修改时：
+## 11. 示例：结算订单
 
-```text
-提出修改
-↓
-确认影响模块
-↓
-组长确认
-↓
-修改接口文档
-↓
-修改代码
-↓
-通知相关成员
+```json
+{
+  "requestId": "REQ-003",
+  "type": "ORDER_SETTLE",
+  "sessionId": "S-8f4a9c",
+  "payload": {
+    "orderId": 1001
+  }
+}
 ```
 
-必须做到：
+## 12. 示例：取消未开始订单
+
+```json
+{
+  "requestId": "REQ-004",
+  "type": "ORDER_CANCEL",
+  "sessionId": "S-8f4a9c",
+  "payload": {
+    "orderId": 1001
+  }
+}
+```
+
+取消仅允许作用于 `CREATED` 状态订单。取消成功后订单进入 `CANCELLED`，对应电桩由 `RESERVED` 恢复为 `AVAILABLE`。
+
+## 13. Web 大屏 WebSocket
+
+连接地址：
 
 ```text
-先改文档，再改代码。
+ws://<server-host>:<port>/dashboard
 ```
+
+大屏请求：
+
+```json
+{
+  "requestId": "DASH-001",
+  "type": "DASHBOARD_SUBSCRIBE",
+  "payload": {
+    "topics": ["summary", "pileStatus", "revenueTrend", "prediction"]
+  }
+}
+```
+
+服务端推送：
+
+```json
+{
+  "type": "DASHBOARD_UPDATE",
+  "topic": "summary",
+  "data": {
+    "todayEnergyKwh": 128.5,
+    "todayRevenueFen": 93600,
+    "stationLoad": 0.62
+  }
+}
+```
+
+`stationLoad` 使用 SRS 中统一负荷口径，取值范围为 0 到 1。
+
+## 14. ML 数据交换
+
+输入：
+
+```text
+ml/data/history.csv
+ml/data/orders.csv
+```
+
+输出：
+
+```text
+ml/output/predictions.json
+```
+
+PC 服务端负责将预测结果导入 SQLite，并通过 WebSocket 提供给 Web 大屏。
+
+## 15. 接口修改流程
+
+一旦 Socket 或 WebSocket 消息进入联调，任何人不得直接修改：
+
+- Message Type；
+- 请求字段；
+- 响应字段；
+- 推送字段；
+- 错误码；
+- 认证规则。
+
+确需修改时，先改本文档，再改代码并通知相关成员。

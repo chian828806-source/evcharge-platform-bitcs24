@@ -107,10 +107,10 @@ chore:
 示例：
 
 ```text
-feat: add user phone login API
+feat: add user phone login message
 feat: implement nearby station page
 fix: prevent duplicate unfinished orders
-refactor: extract Qt API client
+refactor: extract socket network client
 docs: update SRS v1
 ```
 
@@ -132,7 +132,7 @@ aaa
 - 对应 SRS 需求编号。
 - 本次完成内容。
 - 涉及模块。
-- 是否修改 Socket 业务消息 / REST API / 数据库 / 状态枚举 / 设备协议。
+- 是否修改 Socket 业务消息 / WebSocket 大屏消息 / ML 数据输入输出 / 数据库 / 状态枚举 / 设备协议。
 - 已执行的测试。
 - 未完成或需注意的问题。
 
@@ -153,7 +153,8 @@ Review 优先检查：
 公共契约变更必须重点审查：
 
 - Socket Message Type / 请求字段 / 响应字段
-- REST API URL / Method / 字段
+- WebSocket 大屏 Message Type / 请求字段 / 推送字段
+- ML 输入输出文件或表字段
 - 数据库表和字段
 - 状态枚举
 - 设备协议消息

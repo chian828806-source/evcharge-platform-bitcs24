@@ -1,372 +1,184 @@
 # 开发规范
 
-本文档以 `docs/00-SRS-V1.0.md` 为需求基线，约束编码、配置、日志、线程、测试和模块实现方式。
-
 ## 1. 通用原则
 
-1. 所有实现必须能追踪到 SRS 需求编号。
-2. 先完成 P0 / MUST，再投入 P1 / SHOULD。
-3. 不为简单功能引入新框架。
-4. 不重构无关模块。
-5. 不直接修改公共契约，契约包括 Socket 业务消息、REST API、数据库、状态枚举和设备协议。
+1. 实现必须能追踪到 SRS 需求编号。
+2. 优先完成 Qt/C++、Socket、SQLite、多线程主线。
+3. 不引入 Spring Boot、MySQL、REST 作为主架构。
+4. 不修改公共契约，契约包括 Socket 消息、WebSocket 大屏消息、SQLite 表结构、状态枚举和统计口径。
+5. 不重构无关模块。
 
-## 2. 后端分层
-
-统一采用：
+## 2. Qt/C++ 目录建议
 
 ```text
-Controller
-    ↓
-Service
-    ↓
-Mapper
-    ↓
-MySQL
-```
-
-推荐目录：
-
-```text
-backend/src/main/java/.../
-
-├── common/
-├── config/
-├── controller/
+qt-server-admin/
+├── main.cpp
+├── network/
 ├── service/
-│   └── impl/
-├── mapper/
-├── entity/
-├── dto/
-├── vo/
-├── exception/
+├── repository/
+├── model/
+├── ui/
+├── chart/
+├── worker/
+└── util/
+
+qt-user/
+├── main.cpp
+├── network/
+├── model/
+├── ui/
 └── util/
 ```
 
-### 2.1 Controller
+## 3. 分层规范
 
-Controller 只负责接收请求、参数校验、调用 Service 和返回结果。
-
-Controller 禁止：
-
-- 编写复杂业务逻辑
-- 直接操作 Mapper
-- 编写 SQL
-- 直接修改数据库
-
-### 2.2 Service
-
-核心业务逻辑必须放在 Service。
-
-涉及多个持久化操作且需要保持业务一致性的操作必须使用事务，例如：
-
-- 用户自动注册
-- 用户充值
-- 开始充电
-- 停止充电
-- 钱包结算
-- 新增电站和自动建桩
-- 远程重启状态落库
-
-### 2.3 Mapper
-
-Mapper 只负责数据库访问。
-
-简单 CRUD 优先使用 MyBatis-Plus；复杂统计可以自定义 SQL，但禁止在多个位置重复实现相同 SQL。
-
-## 3. Entity / DTO / VO
-
-Entity 对应数据库表，原则上只用于数据库层。
-
-DTO 表示客户端到后端的输入，例如：
+PC 服务与管理端建议采用：
 
 ```text
-LoginDTO
-RechargeDTO
-CreateStationDTO
-StartChargingDTO
-FinishChargingDTO
+UI
+  ↓
+Service
+  ↓
+Repository
+  ↓
+QtSql / SQLite
 ```
 
-VO 表示后端到客户端的输出，例如：
+Socket 消息处理入口只负责解析、校验、调用 Service 和返回响应，不直接写复杂业务逻辑。
 
-```text
-UserVO
-StationVO
-ChargerVO
-RevenueVO
-PredictionVO
-```
+## 4. 命名规范
 
-禁止为了省事直接把 Entity 作为所有请求和响应对象。
-
-## 4. 状态值
-
-代码中禁止出现无法理解的裸数字状态值。
-
-统一状态见 SRS：
-
-- `UserStatus`: `NORMAL`, `FROZEN`
-- `PileStatus`: `AVAILABLE`, `CHARGING`, `FAULT`, `OFFLINE`, `RESTARTING`
-- `OrderStatus`: `CREATED`, `CHARGING`, `PENDING_PAYMENT`, `COMPLETED`, `CANCELLED`
-- `DeviceStatus`: `ONLINE`, `OFFLINE`, `FAULT`, `RESTARTING`
-
-状态值一旦进入联调，修改必须走公共契约变更流程。
-
-## 5. 时间与金额
-
-数据库时间字段使用 `DATETIME`。
-
-接口时间格式：
-
-```text
-yyyy-MM-dd HH:mm:ss
-```
-
-金额禁止使用 `float` 或 `double` 做最终业务计算。
-
-Java 使用：
-
-```text
-BigDecimal
-```
-
-MySQL 使用：
-
-```text
-DECIMAL(10,2)
-```
-
-## 6. 配置管理
-
-敏感配置不得提交到 Git。
-
-包括：
-
-- 数据库密码
-- 腾讯地图 Key
-- JWT Secret
-- 上传目录绝对路径
-- 生产环境配置
-
-推荐：
-
-- `application.yml` 保存非敏感默认配置。
-- `application-local.yml` 或环境变量保存本机配置。
-- 仓库只提交 `application-example.yml`。
-
-## 7. 日志规范
-
-后端、设备网关和 ML 模块都必须记录关键日志。
-
-至少记录：
-
-- 登录失败
-- 自动注册
-- 充值
-- 开始充电
-- 停止充电
-- 结算失败
-- 管理员操作
-- 用户冻结 / 解冻
-- 设备上线 / 离线
-- 设备故障
-- 远程重启
-- ML 任务异常
-
-日志中不得输出明文密码、Token、数据库密码或地图 Key。
-
-## 8. 错误处理
-
-后端统一使用：
-
-```text
-BusinessException
-GlobalExceptionHandler
-Result<T>
-```
-
-业务错误必须返回明确错误码和错误信息。
-
-禁止返回纯字符串表示失败，也禁止只使用 `System.out.println` 处理错误。
-
-## 9. 文件上传
-
-头像上传 V1 推荐保存到：
-
-```text
-backend/uploads/avatar/
-```
-
-数据库保存：
-
-```text
-avatar_url
-```
-
-必须限制文件类型、文件大小、保存路径和文件名冲突。
-
-禁止允许上传文件覆盖任意服务器路径。
-
-## 10. Qt 开发规范
-
-类名使用 PascalCase，函数名使用 camelCase，成员变量统一使用 `m_` 前缀。
-
-示例：
+类名使用 PascalCase：
 
 ```text
 LoginWindow
 StationPage
-ChargingPage
-OrderPage
-NetworkClient
+SocketServer
+OrderService
+UserRepository
+```
 
+函数和变量使用 camelCase：
+
+```text
 loadStations()
 startCharging()
 updateUserInfo()
-
-m_userId
-m_stationList
-m_networkManager
 ```
 
-Qt UI 类和业务逻辑适度分离。不要把 Socket 通信、消息解析、页面绘制和业务判断全部写进一个按钮槽函数。
+成员变量使用 `m_` 前缀：
 
-## 11. Qt 网络与线程
+```text
+m_userId
+m_socket
+m_database
+```
 
-Qt 网络通信统一封装：
+## 5. Qt 网络规范
+
+用户端统一封装：
 
 ```text
 SocketClient / NetworkClient
 ```
 
-负责：
+PC 服务端统一封装：
 
 ```text
-连接管理
-请求发送
-响应解析
-错误处理
-重连或超时处理
+SocketServer / ClientSession
 ```
 
 业务页面不得直接操作 `QTcpSocket`。
 
-UI 线程不得被 Socket 请求、地图加载、设备命令或长计算阻塞。
+Socket 消息统一使用 JSON Lines 或长度前缀格式，具体见 `docs/03-API.md`。
 
-涉及耗时操作时，使用 Qt 异步网络机制、`QThread` 或 `QtConcurrent`。
+## 6. SQLite 与金额
 
-Qt 业务通信使用 `QTcpSocket`。服务端 Socket 接入可使用 Java Socket / Netty / Spring Integration 等轻量方案，具体实现需在后端工程创建时确认。
+数据库访问统一使用 QtSql 和 `QSQLITE`。
 
-## 12. Web 开发规范
-
-所有业务数据必须来自 API。
-
-推荐目录：
+金额以“分”为整数保存和计算，例如：
 
 ```text
-web-dashboard/
-
-├── index.html
-├── css/
-├── js/
-│   ├── api.js
-│   ├── charts.js
-│   └── main.js
-└── assets/
+balance_fen INTEGER
+amount_fen INTEGER
+price_fen_per_kwh INTEGER
 ```
 
-`api.js` 负责访问后端，`charts.js` 负责图表配置。
+界面展示时转换为元。
 
-## 13. ML 模块规范
+## 7. 时间
 
-推荐目录：
+时间字段使用 TEXT 保存：
 
 ```text
-ml/
-
-├── data/
-├── models/
-├── src/
-│   ├── preprocess.py
-│   ├── train.py
-│   ├── predict.py
-│   └── database.py
-├── requirements.txt
-└── README.md
+yyyy-MM-dd HH:mm:ss
 ```
 
-禁止把训练、测试、清洗、绘图全部堆在一个 `.py` 文件。
+所有模块统一使用本地时间，演示阶段不处理复杂时区。
 
-预测结果必须进入数据库或通过后端 API 进入系统。
+## 8. 多线程规范
 
-## 14. Device 模块规范
+UI 线程不得执行阻塞 Socket、数据库写入、充电计时或长时间 ML 调用。
 
-推荐目录：
+SQLite 多线程规则：
+
+- 不跨线程共享同一个 `QSqlDatabase` 连接；
+- 每个数据库线程创建自己的连接名；
+- 写操作集中到 Database Worker 或通过队列串行执行；
+- 失败时返回明确错误码。
+
+## 9. 错误处理
+
+必须覆盖：
+
+| 错误情况 | 处理办法 |
+| --- | --- |
+| Socket 断线 | 用户端提示断线，允许重连 |
+| 消息不完整 | 丢弃或等待完整帧，返回协议错误 |
+| 数据库打开失败 | 管理端提示并阻止业务写入 |
+| 地图 API 失败 | 提示定位或导航失败 |
+| 余额不足 | 订单保持 `PENDING_PAYMENT` |
+| 重复结算 | 返回已结算或待结算状态，不重复扣款 |
+| 非法状态转换 | 拒绝操作并记录日志 |
+
+## 10. 头像与文件
+
+头像由用户端选择图片并传给 PC 服务端。服务端保存文件，SQLite 保存相对路径。必须限制文件类型、大小和保存目录。
+
+## 11. Web 大屏
+
+Web 大屏通过 WebSocket 连接 Qt/C++ PC 服务与管理端：
 
 ```text
-device/
-
-├── gateway/
-└── simulator/
+ws://<server-host>:<port>/dashboard
 ```
 
-协议必须遵循 `docs/07-DEVICE-PROTOCOL.md`。
+大屏页面不得直接访问 SQLite。WebSocket 消息只服务运营展示和预测展示，不承载用户充电核心业务。
 
-不得自行增加未记录的消息类型、状态值或字段。
+## 12. ML 模块
 
-## 15. 测试规范
+ML 使用 Python，输入固定演示数据或导出 CSV/JSON，输出预测 CSV/JSON 或写回 SQLite。
 
-每个 P0 功能至少完成基本自测。
+不要求高精度模型；要求流程可运行、结果可展示。
 
-优先测试：
+## 13. Definition of Ready
 
-- 手机号登录与自动注册
-- 冻结用户限制
-- 充值
-- 未完成订单拦截
-- 开始充电
-- 停止充电
-- 钱包结算
-- 管理员登录
-- 站点和电桩管理
-- API 统一返回
-- ML 预测结果写回
-- 设备心跳和远程重启
+任务开始前必须明确：
 
-## 16. Definition of Ready
-
-一个任务开始开发前至少应明确：
-
-- 对应 SRS 需求编号。
-- 输入和输出。
-- 涉及 API。
-- 涉及数据表。
-- 禁止修改范围。
+- SRS 需求编号；
+- 涉及 Socket 消息；
+- 涉及 SQLite 表；
+- 状态变化；
 - 验收标准。
 
-## 17. Definition of Done
+## 14. Definition of Done
 
-一个功能 Done 至少要求：
+功能完成至少满足：
 
-- 代码完成。
-- 本地可运行。
-- API 联通。
-- 数据正确。
-- 基本异常处理完成。
-- 必要测试通过。
-- 文档同步更新。
+- 本地可运行；
+- Socket 消息联通；
+- SQLite 数据正确；
+- 基本异常处理完成；
+- 必要测试或手工验证通过；
+- 文档同步更新；
 - 已提交 Git。
-- 已合并或准备合并 `develop`。
-
-## 18. 禁止事项
-
-1. 未讨论自行修改数据库结构。
-2. 未通知自行修改 API。
-3. 客户端直接操作核心数据库。
-4. `main` 分支直接开发。
-5. 提交无法编译的代码。
-6. Agent 大规模重写已有模块。
-7. 为简单功能随意添加新框架。
-8. 最后一天才第一次联调。
-9. 只在个人电脑能够运行。
-10. ML、大屏等模块使用完全脱离系统的假数据作为最终成果。
