@@ -17,7 +17,8 @@
 系统包括：
 
 - Linux + Qt 用户端；
-- Linux + Qt/C++ PC 服务与管理端；
+- Linux + Qt/C++ 服务端；
+- Linux + Qt/C++ 管理端；
 - QtSql + SQLite 主数据库，驱动名为 `QSQLITE`；
 - WebSocket + ECharts 大数据可视化大屏；
 - Python 机器学习预测模块；
@@ -46,33 +47,35 @@ Spring Boot、MySQL 和 REST 不再作为 V1 主架构。
 | 角色 | 描述 |
 | --- | --- |
 | User | 车主，通过 Qt 用户端完成充电服务 |
-| Admin | 管理员，通过 Qt PC 服务与管理端完成运营管理 |
+| Admin | 管理员，通过 Qt 管理端完成运营管理 |
 | Dashboard Viewer | 大屏查看者，通过 Web 大屏查看统计和预测 |
-| ML Job | 机器学习任务，读取历史数据并输出预测 |
+| ML Job | 机器学习任务，只处理服务端导出的训练数据并输出预测结果文件 |
 
 ### 2.3 主业务闭环
 
 ```text
 Qt 用户端
    ↓ Socket
-Qt/C++ PC 服务与管理端
+Qt/C++ 服务端
    ↓ QtSql
 SQLite
-   ↓
-管理端 QChart / Web ECharts / Python ML
-   ↓
-预测与统计结果回到系统展示
+   ↓ 服务端导出 CSV/JSON
+Python ML
+   ↓ 预测 JSON
+Qt/C++ 服务端校验并导入 SQLite
+   ↓ Socket / WebSocket
+Qt 用户端推荐 / Qt 管理端 QChart / Web ECharts
 ```
 
 ### 2.4 通信模型
 
 系统以 Socket 为主通信模型。
 
-Qt 用户端通过 `QTcpSocket` 连接 Qt/C++ PC 服务端。PC 服务端使用 `QTcpServer` 接收连接，并通过统一应用层消息协议完成登录、站点查询、订单、充值、结算和管理相关数据交互。
+Qt 用户端通过 `QTcpSocket` 连接 Qt/C++ 服务端。Qt 管理端也通过 `QTcpSocket` 连接 Qt/C++ 服务端。服务端使用 `QTcpServer` 接收连接，并通过统一应用层消息协议完成用户、充电站、订单、充值、结算及管理业务的数据交互。
 
-Web 大屏 V1 采用 WebSocket 连接 Qt/C++ PC 服务与管理端。服务端通过 WebSocket 推送或按请求返回运营概览、充电桩状态、营收趋势和预测结果。本文档不使用 REST 作为主接口方案。
+Web 大屏 V1 采用 WebSocket 连接 Qt/C++ 服务端。服务端通过 WebSocket 推送或按请求返回运营概览、充电桩状态、营收趋势和预测结果。本文档不使用 REST 作为主接口方案。
 
-Python ML 模块 V1 可读取 SQLite 或导出的 CSV/JSON，并将预测结果写回 SQLite 或导出为 JSON。FastAPI 只允许作为可选辅助工具，不能替代 Qt/C++ 主服务。
+Python ML 模块不直接连接、读取或写入 SQLite。Qt/C++ 服务端负责导出经过字段约束的 CSV/JSON 训练数据；ML 模块只读取该导出数据并生成预测 JSON；服务端校验并以事务导入预测结果。FastAPI 不属于 V1 数据链路，也不能替代 Qt/C++ 主服务。
 
 ## 3. 功能需求
 
@@ -106,7 +109,7 @@ Priority: MUST
 
 Priority: MUST
 
-用户端从本地选择头像图片，通过 Socket 消息传给 PC 服务端。PC 服务端保存头像文件，数据库保存相对路径。
+用户端从本地选择头像图片，通过 Socket 消息传给 Qt/C++ 服务端。服务端保存头像文件，数据库保存相对路径。
 
 #### FR-U-005 钱包充值
 
@@ -126,7 +129,7 @@ Priority: MUST
 
 Priority: MUST
 
-PC 服务端或用户端使用腾讯地图 Web API 将地址转换为经纬度。地图 Key 不写入公开仓库。
+Qt/C++ 服务端或用户端使用腾讯地图 Web API 将地址转换为经纬度。地图 Key 不写入公开仓库。
 
 #### FR-U-008 附近充电站排序
 
@@ -226,7 +229,7 @@ Priority: MUST
 
 用户可以取消尚未开始充电的订单。仅允许 `CREATED` 状态订单取消；取消成功后订单进入 `CANCELLED`，对应电桩由 `RESERVED` 恢复为 `AVAILABLE`。
 
-### 3.4 Qt PC 服务与管理端
+### 3.4 Qt 管理端
 
 #### FR-A-001 管理员登录
 
@@ -335,7 +338,7 @@ MUST 指标：
 - 近 7 日充电趋势；
 - 站点负荷预测。
 
-数据来源为 Qt/C++ PC 服务与管理端提供的 WebSocket 消息，以及固定演示数据和预测结果。
+数据来源为 Qt/C++ 服务端提供的 WebSocket 消息，以及固定演示数据和预测结果。
 
 #### FR-D-002 状态与趋势图表
 
@@ -356,6 +359,8 @@ Priority: MUST
 Priority: MUST
 
 使用固定演示历史数据和运行时订单数据，输入字段至少包括站点、时间、充电时长、充电量、价格、是否节假日和天气字段占位。
+
+运行时订单数据必须由 Qt/C++ 服务端导出为训练数据文件，ML 模块不得直接查询 SQLite。
 
 #### FR-ML-002 负荷预测
 
@@ -401,7 +406,39 @@ Priority: MUST
 
 管理端可展示站点级负荷预警。
 
-### 3.7 设备与远程控制
+#### FR-ML-007 服务端数据交换与结果导入
+
+Priority: MUST
+
+Qt/C++ 服务端负责导出 ML 训练数据，并导入 ML 生成的预测 JSON。导入前必须校验数据格式、站点存在性、预测时间窗和预测取值范围；一个批次校验失败时不得部分写入。ML 模块不得持有 SQLite 文件路径、连接信息或写库权限。
+
+### 3.7 Qt/C++ 服务端支撑
+
+#### FR-S-001 Socket 服务
+
+Priority: MUST
+
+服务端使用 `QTcpServer` 接收 Qt 用户端和 Qt 管理端连接，统一完成消息分帧、鉴权、路由、错误码返回和会话管理。
+
+#### FR-S-002 业务服务
+
+Priority: MUST
+
+服务端集中实现用户、站点、电桩、订单、充值、结算、管理统计和远程重启等业务规则。Qt 用户端和 Qt 管理端不得绕过服务端直接修改 SQLite。
+
+#### FR-S-003 数据库访问
+
+Priority: MUST
+
+服务端是唯一通过 QtSql 的 `QSQLITE` 驱动读写 SQLite 的模块，并保证订单、余额、电桩状态、操作日志和 ML 预测结果导入的事务一致。所有客户端、Web 大屏和 Python ML 均不得直接访问 SQLite。
+
+#### FR-S-004 WebSocket 大屏服务
+
+Priority: MUST
+
+服务端向 Web 大屏提供 WebSocket 数据服务，统一推送运营概览、状态分布、趋势和预测结果。
+
+### 3.8 设备与远程控制
 
 #### FR-IOT-001 远程重启模拟
 
@@ -413,7 +450,7 @@ Priority: MUST
 
 Priority: OPTIONAL
 
-完整设备网关、设备心跳、遥测、串口通信和 ACK 协议为扩展内容，不代替 Qt 用户端与 Qt PC 服务端之间的 Socket 主通信。
+完整设备网关、设备心跳、遥测、串口通信和 ACK 协议为扩展内容，不代替 Qt 用户端、Qt 管理端与 Qt/C++ 服务端之间的 Socket 主通信。
 
 ## 4. 业务规则
 
@@ -512,7 +549,7 @@ V1 至少包含：
 
 ### 7.1 Qt Socket 业务通信
 
-用户端与 PC 服务端采用 TCP Socket，消息格式详见 `docs/03-API.md`。
+Qt 用户端、Qt 管理端与 Qt/C++ 服务端采用 TCP Socket，消息格式详见 `docs/03-API.md`。
 
 ### 7.2 Web 大屏数据
 
@@ -524,7 +561,7 @@ V1 通过 WebSocket 获取大屏数据，消息格式详见 `docs/03-API.md`。
 
 ### 7.4 ML 集成
 
-ML 可读取 SQLite、CSV 或 JSON，输出预测结果到 SQLite 或 JSON。
+服务端导出 CSV/JSON 训练数据给 ML；ML 输出预测 JSON；服务端校验后导入 SQLite。ML 不直接访问 SQLite。
 
 ## 8. 非功能需求
 
@@ -541,14 +578,15 @@ ML 可读取 SQLite、CSV 或 JSON，输出预测结果到 SQLite 或 JSON。
 
 ### NFR-THR-001 多线程
 
-主程序应为多线程结构。Qt PC 服务端至少区分：
+主程序应为多线程结构。Qt/C++ 服务端至少区分：
 
-- UI 线程；
 - Socket 连接处理；
 - 业务处理；
 - 充电计时任务；
 - 数据库写入协调；
-- 图表刷新。
+- WebSocket 大屏推送。
+
+Qt 用户端和 Qt 管理端不得在 UI 线程中执行阻塞式网络等待或长时间任务。
 
 是否必须直接使用 pthread，仍需向老师确认；若无强制要求，V1 使用 `QThread`。
 
@@ -604,7 +642,8 @@ Qt Socket 登录成功后返回随机会话编号。后续受保护消息携带 
 | 模块 | 核心需求 | Source | 依赖文档 |
 | --- | --- | --- | --- |
 | 用户端 | FR-U-001 至 FR-U-011，FR-C-001 至 FR-C-009 | Task Book | `docs/03-API.md`，`docs/04-DATABASE.md` |
-| PC 服务与管理端 | FR-A-001 至 FR-A-013 | Task Book | `docs/03-API.md`，`docs/04-DATABASE.md` |
+| Qt 管理端 | FR-A-001 至 FR-A-013 | Task Book | `docs/03-API.md` |
+| Qt/C++ 服务端 | FR-S-001 至 FR-S-004 | Team Definition | `docs/03-API.md`，`docs/04-DATABASE.md` |
 | 大屏 | FR-D-001 至 FR-D-003 | Task Book + Team Definition | `docs/03-API.md` |
 | ML | FR-ML-001 至 FR-ML-006 | Task Book | `docs/04-DATABASE.md` |
 | 远程控制 | FR-IOT-001 至 FR-IOT-002 | Task Book + Optional Enhancement | `docs/07-DEVICE-PROTOCOL.md` |

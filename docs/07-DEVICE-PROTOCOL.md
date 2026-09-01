@@ -1,10 +1,10 @@
-# 远程重启与设备扩展规范
+﻿# 远程重启与设备扩展规范
 
 ## 1. 定位
 
 任务书明确要求管理端能够模拟发送远程重启指令。V1 必做范围是远程重启模拟，不要求完整设备网关、心跳、遥测或串口协议。
 
-完整设备接入可作为 OPTIONAL 扩展，不能替代 Qt 用户端与 Qt/C++ PC 服务端之间的 Socket 主业务通信。
+完整设备接入可作为 OPTIONAL 扩展，不能替代 Qt 用户端、Qt 管理端与 Qt/C++ 服务端之间的 Socket 主业务通信。
 
 ## 2. V1 必做范围
 
@@ -15,7 +15,7 @@
         ↓
 点击远程重启
         ↓
-PC 服务与管理端记录操作
+Qt/C++ 服务端记录操作
         ↓
 电桩状态变为 RESTARTING
         ↓
@@ -89,12 +89,12 @@ ADMIN_PILE_RESTART
 远程重启必须沿用现有分层，不得把状态修改直接写进Socket入口：
 
 ~~~text
-管理界面或ADMIN_PILE_RESTART Handler
+Qt管理端或ADMIN_PILE_RESTART Handler
   → RestartService
   → PileRepository / OperationLogRepository
   → RestartSimulator
   → 状态结果信号
-  → 管理界面刷新 / WebSocket数据刷新
+  → Qt管理端刷新 / WebSocket数据刷新
 ~~~
 
 | 模块 | 负责 |
@@ -103,7 +103,7 @@ ADMIN_PILE_RESTART
 | RestartService | 判断电桩是否存在、当前状态是否允许重启、组织状态变化 |
 | Repository | 在事务中更新charging_pile并写operation_log |
 | RestartSimulator | 使用定时器模拟重启完成，不阻塞UI或Socket线程 |
-| WebSocket模块 | 接收业务层提供的数据并推送已有大屏topic |
+| WebSocket模块 | 服务端接收业务层提供的数据并推送已有大屏topic |
 
 网络Handler不得直接执行UPDATE语句；Repository不得向Socket写JSON。
 
@@ -152,4 +152,4 @@ V1远程重启至少验证：
 7. 开始和完成结果都写入operation_log；
 8. 数据库失败不会返回成功；
 9. 重启模拟不阻塞Socket、UI和其他业务；
-10. 管理界面和Web大屏最终能看到新的电桩状态。
+10. Qt 管理端和 Web 大屏最终能看到新的电桩状态。

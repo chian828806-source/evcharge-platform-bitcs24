@@ -2,8 +2,10 @@
  * 功能：验证JSON Lines、消息封装、Session角色和Dispatcher边界。
  * 运行：每个检查输出PASS/FAIL，任意失败都会返回非零退出码。
  */
-#include "qt-server-admin/network/messagedispatcher.h"
-#include "qt-server-admin/network/sessionmanager.h"
+#include "qt-server/network/messagedispatcher.h"
+#include "qt-server/network/sessionmanager.h"
+#include "qt-user/network/socketclient.h"
+#include "qt-admin/network/adminsocketclient.h"
 #include "shared/protocol/errorcodes.h"
 #include "shared/protocol/jsonlinecodec.h"
 #include "shared/protocol/messagetypes.h"
@@ -11,6 +13,9 @@
 
 #include <QCoreApplication>
 #include <QJsonDocument>
+#include <QEventLoop>
+#include <QTcpServer>
+#include <QTimer>
 #include <QTextStream>
 
 namespace {
@@ -52,6 +57,16 @@ void testJsonLinesHandlesSplitAndStickyPackets()
           QStringLiteral("decoded frames contain JSON objects"));
 }
 
+void testJsonLinesRejectsOversizedTrailingPartialFrame()
+{
+    JsonLineCodec codec;
+    bool overflow = false;
+    const QByteArray bytes = QByteArray("{}\n")
+        + QByteArray(JsonLineCodec::MaxBufferedBytes + 1, 'x');
+    check(codec.append(bytes, &overflow).isEmpty() && overflow,
+          QStringLiteral("oversized trailing partial frame is rejected"));
+}
+
 void testRequestValidationAndResponseShape()
 {
     // 构造与docs/03-API.md登录示例一致的公共请求外壳。
@@ -71,6 +86,11 @@ void testRequestValidationAndResponseShape()
     check(request.requestId == QStringLiteral("REQ-001")
               && request.sessionId.isEmpty(),
           QStringLiteral("request fields are preserved"));
+
+    QJsonObject missingSession = json;
+    missingSession.remove(QStringLiteral("sessionId"));
+    check(!RequestMessage::fromJson(missingSession, &request, &error),
+          QStringLiteral("missing sessionId is rejected"));
 
     // 验证成功响应始终包含code=200和对象类型data。
     const QJsonObject response =
@@ -126,6 +146,71 @@ void testKnownMessageRegistry()
           QStringLiteral("all four dashboard topics are registered"));
 }
 
+void testUserClientRequestTimeout()
+{
+    QTcpServer server;
+    check(server.listen(QHostAddress::LocalHost, 0),
+          QStringLiteral("local timeout test server listens"));
+
+    SocketClient client;
+    QEventLoop connectedLoop;
+    QObject::connect(&client, &SocketClient::connected,
+                     &connectedLoop, &QEventLoop::quit);
+    client.connectToServer(QStringLiteral("127.0.0.1"), server.serverPort());
+    QTimer::singleShot(1000, &connectedLoop, &QEventLoop::quit);
+    connectedLoop.exec();
+    check(client.isConnected(), QStringLiteral("user client connects asynchronously"));
+
+    QString timedOutId;
+    QString timedOutType;
+    QEventLoop timeoutLoop;
+    QObject::connect(&client, &SocketClient::requestTimedOut,
+                     &timeoutLoop,
+                     [&](const QString &requestId, const QString &type) {
+        timedOutId = requestId;
+        timedOutType = type;
+        timeoutLoop.quit();
+    });
+    const QString requestId = client.sendRequest(
+        MessageTypes::UserProfileGet, QStringLiteral("S-test"), {}, {}, 30);
+    QTimer::singleShot(1000, &timeoutLoop, &QEventLoop::quit);
+    timeoutLoop.exec();
+    check(!requestId.isEmpty() && timedOutId == requestId
+              && timedOutType == MessageTypes::UserProfileGet,
+          QStringLiteral("user client reports request timeout"));
+}
+
+void testAdminClientRequestTimeout()
+{
+    QTcpServer server;
+    check(server.listen(QHostAddress::LocalHost, 0),
+          QStringLiteral("local admin timeout test server listens"));
+
+    AdminSocketClient client;
+    QEventLoop connectedLoop;
+    QObject::connect(&client, &AdminSocketClient::connected,
+                     &connectedLoop, &QEventLoop::quit);
+    client.connectToServer(QStringLiteral("127.0.0.1"), server.serverPort());
+    QTimer::singleShot(1000, &connectedLoop, &QEventLoop::quit);
+    connectedLoop.exec();
+    check(client.isConnected(), QStringLiteral("admin client connects asynchronously"));
+
+    QString timedOutId;
+    QEventLoop timeoutLoop;
+    QObject::connect(&client, &AdminSocketClient::requestTimedOut,
+                     &timeoutLoop,
+                     [&](const QString &requestId, const QString &) {
+        timedOutId = requestId;
+        timeoutLoop.quit();
+    });
+    const QString requestId = client.sendRequest(
+        MessageTypes::AdminRevenueSummary, QStringLiteral("S-admin"), {}, {}, 30);
+    QTimer::singleShot(1000, &timeoutLoop, &QEventLoop::quit);
+    timeoutLoop.exec();
+    check(!requestId.isEmpty() && timedOutId == requestId,
+          QStringLiteral("admin client reports request timeout"));
+}
+
 }
 
 int main(int argc, char *argv[])
@@ -134,9 +219,12 @@ int main(int argc, char *argv[])
     QCoreApplication application(argc, argv);
     // 每组测试关注一个独立的小功能，失败时继续运行以给出完整报告。
     testJsonLinesHandlesSplitAndStickyPackets();
+    testJsonLinesRejectsOversizedTrailingPartialFrame();
     testRequestValidationAndResponseShape();
     testSessionAndDispatcherBoundaries();
     testKnownMessageRegistry();
+    testUserClientRequestTimeout();
+    testAdminClientRequestTimeout();
     // 非零退出码可直接用于CI或提交前检查。
     QTextStream(stdout) << "TOTAL_FAILURES=" << failures << '\n';
     return failures == 0 ? 0 : 1;

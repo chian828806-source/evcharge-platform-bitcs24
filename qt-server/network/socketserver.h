@@ -10,7 +10,7 @@
 class MessageDispatcher;
 class QTcpServer;
 
-// SocketServer是PC服务端TCP入口，可由main或后续UI程序持有。
+// SocketServer是独立业务服务端的TCP入口，由服务端main或启动器持有。
 class SocketServer : public QObject
 {
     Q_OBJECT

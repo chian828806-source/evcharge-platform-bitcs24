@@ -49,6 +49,14 @@ QList<QByteArray> JsonLineCodec::append(const QByteArray &bytes,
         }
         frames.append(frame);
     }
+    // 即使本次数据前部包含完整帧，尾部未完成帧仍必须受2 MiB上限约束。
+    if (m_buffer.size() > MaxBufferedBytes) {
+        m_buffer.clear();
+        frames.clear();
+        if (bufferOverflow) {
+            *bufferOverflow = true;
+        }
+    }
     return frames;
 }
 

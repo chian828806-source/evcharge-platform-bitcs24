@@ -40,10 +40,10 @@ bool RequestMessage::fromJson(const QJsonObject &json, RequestMessage *message,
 
     // 登录请求允许sessionId为null，鉴权由Dispatcher负责。
     const QJsonValue sessionValue = json.value(QStringLiteral("sessionId"));
-    if (!sessionValue.isUndefined() && !sessionValue.isNull()
-        && !sessionValue.isString()) {
+    if (sessionValue.isUndefined()
+        || (!sessionValue.isNull() && !sessionValue.isString())) {
         if (errorMessage) {
-            *errorMessage = QStringLiteral("sessionId must be a string or null");
+            *errorMessage = QStringLiteral("sessionId is required and must be a string or null");
         }
         return false;
     }

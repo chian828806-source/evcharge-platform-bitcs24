@@ -127,6 +127,12 @@ void DashboardWebSocketServer::handleTextMessage(const QString &message)
         sendError(QStringLiteral("invalid JSON message"));
         return;
     }
+    if (!request.value(QStringLiteral("requestId")).isString()
+        || requestId.isEmpty()
+        || !request.value(QStringLiteral("payload")).isObject()) {
+        sendError(QStringLiteral("invalid dashboard request envelope"));
+        return;
+    }
     if (request.value(QStringLiteral("type")).toString()
         != MessageTypes::DashboardSubscribe) {
         sendError(QStringLiteral("unsupported WebSocket message type"));

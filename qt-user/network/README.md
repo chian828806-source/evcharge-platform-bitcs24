@@ -1,6 +1,6 @@
 # network — 用户端Socket封装
 
-本目录封装Qt用户端与PC服务端之间的TCP连接。
+本目录封装Qt用户端与独立业务服务端之间的TCP连接。
 
 ## SocketClient职责
 

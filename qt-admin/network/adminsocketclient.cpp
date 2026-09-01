@@ -1,77 +1,76 @@
 /*
- * 功能：实现Qt用户端的异步TCP通信。
+ * 功能：实现Qt管理员端与独立业务服务端之间的异步TCP通信。
  * 协议：复用shared/protocol中的请求对象和JSON Lines编解码器。
  */
-#include "socketclient.h"
+#include "adminsocketclient.h"
 
 #include "shared/protocol/protocolmessage.h"
 
+#include <QAbstractSocket>
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QTcpSocket>
 #include <QTimer>
 #include <QUuid>
 
-SocketClient::SocketClient(QObject *parent)
+AdminSocketClient::AdminSocketClient(QObject *parent)
     : QObject(parent), m_socket(new QTcpSocket(this))
 {
-    // 将QTcpSocket原生事件转换为SocketClient对页面公开的信号。
+    // 将底层连接事件转换成管理员页面可直接订阅的信号。
     connect(m_socket, &QTcpSocket::connected,
-            this, &SocketClient::connected);
+            this, &AdminSocketClient::connected);
     connect(m_socket, &QTcpSocket::disconnected,
-            this, &SocketClient::disconnected);
+            this, &AdminSocketClient::disconnected);
     connect(m_socket, &QTcpSocket::disconnected, this, [this]() {
         failAllPending(QStringLiteral("socket disconnected"));
     });
     connect(m_socket, &QTcpSocket::readyRead,
-            this, &SocketClient::readAvailableData);
-    // 页面不需要理解QAbstractSocket枚举，直接接收可显示的错误文本。
+            this, &AdminSocketClient::readAvailableData);
+    // 页面只接收可展示的错误文本，不依赖底层Socket错误枚举。
     connect(m_socket, &QTcpSocket::errorOccurred, this,
             [this](QAbstractSocket::SocketError) {
                 emit socketError(m_socket->errorString());
             });
 }
 
-void SocketClient::connectToServer(const QString &host, quint16 port)
+void AdminSocketClient::connectToServer(const QString &host, quint16 port)
 {
-    // 切换服务端前先终止旧连接，避免两套字节流共用同一缓冲。
+    // 每次切换服务端都清理旧连接和旧连接遗留的半帧。
     if (m_socket->state() != QAbstractSocket::UnconnectedState) {
         m_socket->abort();
     }
-    // 新连接不能继承旧连接遗留的半条消息。
     m_codec.clear();
     m_socket->connectToHost(host, port);
 }
 
-void SocketClient::disconnectFromServer()
+void AdminSocketClient::disconnectFromServer()
 {
-    // disconnectFromHost会等待已排队数据写出，再发出disconnected信号。
+    // Qt会先发送输出缓冲区中的数据，再发出disconnected信号。
     m_socket->disconnectFromHost();
 }
 
-bool SocketClient::isConnected() const
+bool AdminSocketClient::isConnected() const
 {
-    // 只有ConnectedState才允许write，连接中状态不算可用。
+    // 连接建立过程中不能写入业务请求。
     return m_socket->state() == QAbstractSocket::ConnectedState;
 }
 
-QString SocketClient::sendRequest(const QString &type,
-                                  const QString &sessionId,
-                                  const QJsonObject &payload,
-                                  const QString &requestId, int timeoutMs)
+QString AdminSocketClient::sendRequest(const QString &type,
+                                       const QString &sessionId,
+                                       const QJsonObject &payload,
+                                       const QString &requestId, int timeoutMs)
 {
-    // 提前拒绝离线发送，让页面立即获得错误而不是等待超时。
+    // 离线时立即通知页面，避免管理操作无期限等待。
     if (!isConnected()) {
         emit socketError(QStringLiteral("socket is not connected"));
         return {};
     }
 
-    // 默认生成唯一requestId；重试场景可以显式复用原ID。
+    // 默认生成唯一ID；幂等重试时调用方可以显式复用原ID。
     const QString actualRequestId = requestId.isEmpty()
         ? QStringLiteral("REQ-")
             + QUuid::createUuid().toString(QUuid::WithoutBraces)
         : requestId;
-    // 公共对象负责把空sessionId编码为JSON null。
     const RequestMessage request{
         actualRequestId, type, sessionId, payload
     };
@@ -80,7 +79,6 @@ QString SocketClient::sendRequest(const QString &type,
         return {};
     }
 
-    // 文档要求客户端按requestId维护待处理请求并提供超时反馈。
     clearPendingRequest(actualRequestId);
     auto *timer = new QTimer(this);
     timer->setSingleShot(true);
@@ -101,19 +99,18 @@ QString SocketClient::sendRequest(const QString &type,
     return actualRequestId;
 }
 
-void SocketClient::readAvailableData()
+void AdminSocketClient::readAvailableData()
 {
-    // 一次readyRead可能得到半条或多条响应，统一交给Codec处理。
+    // readyRead可能带来半条或多条响应，由独立Codec缓冲并分帧。
     bool overflow = false;
     const QList<QByteArray> frames = m_codec.append(m_socket->readAll(), &overflow);
-    // 超大响应可能造成内存风险，因此报告协议错误并断开。
     if (overflow) {
         emit protocolError(QStringLiteral("response buffer is too large"));
         m_socket->abort();
         return;
     }
 
-    // 每个完整帧独立解析，单条错误不会阻止后续帧处理。
+    // 每个完整帧单独校验，单帧异常不会吞掉后续有效响应。
     for (const QByteArray &frame : frames) {
         QJsonParseError parseError;
         const QJsonDocument document = QJsonDocument::fromJson(frame, &parseError);
@@ -122,7 +119,8 @@ void SocketClient::readAvailableData()
             emit protocolError(QStringLiteral("server returned invalid JSON"));
             continue;
         }
-        // 页面收到响应前先检查docs/03-API.md规定的四个公共字段。
+
+        // 管理页面只接收符合公共响应外壳的对象。
         const QJsonObject response = document.object();
         if (!response.value(QStringLiteral("requestId")).isString()
             || !response.value(QStringLiteral("code")).isDouble()
@@ -132,12 +130,11 @@ void SocketClient::readAvailableData()
             continue;
         }
         clearPendingRequest(response.value(QStringLiteral("requestId")).toString());
-        // 业务页面再按requestId和code处理具体结果。
         emit responseReceived(response);
     }
 }
 
-void SocketClient::clearPendingRequest(const QString &requestId)
+void AdminSocketClient::clearPendingRequest(const QString &requestId)
 {
     const auto iterator = m_pendingRequests.find(requestId);
     if (iterator == m_pendingRequests.end()) {
@@ -148,7 +145,7 @@ void SocketClient::clearPendingRequest(const QString &requestId)
     m_pendingRequests.erase(iterator);
 }
 
-void SocketClient::failAllPending(const QString &message)
+void AdminSocketClient::failAllPending(const QString &message)
 {
     const auto pending = m_pendingRequests;
     m_pendingRequests.clear();

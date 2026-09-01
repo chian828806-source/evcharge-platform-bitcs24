@@ -1,6 +1,6 @@
 /*
- * 功能：网络服务端程序入口，装配Session、Dispatcher、TCP和WebSocket。
- * 当前边界：只启动通信基础设施，业务Handler由后续Service模块注册。
+ * 功能：独立业务服务端程序入口，装配Session、Dispatcher、TCP和WebSocket。
+ * 边界：本进程不包含用户端或管理员端界面，业务Handler由Service模块注册。
  */
 #include "network/dashboardwebsocketserver.h"
 #include "network/messagedispatcher.h"
@@ -17,12 +17,12 @@ int main(int argc, char *argv[])
 {
     // QCoreApplication提供Qt事件循环，Socket信号依赖该循环工作。
     QCoreApplication application(argc, argv);
-    QCoreApplication::setApplicationName(QStringLiteral("evcharge-network"));
+    QCoreApplication::setApplicationName(QStringLiteral("evcharge-qt-server"));
 
     // 端口通过命令行提供默认值，方便多个开发者并行运行实例。
     QCommandLineParser parser;
     parser.setApplicationDescription(
-        QStringLiteral("EVCharge TCP and WebSocket network shell"));
+        QStringLiteral("EVCharge Qt service"));
     parser.addHelpOption();
     parser.addOption({
         {QStringLiteral("t"), QStringLiteral("tcp-port")},
@@ -57,7 +57,7 @@ int main(int argc, char *argv[])
 
     // 业务负责人通过 registerHandler() 注入 Service 调用。
     // 本网络外壳不伪造登录、订单或数据库结果。
-    // TCP负责Qt用户端业务消息；监听失败时程序直接退出。
+    // 同一个TCP入口接收用户端和管理员端请求，角色由Session与路由权限区分。
     SocketServer socketServer(&dispatcher);
     if (!socketServer.listen(QHostAddress::Any, tcpPort)) {
         QTextStream(stderr) << "TCP listen failed: "

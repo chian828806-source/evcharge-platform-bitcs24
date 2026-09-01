@@ -1,13 +1,13 @@
-# Socket 消息与数据交换规范
+﻿# Socket 消息与数据交换规范
 
-本文档定义 Qt 用户端与 Qt/C++ PC 服务端之间的 Socket 应用层协议、Web 大屏 WebSocket 消息，以及 ML 的数据交换方式。
+本文档定义 Qt 用户端、Qt 管理端与 Qt/C++ 服务端之间的 Socket 应用层协议、Web 大屏 WebSocket 消息，以及 ML 的数据交换方式。
 
 ## 1. 基本原则
 
 1. 主业务通信使用 TCP Socket。
-2. 用户端不得绕过 PC 服务端直接访问 SQLite。
-3. Web 大屏通过 WebSocket 连接 PC 服务端，不直接读取数据库。
-4. ML 可读取 SQLite、CSV 或 JSON，输出结果写回 SQLite 或导出 JSON。
+2. Qt 用户端和 Qt 管理端不得绕过 Qt/C++ 服务端直接访问 SQLite。
+3. Web 大屏通过 WebSocket 连接 Qt/C++ 服务端，不直接读取数据库。
+4. ML 不得直接访问 SQLite。Qt/C++ 服务端导出 CSV/JSON 训练数据，ML 输出预测 JSON，由服务端校验并导入 SQLite。
 5. 消息类型、字段、错误码属于公共契约。
 
 ## 2. Socket 封装
@@ -18,7 +18,7 @@
 SocketClient / NetworkClient
 ```
 
-服务端统一封装：
+Qt/C++ 服务端统一封装：
 
 ```text
 SocketServer / ClientSession
@@ -67,6 +67,12 @@ uint32 length + JSON body
 ```
 
 ## 6. 核心消息类型
+
+消息方向约定：
+
+- `USER_*`、`STATION_*`、`ORDER_*`、`PREDICTION_*` 主要由 Qt 用户端发送，Qt/C++ 服务端处理；
+- `ADMIN_*` 由 Qt 管理端发送，Qt/C++ 服务端处理；
+- `DASHBOARD_*` 由 Web 大屏通过 WebSocket 发送或接收。
 
 用户：
 
@@ -262,20 +268,50 @@ ws://<server-host>:<port>/dashboard
 
 ## 14. ML 数据交换
 
-输入：
+ML 数据交换是服务端与 Python 进程之间的受控文件契约，不属于 Qt 用户端或 Qt 管理端可调用的 Socket 消息。ML 进程不得获得 SQLite 文件路径、数据库连接或写库权限。
+
+### 14.1 服务端导出
+
+Qt/C++ 服务端在定时任务、管理员触发或演示流程中生成一个带 `batchId` 的训练数据批次：
 
 ```text
-ml/data/history.csv
-ml/data/orders.csv
+ml/data/<batchId>/history.csv
+ml/data/<batchId>/orders.csv
 ```
 
-输出：
+导出字段、来源和统计口径以 `docs/04-DATABASE.md` 第 9.5 节为准；服务端只导出模型所需的字段，不导出用户手机号、昵称、头像、余额等个人信息。
+
+### 14.2 ML 输出
 
 ```text
-ml/output/predictions.json
+ml/output/<batchId>/predictions.json
 ```
 
-PC 服务端负责将预测结果导入 SQLite，并通过 WebSocket 提供给 Web 大屏。
+输出 JSON 必须采用以下结构：
+
+```json
+{
+  "schemaVersion": "1.0",
+  "batchId": "20260901T120000Z-demo",
+  "predictions": [
+    {
+      "stationId": 1,
+      "predictionTime": "2026-09-01T13:00:00+08:00",
+      "horizon": "1h",
+      "predictedLoad": 0.65,
+      "predictedAvailableCount": 3,
+      "peakLevel": "HIGH",
+      "modelName": "baseline-v1"
+    }
+  ]
+}
+```
+
+`horizon` 只能是 `1h`、`6h` 或 `24h`；`predictedLoad` 必须是 0 到 1 的有限数值；`predictedAvailableCount` 必须为非负整数；`peakLevel` 只能是 `LOW`、`MEDIUM` 或 `HIGH`。
+
+### 14.3 服务端导入
+
+Qt/C++ 服务端读取 ML 输出后，必须校验 `schemaVersion`、`batchId`、必填字段、站点存在性和上述范围约束。一个批次中任一记录不合法时，服务端拒绝整个批次且不得写入 `prediction` 表；全部合法时，以一个数据库事务写入。导入成功后，服务端向用户端、管理端和 WebSocket 大屏提供最新预测结果。
 
 ## 15. 接口修改流程
 
@@ -295,7 +331,7 @@ PC 服务端负责将预测结果导入 SQLite，并通过 WebSocket 提供给 W
 通信层负责“消息如何进入和出去”，不负责“业务是否允许执行”。
 
 ~~~text
-Qt页面
+Qt用户端 / Qt管理端页面
   → SocketClient
   → TCP JSON Lines
   → SocketServer / ClientSession
@@ -309,13 +345,13 @@ Qt页面
 
 | 层 | 负责 | 禁止 |
 | --- | --- | --- |
-| SocketClient | 连接、发送请求、接收响应、断线提示 | 直接操作数据库 |
+| SocketClient | 连接、发送请求、接收响应、断线提示 | 直接操作数据库或执行业务规则 |
 | JsonLineCodec | 半包、粘包、按换行分帧 | 理解订单、用户等业务 |
 | ClientSession | 每连接缓冲、JSON解析、统一响应 | 写复杂业务和SQL |
 | SessionManager | Session生成、查询和角色区分 | 校验密码、冻结状态 |
 | MessageDispatcher | type路由、公共鉴权、调用Handler | 决定订单状态转换 |
 | Handler | 校验本消息payload、调用Service、映射响应 | 直接拼接SQL |
-| Service | 业务规则、状态变化和事务意图 | 操作Socket |
+| Service | 服务端业务规则、状态变化和事务意图 | 操作Socket或依赖管理端UI |
 | Repository | 参数化SQL、事务和对象映射 | 拼装网络JSON |
 
 当前代码目录：
@@ -323,7 +359,8 @@ Qt页面
 ~~~text
 shared/protocol/                 公共消息、错误码、JSON Lines
 qt-user/network/                 Qt用户端SocketClient
-qt-server-admin/network/         TCP服务、Session、Dispatcher、WebSocket
+qt-admin/network/                Qt管理端SocketClient
+qt-server/network/               TCP服务、Session、Dispatcher、WebSocket
 tests/network/                   通信层自动化测试
 ~~~
 
@@ -346,16 +383,18 @@ tests/network/                   通信层自动化测试
 
 业务参数错误与Socket格式错误必须区分。例如pileId不存在属于4202，不是4401；payload不是对象才属于4401。
 
-## 18. Qt用户端设计规范
+## 18. Qt 客户端设计规范
 
-所有页面共享一个SocketClient或由统一NetworkClient管理其实例。
+Qt 用户端和 Qt 管理端都属于 Socket 客户端。每个客户端内部所有页面共享一个 SocketClient，或由统一 NetworkClient 管理其实例。
 
 页面不得：
 
 - new自己的QTcpSocket；
 - 直接拼接JSON字符串；
 - 自己处理半包和粘包；
-- 根据message文本判断成功或失败。
+- 根据message文本判断成功或失败；
+- 直接访问 SQLite；
+- 在客户端自行决定订单、冻结、重启等服务端业务状态。
 
 页面应该：
 
@@ -366,7 +405,7 @@ tests/network/                   通信层自动化测试
 5. 在4003时清理本地Session并返回登录流程；
 6. 在disconnected或socketError时停止发起新的写操作。
 
-后续客户端必须增加待处理请求表：
+两个 Qt 客户端都必须增加待处理请求表：
 
 ~~~text
 requestId → 页面/回调、发送时间、消息type
@@ -374,7 +413,9 @@ requestId → 页面/回调、发送时间、消息type
 
 普通请求建议5秒超时，地图请求可单独设置更长时间。超时后页面收到统一错误，不允许永久等待。重试同一业务操作时应复用原requestId，减少充值、下单和结算重复执行风险。
 
-## 19. 服务端设计规范
+Qt 管理端可以发送 `ADMIN_*` 消息并展示 QChart，但图表数据必须来自服务端返回或推送，不得由管理端直接执行 SQL。
+
+## 19. Qt/C++ 服务端设计规范
 
 ### 19.1 连接生命周期
 
@@ -401,6 +442,8 @@ Socket读取回调只完成：
 未在docs/03-API.md登记的type返回4401。已经登记但尚未接入业务Handler的消息返回5002，不能返回伪造成功数据。
 
 登录Handler是公开路由。它在Service验证用户或管理员后调用SessionManager创建Session，并把sessionId放入成功响应。其他受保护Handler只能使用Dispatcher提供的可信principalId，不能相信payload中自报的userId或adminId。
+
+服务端不包含管理界面，不直接绘制 QChart。管理端图表由 Qt 管理端根据服务端返回数据绘制。
 
 ### 19.3 响应规则
 
@@ -439,7 +482,7 @@ WebSocket与TCP业务Socket相互独立：
 - WebSocket只服务大屏展示；
 - 不承载创建订单、充值、结算等核心写业务；
 - 大屏不得读取SQLite；
-- 服务端从Service或统计模块取得结果后调用publish；
+- Qt/C++ 服务端从Service或统计模块取得结果后调用publish；
 - WebSocket模块不得自己执行统计SQL。
 
 连接建立后，客户端必须先发送DASHBOARD_SUBSCRIBE。服务端只接受summary、pileStatus、revenueTrend和prediction四个topic；订阅集合按连接独立保存。
@@ -481,10 +524,11 @@ Qt Socket对象具有线程归属，必须在其所属线程读取和写入。�
 8. 客户端断线时页面能够收到通知；
 9. WebSocket非法topic被拒绝；
 10. WebSocket只向订阅该topic的连接推送；
-11. 至少完成一次真实SocketClient到SocketServer的登录闭环；
-12. 充值、创建订单和结算的重复请求不会重复写数据库。
+11. 至少完成一次真实 Qt 用户端 SocketClient 到 SocketServer 的登录闭环；
+12. 至少完成一次真实 Qt 管理端 SocketClient 到 SocketServer 的管理员登录闭环；
+13. 充值、创建订单和结算的重复请求不会重复写数据库。
 
-当前自动化测试已覆盖公共分帧、消息外壳、Session角色和消息登记。真实业务Handler、客户端超时重连、WebSocket端到端及数据库幂等仍需在对应模块实现后补测。
+当前自动化测试已覆盖公共分帧、消息外壳、Session角色和消息登记。真实业务Handler、两个 Qt 客户端的超时重连、WebSocket端到端及数据库幂等仍需在对应模块实现后补测。
 
 ## 24. 协作修改边界
 

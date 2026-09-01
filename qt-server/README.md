@@ -1,6 +1,6 @@
-# qt-server-admin — PC服务端网络外壳
+# qt-server — 独立业务服务端
 
-本目录最终承载Qt/C++ PC服务与管理端。当前分支只实现网络基础设施和一个可运行的控制台入口，尚未实现管理界面及业务Service。
+本目录承载独立运行的 Qt/C++ 业务服务端。当前代码提供网络基础设施和可运行的控制台入口，后续在本目录接入 Handler、Service、Repository 与 SQLite；用户界面和管理员界面分别位于 `qt-user/` 与 `qt-admin/`。
 
 ## 目录与文件
 
@@ -8,7 +8,7 @@
 | --- | --- |
 | main.cpp | 创建Session、Dispatcher、TCP服务和WebSocket服务 |
 | network/ | 连接、分帧、鉴权、分发和大屏推送 |
-| qt-server-admin.pro | qmake服务端工程 |
+| qt-server.pro | qmake服务端工程 |
 
 ## 当前运行结果
 
@@ -38,7 +38,7 @@ Handler负责取参数和调用Service；Service负责业务规则；Repository�
 在仓库外创建构建目录后执行：
 
 ~~~bash
-qmake6 /home/bit/workspace/evcharge-platform-bitcs24/qt-server-admin/qt-server-admin.pro
+qmake6 /home/bit/workspace/evcharge-platform-bitcs24/qt-server/qt-server.pro
 make -j2
-./evcharge-network-server
+./evcharge-qt-server
 ~~~

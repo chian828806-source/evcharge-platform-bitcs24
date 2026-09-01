@@ -44,6 +44,8 @@ void ClientSession::readAvailableData()
 
 void ClientSession::closeSession()
 {
+    // 连接结束后丢弃未完成的半包，避免会话关闭期间残留协议数据。
+    m_codec.clear();
     // 使用deleteLater避免在Qt信号回调栈中立即销毁sender。
     deleteLater();
 }

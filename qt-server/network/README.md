@@ -1,6 +1,6 @@
-# network — 服务端通信层
+# network — 独立业务服务端通信层
 
-本目录负责“请求如何进入、响应如何出去”，不实现业务规则和SQL。
+本目录负责独立业务服务端中“请求如何进入、响应如何出去”的部分，不包含用户端或管理员端界面，也不实现业务规则和 SQL。
 
 ## 文件说明
 
@@ -11,7 +11,7 @@
 | sessionmanager.h/.cpp | 创建随机Session并保存用户/管理员身份 |
 | messagedispatcher.h/.cpp | 根据type查找Handler并检查访问角色 |
 | dashboardwebsocketserver.h/.cpp | 接受大屏订阅并按topic推送JSON |
-| network.pri | 把上述源码加入服务端qmake工程 |
+| network.pri | 把上述源码加入 `qt-server` qmake工程 |
 
 ## 调用顺序
 

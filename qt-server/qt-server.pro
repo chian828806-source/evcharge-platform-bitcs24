@@ -1,15 +1,15 @@
-# 功能：构建可运行的TCP + WebSocket服务端网络外壳。
+# 功能：构建独立运行的TCP + WebSocket业务服务端。
 QT += core network websockets
 QT -= gui
 
 CONFIG += console c++17
 CONFIG -= app_bundle
 TEMPLATE = app
-TARGET = evcharge-network-server
+TARGET = evcharge-qt-server
 
-# REPO_ROOT供共享protocol.pri和network.pri定位仓库源码。
+# REPO_ROOT供公共协议和服务端network.pri定位仓库源码。
 REPO_ROOT = $$clean_path($$PWD/..)
-INCLUDEPATH += $$REPO_ROOT/qt-server-admin
+INCLUDEPATH += $$REPO_ROOT/qt-server
 
 SOURCES += $$PWD/main.cpp
 
