@@ -5,7 +5,8 @@
 根据当前评审结论，项目主技术路线调整为：
 
 - 用户端：Linux + Qt + C++；
-- PC 服务与管理端：Linux + Qt + C++；
+- 服务端：Linux + Qt + C++；
+- 管理端：Linux + Qt + C++；
 - 数据库：QtSql + SQLite，Qt 驱动名为 `QSQLITE`；
 - 通信：Socket；
 - Web 大屏通信：WebSocket；
@@ -24,11 +25,11 @@ Spring Boot、MySQL 和 REST 不再作为项目主架构组成部分。
 ```text
 Qt 用户端产生充电行为
         ↓
-Socket 消息进入 Qt/C++ PC 服务与管理端
+Socket 消息进入 Qt/C++ 服务端
         ↓
 Qt 服务端执行业务规则并写入 SQLite
         ↓
-Qt 管理界面读取运营变化并展示 QChart
+Qt 管理端通过 Socket 读取运营变化并展示 QChart
         ↓
 Web 大屏通过 WebSocket 接收运营与预测数据
         ↓
@@ -43,32 +44,42 @@ Python ML 使用历史数据预测
 
 面向新能源汽车车主，覆盖手机号登录与自动注册、用户资料维护、头像选择、钱包充值、地址定位、附近充电站查询、腾讯地图导航、充电桩选择、订单创建、充电模拟、停止充电、计费结算、未完成订单检查和预测推荐展示。
 
-用户端使用 `QTcpSocket` 与 PC 服务端通信，不直接访问 SQLite。
+用户端使用 `QTcpSocket` 与 Qt/C++ 服务端通信，不直接访问 SQLite。
 
-### 2.2 Qt/C++ PC 服务与管理端
+### 2.2 Qt/C++ 服务端
 
-PC 服务与管理端同时承担服务端和运营管理界面职责：
+服务端独立承担业务服务职责，不包含管理界面：
 
 - 使用 `QTcpServer` 接收 Qt 用户端连接；
+- 使用 `QTcpServer` 接收 Qt 管理端连接；
 - 处理登录、站点、电桩、订单、充值、结算等核心业务；
 - 通过 QtSql 的 `QSQLITE` 驱动读写 SQLite；
-- 使用多线程处理连接、业务、充电计时和界面刷新；
-- 使用 QChart 展示营收趋势和电桩状态统计；
-- 支持管理员登录、站点管理、电桩管理、用户管理、冻结/解冻、手机号模糊查询和远程重启模拟。
+- 使用多线程处理连接、业务、充电计时、数据库写入和 WebSocket 推送；
+- 向 Web 大屏提供 WebSocket 数据服务；
+- 支持管理员登录、站点管理、电桩管理、用户管理、冻结/解冻、手机号模糊查询和远程重启模拟对应的服务端业务。
 
-### 2.3 SQLite 数据库
+### 2.3 Qt 管理端
+
+管理端是独立 Qt 客户端，不直接访问 SQLite，也不承担服务端监听职责：
+
+- 通过 `QTcpSocket` 与 Qt/C++ 服务端通信；
+- 使用 QChart 展示营收趋势和电桩状态统计；
+- 提供管理员登录、站点管理、电桩管理、用户管理、冻结/解冻、手机号模糊查询和远程重启操作界面；
+- 所有管理操作必须通过服务端业务消息完成。
+
+### 2.4 SQLite 数据库
 
 SQLite 是主业务数据库，保存用户、管理员、充电站、充电桩、订单、充值记录、预测结果和操作日志。
 
-### 2.4 Web 数据可视化大屏
+### 2.5 Web 数据可视化大屏
 
-Web 大屏使用 HTML、CSS、JavaScript 和 ECharts 展示统计与预测数据。V1 采用 WebSocket 连接 Qt/C++ PC 服务与管理端，由服务端推送或按请求返回运营统计、状态分布、趋势和预测结果。
+Web 大屏使用 HTML、CSS、JavaScript 和 ECharts 展示统计与预测数据。V1 采用 WebSocket 连接 Qt/C++ 服务端，由服务端推送或按请求返回运营统计、状态分布、趋势和预测结果。
 
-### 2.5 Python 机器学习模块
+### 2.6 Python 机器学习模块
 
 ML 模块保留为基本功能，负责基于固定演示数据和运行时订单数据完成负荷预测、空闲桩预测和高峰时段预测。FastAPI 只能作为可选辅助工具，不能替代 Qt/C++ 主服务。
 
-### 2.6 远程重启模拟
+### 2.7 远程重启模拟
 
 必做范围只要求管理员发送远程重启指令、系统返回处理结果并更新状态或日志。完整设备网关、心跳、遥测和串口协议作为扩展内容，不作为核心业务通信的替代。
 
@@ -77,22 +88,25 @@ ML 模块保留为基本功能，负责基于固定演示数据和运行时订�
 ```mermaid
 flowchart TB
     User[Qt 用户端<br/>Linux + Qt + C++]
-    ServerAdmin[Qt/C++ PC 服务与管理端<br/>QTcpServer + 管理界面 + QChart + 多线程]
+    Server[Qt/C++ 服务端<br/>QTcpServer + 业务服务 + SQLite + 多线程]
+    Admin[Qt 管理端<br/>管理界面 + QChart + QTcpSocket]
     DB[(SQLite<br/>QtSql / QSQLITE)]
     Web[Web 大屏<br/>HTML/CSS/JS + ECharts]
     ML[Python 机器学习模块<br/>负荷/空闲桩/高峰预测]
     Map[腾讯地图 Web API<br/>QWebEngineView]
     Device[远程重启模拟<br/>设备扩展 Optional]
 
-    User <-->|TCP Socket<br/>业务消息协议| ServerAdmin
-    ServerAdmin <-->|QtSql| DB
-    ServerAdmin <-->|WebSocket<br/>运营统计/状态/趋势/预测| Web
+    User <-->|TCP Socket<br/>用户业务消息| Server
+    Admin <-->|TCP Socket<br/>管理业务消息| Server
+    Server <-->|QtSql| DB
+    Server <-->|WebSocket<br/>运营统计/状态/趋势/预测| Web
     ML <-->|读取 SQLite 或 CSV<br/>输出预测结果| DB
-    ServerAdmin -->|读取预测结果并推送| Web
+    Server -->|读取预测结果并推送| Web
     User -->|导航展示| Map
-    ServerAdmin -->|地址解析/地图相关调用| Map
-    ServerAdmin -->|ADMIN_PILE_RESTART<br/>状态更新/操作日志| Device
-    Device -->|模拟结果| ServerAdmin
+    Server -->|地址解析/地图相关调用| Map
+    Admin -->|远程重启请求| Server
+    Server -->|ADMIN_PILE_RESTART<br/>状态更新/操作日志| Device
+    Device -->|模拟结果| Server
 ```
 
 ## 4. 仓库结构
@@ -101,7 +115,9 @@ flowchart TB
 evcharge-platform/
 
 ├── qt-user/
-├── qt-server-admin/
+├── qt-admin/
+├── qt-server/
+├── qt-server-admin/        # zly 分支历史合并目录，后续迁移拆分
 ├── database/
 │   ├── schema.sql
 │   ├── init_data.sql
@@ -126,7 +142,7 @@ evcharge-platform/
 | 文档 | 作用 |
 | --- | --- |
 | `docs/00-SRS-V1.0.md` | 需求基线候选版 |
-| `docs/01-ARCHITECTURE.md` | Qt/C++、Socket、SQLite 架构 |
+| `docs/01-ARCHITECTURE.md` | Qt/C++ 服务端、Qt 管理端、Socket、SQLite 架构 |
 | `docs/02-DEVELOPMENT-GUIDE.md` | Qt/C++ 开发、线程、错误处理和模块规范 |
 | `docs/03-API.md` | Socket/WebSocket 应用层消息协议与 ML 数据交换 |
 | `docs/04-DATABASE.md` | SQLite 与 QtSql 数据库规范 |

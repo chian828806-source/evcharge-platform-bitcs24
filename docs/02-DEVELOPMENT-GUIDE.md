@@ -12,14 +12,23 @@
 
 ```text
 qt-server-admin/
+└── README.md              # 过渡说明，后续迁移拆分
+
+qt-server/
 ├── main.cpp
 ├── network/
 ├── service/
 ├── repository/
 ├── model/
+├── worker/
+└── util/
+
+qt-admin/
+├── main.cpp
+├── network/
+├── model/
 ├── ui/
 ├── chart/
-├── worker/
 └── util/
 
 qt-user/
@@ -32,16 +41,26 @@ qt-user/
 
 ## 3. 分层规范
 
-PC 服务与管理端建议采用：
+Qt/C++ 服务端建议采用：
 
 ```text
-UI
+Socket Handler / WebSocket Publisher
   ↓
 Service
   ↓
 Repository
   ↓
 QtSql / SQLite
+```
+
+Qt 管理端建议采用：
+
+```text
+UI / Chart
+  ↓
+SocketClient / NetworkClient
+  ↓
+Qt/C++ 服务端
 ```
 
 Socket 消息处理入口只负责解析、校验、调用 Service 和返回响应，不直接写复杂业务逻辑。
@@ -82,13 +101,13 @@ m_database
 SocketClient / NetworkClient
 ```
 
-PC 服务端统一封装：
+Qt/C++ 服务端统一封装：
 
 ```text
 SocketServer / ClientSession
 ```
 
-业务页面不得直接操作 `QTcpSocket`。
+Qt 用户端和 Qt 管理端业务页面不得直接操作 `QTcpSocket`。
 
 Socket 消息统一使用 JSON Lines 或长度前缀格式，具体见 `docs/03-API.md`。
 
@@ -135,7 +154,7 @@ SQLite 多线程规则：
 | --- | --- |
 | Socket 断线 | 用户端提示断线，允许重连 |
 | 消息不完整 | 丢弃或等待完整帧，返回协议错误 |
-| 数据库打开失败 | 管理端提示并阻止业务写入 |
+| 数据库打开失败 | 服务端返回数据库错误；管理端提示并阻止继续提交 |
 | 地图 API 失败 | 提示定位或导航失败 |
 | 余额不足 | 订单保持 `PENDING_PAYMENT` |
 | 重复结算 | 返回已结算或待结算状态，不重复扣款 |
@@ -143,11 +162,11 @@ SQLite 多线程规则：
 
 ## 10. 头像与文件
 
-头像由用户端选择图片并传给 PC 服务端。服务端保存文件，SQLite 保存相对路径。必须限制文件类型、大小和保存目录。
+头像由用户端选择图片并传给 Qt/C++ 服务端。服务端保存文件，SQLite 保存相对路径。必须限制文件类型、大小和保存目录。
 
 ## 11. Web 大屏
 
-Web 大屏通过 WebSocket 连接 Qt/C++ PC 服务与管理端：
+Web 大屏通过 WebSocket 连接 Qt/C++ 服务端：
 
 ```text
 ws://<server-host>:<port>/dashboard
@@ -167,6 +186,7 @@ ML 使用 Python，输入固定演示数据或导出 CSV/JSON，输出预测 CSV
 
 - SRS 需求编号；
 - 涉及 Socket 消息；
+- 涉及模块边界，确认属于 `qt-user`、`qt-admin`、`qt-server`、`shared`、`web-dashboard`、`ml` 或 `database`；
 - 涉及 SQLite 表；
 - 状态变化；
 - 验收标准。
@@ -177,6 +197,7 @@ ML 使用 Python，输入固定演示数据或导出 CSV/JSON，输出预测 CSV
 
 - 本地可运行；
 - Socket 消息联通；
+- 用户端、管理端和服务端职责没有混写；
 - SQLite 数据正确；
 - 基本异常处理完成；
 - 必要测试或手工验证通过；
