@@ -1,1 +1,6 @@
 linshi/
+
+# SQLite 运行时数据库文件（由 schema.sql + init_data.sql 生成）
+*.db
+*.sqlite
+*.sqlite3
