@@ -7,7 +7,7 @@
 1. 主业务通信使用 TCP Socket。
 2. Qt 用户端和 Qt 管理端不得绕过 Qt/C++ 服务端直接访问 SQLite。
 3. Web 大屏通过 WebSocket 连接 Qt/C++ 服务端，不直接读取数据库。
-4. ML 可读取 SQLite、CSV 或 JSON，输出结果写回 SQLite 或导出 JSON。
+4. ML 不得直接访问 SQLite。Qt/C++ 服务端导出 CSV/JSON 训练数据，ML 输出预测 JSON，由服务端校验并导入 SQLite。
 5. 消息类型、字段、错误码属于公共契约。
 
 ## 2. Socket 封装
@@ -268,20 +268,50 @@ ws://<server-host>:<port>/dashboard
 
 ## 14. ML 数据交换
 
-输入：
+ML 数据交换是服务端与 Python 进程之间的受控文件契约，不属于 Qt 用户端或 Qt 管理端可调用的 Socket 消息。ML 进程不得获得 SQLite 文件路径、数据库连接或写库权限。
+
+### 14.1 服务端导出
+
+Qt/C++ 服务端在定时任务、管理员触发或演示流程中生成一个带 `batchId` 的训练数据批次：
 
 ```text
-ml/data/history.csv
-ml/data/orders.csv
+ml/data/<batchId>/history.csv
+ml/data/<batchId>/orders.csv
 ```
 
-输出：
+导出字段、来源和统计口径以 `docs/04-DATABASE.md` 第 9.5 节为准；服务端只导出模型所需的字段，不导出用户手机号、昵称、头像、余额等个人信息。
+
+### 14.2 ML 输出
 
 ```text
-ml/output/predictions.json
+ml/output/<batchId>/predictions.json
 ```
 
-Qt/C++ 服务端负责将预测结果导入 SQLite，并通过 WebSocket 提供给 Web 大屏。
+输出 JSON 必须采用以下结构：
+
+```json
+{
+  "schemaVersion": "1.0",
+  "batchId": "20260901T120000Z-demo",
+  "predictions": [
+    {
+      "stationId": 1,
+      "predictionTime": "2026-09-01T13:00:00+08:00",
+      "horizon": "1h",
+      "predictedLoad": 0.65,
+      "predictedAvailableCount": 3,
+      "peakLevel": "HIGH",
+      "modelName": "baseline-v1"
+    }
+  ]
+}
+```
+
+`horizon` 只能是 `1h`、`6h` 或 `24h`；`predictedLoad` 必须是 0 到 1 的有限数值；`predictedAvailableCount` 必须为非负整数；`peakLevel` 只能是 `LOW`、`MEDIUM` 或 `HIGH`。
+
+### 14.3 服务端导入
+
+Qt/C++ 服务端读取 ML 输出后，必须校验 `schemaVersion`、`batchId`、必填字段、站点存在性和上述范围约束。一个批次中任一记录不合法时，服务端拒绝整个批次且不得写入 `prediction` 表；全部合法时，以一个数据库事务写入。导入成功后，服务端向用户端、管理端和 WebSocket 大屏提供最新预测结果。
 
 ## 15. 接口修改流程
 

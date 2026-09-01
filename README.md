@@ -35,7 +35,7 @@ Web 大屏通过 WebSocket 接收运营与预测数据
         ↓
 Python ML 使用历史数据预测
         ↓
-预测结果写回 SQLite 或导出给系统展示
+预测 JSON 交由 Qt 服务端校验并写入 SQLite
 ```
 
 ## 2. 系统模块
@@ -77,7 +77,7 @@ Web 大屏使用 HTML、CSS、JavaScript 和 ECharts 展示统计与预测数据
 
 ### 2.6 Python 机器学习模块
 
-ML 模块保留为基本功能，负责基于固定演示数据和运行时订单数据完成负荷预测、空闲桩预测和高峰时段预测。FastAPI 只能作为可选辅助工具，不能替代 Qt/C++ 主服务。
+ML 模块保留为基本功能，负责基于固定演示数据和服务端导出的运行时训练数据完成负荷预测、空闲桩预测和高峰时段预测。ML 不直接访问 SQLite；Qt/C++ 服务端校验其预测 JSON 后写入数据库并推送展示结果。
 
 ### 2.7 远程重启模拟
 
@@ -100,8 +100,8 @@ flowchart TB
     Admin <-->|TCP Socket<br/>管理业务消息| Server
     Server <-->|QtSql| DB
     Server <-->|WebSocket<br/>运营统计/状态/趋势/预测| Web
-    ML <-->|读取 SQLite 或 CSV<br/>输出预测结果| DB
-    Server -->|读取预测结果并推送| Web
+    Server -->|导出训练 CSV/JSON| ML
+    ML -->|预测 JSON| Server
     User -->|导航展示| Map
     Server -->|地址解析/地图相关调用| Map
     Admin -->|远程重启请求| Server

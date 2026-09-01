@@ -173,7 +173,7 @@ ws://<server-host>:<port>/dashboard
 
 ## 12. ML 模块
 
-ML 使用 Python，输入固定演示数据或导出 CSV/JSON，输出预测 CSV/JSON 或写回 SQLite。
+ML 使用 Python，只读取固定演示数据或 Qt/C++ 服务端导出的 CSV/JSON；ML 输出预测 JSON，由服务端校验并导入 SQLite。ML 不得直接访问 SQLite。
 
 不要求高精度模型；要求流程可运行、结果可展示。
 

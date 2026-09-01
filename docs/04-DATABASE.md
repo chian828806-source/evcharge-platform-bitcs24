@@ -1,6 +1,6 @@
 ﻿# SQLite 数据库模式设计
 
-本文档定义 V1 数据库模式，供 Qt/C++ 服务端、Qt 用户端 Socket 接口、Qt 管理端 Socket 接口、WebSocket 大屏、Python ML 模块和测试数据准备直接对接。
+本文档定义 V1 数据库模式。Qt/C++ 服务端直接对接 SQLite；Qt 用户端、Qt 管理端和 WebSocket 大屏只通过服务端获取数据；Python ML 只对接服务端导出的训练数据和预测结果导入契约。
 
 ## 1. 设计边界
 
@@ -18,7 +18,7 @@
 - Qt 用户端只能通过 TCP Socket 访问业务数据；
 - Qt 管理端只能通过 TCP Socket 访问管理数据；
 - Web 大屏只能通过 WebSocket 获取展示数据；
-- Python ML 可读取 SQLite 或导出的 CSV，预测结果应写回 `prediction` 表或交由 Qt/C++ 服务端导入；
+- Python ML 不得读取或写入 SQLite；服务端向其导出训练 CSV/JSON，并由服务端校验后将预测 JSON 导入 `prediction` 表；
 - 不使用 MySQL、Spring Boot、REST 作为主数据链路。
 
 ## 2. 全局约定
@@ -656,9 +656,9 @@ Qt/C++ 服务端是唯一主数据写入方，负责：
 | `revenueTrend` | `charging_order` | 近 7 日/30 日营收与电量 |
 | `prediction` | `prediction`, `charging_station` | 负荷、空闲桩、高峰等级 |
 
-### 9.5 Python ML
+### 9.5 Python ML 数据导出与结果导入
 
-ML 推荐读取字段：
+Python ML 不直接查询下列来源表。Qt/C++ 服务端按以下字段导出训练数据；具体文件路径、输出 JSON 和校验规则以 `docs/03-API.md` 第 14 节为准。
 
 | 来源 | 字段 |
 | --- | --- |
@@ -666,14 +666,14 @@ ML 推荐读取字段：
 | `charging_station` | `id`, `district`, `price_fen_per_kwh`, `service_fee_fen_per_kwh` |
 | `charging_pile` | `station_id`, `type`, `power_kw`, `status` |
 
-ML 写回 `prediction` 时必须提供：
+ML 输出的每条预测记录必须提供以下字段，由 Qt/C++ 服务端写入 `prediction`：
 
 - `station_id`；
 - `prediction_time`；
 - `horizon`；
 - `predicted_load`。
 
-其余字段可按模型能力补充。
+其余字段可按模型能力补充。服务端必须先校验站点存在性、`horizon`、负荷范围和可选字段范围；任一记录不合法时拒绝整个批次，避免部分导入。
 
 ## 10. QtSql 使用要求
 

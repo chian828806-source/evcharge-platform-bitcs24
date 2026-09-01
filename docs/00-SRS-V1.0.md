@@ -49,7 +49,7 @@ Spring Boot、MySQL 和 REST 不再作为 V1 主架构。
 | User | 车主，通过 Qt 用户端完成充电服务 |
 | Admin | 管理员，通过 Qt 管理端完成运营管理 |
 | Dashboard Viewer | 大屏查看者，通过 Web 大屏查看统计和预测 |
-| ML Job | 机器学习任务，读取历史数据并输出预测 |
+| ML Job | 机器学习任务，只处理服务端导出的训练数据并输出预测结果文件 |
 
 ### 2.3 主业务闭环
 
@@ -59,10 +59,12 @@ Qt 用户端
 Qt/C++ 服务端
    ↓ QtSql
 SQLite
-   ↓
-Qt 管理端 QChart / Web ECharts / Python ML
-   ↓
-预测与统计结果回到系统展示
+   ↓ 服务端导出 CSV/JSON
+Python ML
+   ↓ 预测 JSON
+Qt/C++ 服务端校验并导入 SQLite
+   ↓ Socket / WebSocket
+Qt 用户端推荐 / Qt 管理端 QChart / Web ECharts
 ```
 
 ### 2.4 通信模型
@@ -73,7 +75,7 @@ Qt 用户端通过 `QTcpSocket` 连接 Qt/C++ 服务端。Qt 管理端也通过 
 
 Web 大屏 V1 采用 WebSocket 连接 Qt/C++ 服务端。服务端通过 WebSocket 推送或按请求返回运营概览、充电桩状态、营收趋势和预测结果。本文档不使用 REST 作为主接口方案。
 
-Python ML 模块 V1 可读取 SQLite 或导出的 CSV/JSON，并将预测结果写回 SQLite 或导出为 JSON。FastAPI 只允许作为可选辅助工具，不能替代 Qt/C++ 主服务。
+Python ML 模块不直接连接、读取或写入 SQLite。Qt/C++ 服务端负责导出经过字段约束的 CSV/JSON 训练数据；ML 模块只读取该导出数据并生成预测 JSON；服务端校验并以事务导入预测结果。FastAPI 不属于 V1 数据链路，也不能替代 Qt/C++ 主服务。
 
 ## 3. 功能需求
 
@@ -358,6 +360,8 @@ Priority: MUST
 
 使用固定演示历史数据和运行时订单数据，输入字段至少包括站点、时间、充电时长、充电量、价格、是否节假日和天气字段占位。
 
+运行时订单数据必须由 Qt/C++ 服务端导出为训练数据文件，ML 模块不得直接查询 SQLite。
+
 #### FR-ML-002 负荷预测
 
 Priority: MUST
@@ -402,6 +406,12 @@ Priority: MUST
 
 管理端可展示站点级负荷预警。
 
+#### FR-ML-007 服务端数据交换与结果导入
+
+Priority: MUST
+
+Qt/C++ 服务端负责导出 ML 训练数据，并导入 ML 生成的预测 JSON。导入前必须校验数据格式、站点存在性、预测时间窗和预测取值范围；一个批次校验失败时不得部分写入。ML 模块不得持有 SQLite 文件路径、连接信息或写库权限。
+
 ### 3.7 Qt/C++ 服务端支撑
 
 #### FR-S-001 Socket 服务
@@ -420,7 +430,7 @@ Priority: MUST
 
 Priority: MUST
 
-服务端通过 QtSql 的 `QSQLITE` 驱动读写 SQLite，并保证订单、余额、电桩状态和操作日志相关事务一致。
+服务端是唯一通过 QtSql 的 `QSQLITE` 驱动读写 SQLite 的模块，并保证订单、余额、电桩状态、操作日志和 ML 预测结果导入的事务一致。所有客户端、Web 大屏和 Python ML 均不得直接访问 SQLite。
 
 #### FR-S-004 WebSocket 大屏服务
 
@@ -551,7 +561,7 @@ V1 通过 WebSocket 获取大屏数据，消息格式详见 `docs/03-API.md`。
 
 ### 7.4 ML 集成
 
-ML 可读取 SQLite、CSV 或 JSON，输出预测结果到 SQLite 或 JSON。
+服务端导出 CSV/JSON 训练数据给 ML；ML 输出预测 JSON；服务端校验后导入 SQLite。ML 不直接访问 SQLite。
 
 ## 8. 非功能需求
 

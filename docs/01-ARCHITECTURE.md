@@ -90,7 +90,7 @@ Qt 管理端（QTcpSocket） ─┘                 （QTcpServer + 业务服务
 
 ### 4.6 Python ML 模块
 
-读取固定演示数据、SQLite 导出数据或 CSV/JSON，输出负荷、空闲桩和高峰时段预测结果。
+只读取固定演示数据或 Qt/C++ 服务端导出的 CSV/JSON，输出负荷、空闲桩和高峰时段预测 JSON。ML 不直接访问 SQLite，结果由服务端校验后导入。
 
 ### 4.7 远程重启模拟
 
