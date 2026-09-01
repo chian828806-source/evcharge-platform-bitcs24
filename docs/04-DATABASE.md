@@ -1,18 +1,34 @@
-# 数据库规范
+# SQLite 数据库规范
 
-本文档定义数据库命名、核心表、事务、迁移、种子数据和变更流程。正式字段以 `database/schema.sql` 为准。
+本文档定义 SQLite、QtSql 和 `QSQLITE` 的使用规范。
 
 ## 1. 基本原则
 
-主业务数据库建议采用 MySQL 8.x。
+SQLite 是 V1 主业务数据库。PC 服务与管理端通过 QtSql 的 `QSQLITE` 驱动访问数据库。
 
-所有业务模块共享同一主数据库。
+用户端不得直接访问 SQLite。
 
-Qt 用户端、Qt 管理端和 Web 大屏不得直接修改主业务数据库。Qt 双客户端必须通过服务端 TCP Socket 业务协议访问数据，Web 大屏通过 REST API 访问数据。
+## 2. 数据库文件
 
-任务书中的 QSQLite 是否为硬性要求仍需确认。若老师要求体现 SQLite，建议仅用于 Qt 本地缓存或配置存储。
+推荐路径：
 
-## 2. 核心数据对象
+```text
+database/evcharge.db
+```
+
+正式建表脚本：
+
+```text
+database/schema.sql
+```
+
+演示数据脚本：
+
+```text
+database/init_data.sql
+```
+
+## 3. 核心表
 
 V1 至少包含：
 
@@ -23,101 +39,48 @@ V1 至少包含：
 - `charging_order`
 - `recharge_record`
 - `prediction`
-- `device_log`
 - `operation_log`
 
-说明：
+## 4. 字段类型
 
-- 表名优先使用完整业务名，如 `charging_station`、`charging_pile`。
-- 若后续决定使用简写 `station`、`charger`，必须在 schema 冻结前统一。
+SQLite 推荐类型：
 
-## 3. 命名规范
+| 数据 | 类型 |
+| --- | --- |
+| 主键 | `INTEGER PRIMARY KEY AUTOINCREMENT` |
+| 字符串 | `TEXT` |
+| 金额 | `INTEGER`，单位为分 |
+| 电量 | `REAL` |
+| 时间 | `TEXT`，格式 `yyyy-MM-dd HH:mm:ss` |
+| 状态 | `TEXT` |
 
-数据库表使用 snake_case。
+## 5. 命名规范
 
-数据库字段使用 snake_case。
+表名和字段名使用 snake_case。
 
-Java 属性和 JSON 字段使用 camelCase。
+Qt/C++ 属性和 JSON 字段使用 camelCase。
+Socket / WebSocket 消息字段使用 camelCase。
 
 示例：
 
 ```text
-database: price_per_kwh
-Java: pricePerKwh
-JSON: pricePerKwh
+price_fen_per_kwh -> priceFenPerKwh
+created_at -> createdAt
 ```
 
-## 4. 主键与关联
+## 6. 金额规范
 
-主键统一：
+所有金额按分保存：
 
-```text
-BIGINT id
+```sql
+balance_fen INTEGER NOT NULL DEFAULT 0
+amount_fen INTEGER NOT NULL DEFAULT 0
+price_fen_per_kwh INTEGER NOT NULL
 ```
 
-外键字段命名：
+界面展示时转换为元。
 
-```text
-user_id
-station_id
-pile_id
-order_id
-```
-
-是否在数据库层建立外键约束，由数据库设计阶段统一确认；即使不建物理外键，也必须在业务层保证关联一致性。
-
-## 5. 时间字段
-
-时间字段统一使用：
-
-```text
-DATETIME
-```
-
-常用字段：
-
-```text
-created_at
-updated_at
-start_time
-end_time
-prediction_time
-last_heartbeat_at
-```
-
-接口时间格式：
-
-```text
-yyyy-MM-dd HH:mm:ss
-```
-
-## 6. 金额字段
-
-金额禁止使用浮点类型。
-
-MySQL 使用：
-
-```text
-DECIMAL(10,2)
-```
-
-Java 使用：
-
-```text
-BigDecimal
-```
-
-字段示例：
-
-```text
-balance DECIMAL(10,2)
-amount DECIMAL(10,2)
-price_per_kwh DECIMAL(10,2)
-```
-
-## 7. 枚举字段
-
-枚举必须全项目统一。
+## 7. 状态枚举
 
 用户状态：
 
@@ -130,6 +93,7 @@ FROZEN
 
 ```text
 AVAILABLE
+RESERVED
 CHARGING
 FAULT
 OFFLINE
@@ -146,66 +110,50 @@ COMPLETED
 CANCELLED
 ```
 
-设备状态：
-
-```text
-ONLINE
-OFFLINE
-FAULT
-RESTARTING
-```
-
-数据库中可保存小写字符串或整数枚举，但 V1 建议保存可读字符串，降低联调成本。
-
-## 8. 关键唯一性与索引
+## 8. 关键约束
 
 必须保证：
 
-- `user.phone` 唯一。
-- `admin.username` 唯一。
-- `charging_pile.pile_no` 唯一或在站点内唯一。
-- 同一用户不能同时存在多个活动订单。
-- 同一电桩不能同时存在多个活动订单。
+- `user.phone` 唯一；
+- `admin.username` 唯一；
+- `charging_pile.pile_no` 唯一或在站点内唯一；
+- 同一用户不能同时存在多个活动订单；
+- 同一电桩不能同时被多个 `CREATED` 或 `CHARGING` 订单占用。
+- `CREATED` 订单对应电桩状态应为 `RESERVED`。
 
-建议索引：
+SQLite 对复杂条件唯一索引支持有限，实现时可由 Service 层加事务和查询保护。
 
-- `user.phone`
-- `charging_order.user_id`
-- `charging_order.pile_id`
-- `charging_order.status`
-- `charging_order.start_time`
-- `charging_pile.station_id`
-- `charging_pile.status`
-- `prediction.station_id`
-- `prediction.prediction_time`
-- `device_log.device_id`
+## 9. 索引建议
 
-## 9. 事务规则
-
-以下操作必须使用事务：
-
-- 手机号自动注册
-- 用户充值
-- 创建充电订单
-- 开始充电
-- 停止充电
-- 钱包结算
-- 新增站点并自动生成电桩
-- 管理员冻结 / 解冻用户
-- 远程重启状态更新
-
-结算必须保证：
-
-```text
-订单金额
-用户余额扣减
-订单状态
-结算时间
+```sql
+CREATE INDEX idx_user_phone ON user(phone);
+CREATE INDEX idx_order_user_status ON charging_order(user_id, status);
+CREATE INDEX idx_order_pile_status ON charging_order(pile_id, status);
+CREATE INDEX idx_pile_station_status ON charging_pile(station_id, status);
+CREATE INDEX idx_prediction_station_time ON prediction(station_id, prediction_time);
 ```
 
-同时成功或同时失败。
+## 10. Qt 查询示例
 
-## 10. 预测结果
+```cpp
+QSqlQuery query(db);
+query.prepare("SELECT id, phone, nickname FROM user WHERE phone = :phone");
+query.bindValue(":phone", phone);
+query.exec();
+```
+
+必须使用参数绑定，禁止拼接用户输入 SQL。
+
+## 11. 多线程访问
+
+规则：
+
+- 每个线程使用独立连接名；
+- 不跨线程共享 `QSqlDatabase`；
+- 写操作集中处理；
+- 数据库操作失败时记录 `lastError()`。
+
+## 12. 预测结果
 
 `prediction` 至少支持：
 
@@ -219,72 +167,26 @@ peak_level
 created_at
 ```
 
-ML 结果必须进入数据库或通过后端 API 进入系统，不得只保存为本地临时图表。
-
-## 11. 设备日志
-
-`device_log` 至少应支持记录：
-
-- 设备上线
-- 设备离线
-- 心跳
-- 状态变化
-- 充电遥测
-- 远程重启
-- ACK
-- 命令超时
-- 故障
-
-具体字段在 schema 设计阶段冻结。
-
-## 12. 种子数据
-
-`database/init_data.sql` 应提供演示所需基础数据：
-
-- 默认管理员 `admin / 123456`
-- 示例用户
-- 示例充电站
-- 示例充电桩
-- 示例历史订单
-- 示例充值记录
-- 示例预测结果
-
-管理员密码不得明文存储，种子数据中应保存 hash。
-
-## 13. 数据库迁移
-
-数据库结构由：
+`predicted_load` 使用统一站点负荷口径：
 
 ```text
-database/schema.sql
+stationLoad = chargingPileMinutes / (totalPileCount × windowMinutes)
 ```
 
-作为唯一正式版本。
+字段值保存为 0 到 1 的 `REAL`。
 
-V1 可不引入 Flyway / Liquibase，但每次结构修改必须同步更新：
+## 13. 种子数据
+
+`init_data.sql` 应包含默认管理员、示例用户、示例站点、示例电桩、历史订单和预测结果。
+
+默认管理员账号为 `admin / 123456`，密码字段不得存明文。
+
+## 14. 变更流程
+
+表结构变更必须同步修改：
 
 - `database/schema.sql`
 - `database/init_data.sql`
 - `docs/04-DATABASE.md`
-- 对应 Entity
-- 相关接口文档
-
-## 14. 变更流程
-
-任何表结构变动必须：
-
-```text
-提出修改
-↓
-确认影响模块
-↓
-组长确认
-↓
-修改 schema.sql
-↓
-修改文档和代码
-↓
-通知相关成员
-```
-
-禁止个人本地私自增加字段后直接编码。
+- 对应 Repository / Model
+- `docs/03-API.md`
