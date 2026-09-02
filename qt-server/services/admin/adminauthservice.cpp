@@ -5,6 +5,7 @@
 
 #include <QDateTime>
 #include <QJsonObject>
+#include <QSqlError>
 #include <utility>
 
 AdminAuthService::AdminAuthService(QSqlDatabase database, SessionManager *sessions)

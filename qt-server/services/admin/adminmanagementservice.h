@@ -23,7 +23,7 @@ public:
                                   bool frozen) const;
 
 private:
-    QSqlDatabase m_database;
+    mutable QSqlDatabase m_database;
     PileRepository m_pileRepository;
     StationRepository m_stationRepository;
     UserRepository m_userRepository;

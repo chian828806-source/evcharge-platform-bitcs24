@@ -15,7 +15,7 @@ public:
     ResponseMessage pileStatusSummary(const RequestMessage &request) const;
 
 private:
-    QSqlDatabase m_database;
+    mutable QSqlDatabase m_database;
     OrderRepository m_orderRepository;
     PileRepository m_pileRepository;
 };
