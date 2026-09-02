@@ -8,6 +8,7 @@
 #include "network/socketserver.h"
 #include "database/databasemanager.h"
 #include "services/adminauthservice.h"
+#include "services/adminanalyticsservice.h"
 #include "shared/protocol/messagetypes.h"
 
 #include <QCommandLineOption>
@@ -70,10 +71,16 @@ int main(int argc, char *argv[])
         return 1;
     }
     AdminAuthService adminAuth(databaseManager.database(), &sessions);
+    AdminAnalyticsService adminAnalytics(databaseManager.database());
     dispatcher.registerHandler(
         MessageTypes::AdminLogin, MessageDispatcher::Access::Public,
         [&adminAuth](const RequestMessage &request, const SessionContext &) {
             return adminAuth.login(request);
+        });
+    dispatcher.registerHandler(
+        MessageTypes::AdminRevenueSummary, MessageDispatcher::Access::Admin,
+        [&adminAnalytics](const RequestMessage &request, const SessionContext &) {
+            return adminAnalytics.revenueSummary(request);
         });
 
     // 业务负责人通过 registerHandler() 注入 Service 调用。

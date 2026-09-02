@@ -77,7 +77,16 @@ void MainWindow::submitLogin()
 
 void MainWindow::handleResponse(const QJsonObject &response)
 {
-    if (response.value(QStringLiteral("requestId")).toString() != m_loginRequestId) {
+    const QString requestId = response.value(QStringLiteral("requestId")).toString();
+    if (requestId == m_summaryRequestId) {
+        if (response.value(QStringLiteral("code")).toInt() == 200) {
+            showRevenueSummary(response.value(QStringLiteral("data")).toObject());
+        } else {
+            m_status->setText(response.value(QStringLiteral("message")).toString());
+        }
+        return;
+    }
+    if (requestId != m_loginRequestId) {
         return;
     }
     m_login->setEnabled(true);
@@ -89,4 +98,30 @@ void MainWindow::handleResponse(const QJsonObject &response)
     const QJsonObject admin = data.value(QStringLiteral("admin")).toObject();
     m_status->setText(QStringLiteral("登录成功，欢迎 ")
                       + admin.value(QStringLiteral("displayName")).toString());
+    m_sessionId = data.value(QStringLiteral("sessionId")).toString();
+    m_summaryRequestId = m_client->sendRequest(
+        MessageTypes::AdminRevenueSummary, m_sessionId, {});
+}
+
+void MainWindow::showRevenueSummary(const QJsonObject &data)
+{
+    auto yuan = [](qint64 fen) {
+        return QString::number(fen / 100.0, 'f', 2) + QStringLiteral(" 元");
+    };
+    auto *panel = new QWidget(this);
+    auto *layout = new QVBoxLayout(panel);
+    auto *title = new QLabel(QStringLiteral("核心营收指标"), panel);
+    QFont font = title->font();
+    font.setPointSize(20);
+    font.setBold(true);
+    title->setFont(font);
+    layout->addWidget(title);
+    layout->addWidget(new QLabel(QStringLiteral("今日营收：")
+        + yuan(data.value(QStringLiteral("todayRevenueFen")).toInteger()), panel));
+    layout->addWidget(new QLabel(QStringLiteral("本月营收：")
+        + yuan(data.value(QStringLiteral("monthRevenueFen")).toInteger()), panel));
+    layout->addWidget(new QLabel(QStringLiteral("总营收：")
+        + yuan(data.value(QStringLiteral("totalRevenueFen")).toInteger()), panel));
+    layout->addStretch();
+    setCentralWidget(panel);
 }
