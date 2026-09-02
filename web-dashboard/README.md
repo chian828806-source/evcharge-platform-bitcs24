@@ -7,7 +7,7 @@
 - `DashboardWebSocketClient`：连接 `/dashboard`、发送 `DASHBOARD_SUBSCRIBE`、处理 `DASHBOARD_UPDATE`、安全忽略非法消息、指数退避重连并在重连后自动订阅。
 - `DashboardStore`：集中保存四个 topic、连接状态、最后更新时间和最后一次有效数据。断线不会清空页面数据。
 - `DashboardController`：将 Store 数据绑定到指标、筛选器、表格和交互入口。
-- `DashboardCharts`：页面加载本地 `vendor/echarts.esm.min.js`，每个实例只初始化一次，后续只调用 `setOption()`；空数据会清除旧图并给出提示，缺失字段和 resize 都安全处理。
+- `DashboardCharts`：页面加载本地 `vendor/echarts.esm.min.js`，每个实例只初始化一次，后续只调用 `setOption()`；空数据会清除旧图，由页面 HTML 统一提示，缺失字段和 resize 都安全处理。
 - 可关闭 Mock 模式：所有演示数据集中在 `mock/dashboard-mock.js`，不散落在图表或页面代码中。
 - `tests/dashboard-logic-tests.html`：不依赖前端框架的浏览器测试页，覆盖 Store、订阅、消息路由、Mock、Charts 初始化、更新、空数据和 resize。
 
@@ -72,7 +72,7 @@ http://<dashboard-host>:8080/?mock=0&host=<server-host>&port=18081
 
 ## Dashboard V1 数据形状
 
-`summary` 的前三个字段来自既有 WebSocket 示例；`totalOrderCount` 是可选展示字段，缺失时显示 `—`：
+`summary` 的前三个字段来自既有 WebSocket 示例；`totalOrderCount` 是 Web Dashboard V1 的可选展示字段，缺失时显示 `—`。真实 Qt 联调前必须最终确认服务端是否提供该字段：
 
 ```json
 {
@@ -108,14 +108,14 @@ http://<dashboard-host>:8080/?mock=0&host=<server-host>&port=18081
 }
 ```
 
-前端也兼容服务端按范围单独推送的最小 payload：`{ "range": "7d", "items": [...] }`。Qt/Web 联调时应确认服务端是一次发送两个范围，还是按范围分别推送；两种情况都不改变既有 `revenueTrend` topic 或字段语义。
+这是 V1 的唯一正式 `revenueTrend` 契约：一次 WebSocket `DASHBOARD_UPDATE` 必须同时携带 `7d` 和 `30d`。浏览器范围切换只读取已收到的数据，不会也不能向 Qt Server 请求另一范围。旧的按范围单独 payload 仅作为临时兼容输入，控制台会发出 warning，不能作为 Qt/Web 联调实现依据。
 
-`prediction` 复用 API/ML 的 `stationId`、`horizon`、`predictedLoad`、`predictedAvailableCount`、`peakLevel` 语义；`stationName` 仅用于展示，可选：
+`prediction` 复用 API/ML 的 `stationId`、`horizon`、`predictedLoad`、`predictedAvailableCount`、`peakLevel` 语义；`stationName` 仅用于展示，可选。V1 canonical 字段为 `items`：
 
 ```json
 {
   "generatedAt": "2026-09-02T10:00:00Z",
-  "predictions": [{
+  "items": [{
     "stationId": 1,
     "stationName": "东软软件园充电站",
     "predictionTime": "2026-09-02 13:00:00",
@@ -127,7 +127,7 @@ http://<dashboard-host>:8080/?mock=0&host=<server-host>&port=18081
 }
 ```
 
-这三种除 `summary` 外的数据形状是 Web 第一版的最小前端约定，不修改公共 message type 或已有字段含义；Qt 业务联调时需确认最终统计查询与字段是否还需补充。
+上述数据形状是 Web 第一版的最小前端约定：`summary` 使用固定字段，`pileStatus` 使用 `{ "counts": {} }`，`revenueTrend` 使用 `{ "ranges": { "7d": {}, "30d": {} } }`，`prediction` 使用 `{ "items": [] }`。不修改公共 message type 或已有字段含义；非 canonical 的临时 fallback 仅会被带 warning 地处理。
 
 ## Qt 服务端联调 TODO
 
@@ -135,14 +135,15 @@ http://<dashboard-host>:8080/?mock=0&host=<server-host>&port=18081
 
 当前 `DashboardWebSocketServer::publish(topic, data)` 已经完成连接、订阅和广播，但 Qt 业务 Service/Repository 尚未提交。因此以下项目仍未完成：
 
-1. Qt 业务统计聚合；
-2. `summary` 的真实来源；
-3. `pileStatus` 的真实来源；
-4. `revenueTrend` 的真实来源；
-5. `prediction` 的真实来源；
-6. 业务变化后的 `publish(topic, data)` 调用；
-7. WebSocket 订阅后的 initial snapshot；
-8. Qt / Web 最终联调。
+1. Qt 业务统计层；
+2. `summary` 的真实数据聚合；
+3. `pileStatus` 的真实数据聚合；
+4. `revenueTrend` 7d + 30d 的真实统计，并在一次 update 中提供两段数据；
+5. `prediction` 的真实数据来源；
+6. Qt 业务变化后的 `publish(topic, data)`；
+7. WebSocket subscribe 后 initial snapshot；
+8. 最终 Qt/Web 联调；
+9. prediction 正式时间序列展示形式：如果真实 ML 对同一站点、同一 horizon 返回多个 `predictionTime`，图表 X 轴可能应改为时间轴；当前 V1 保留现有实现，待真实 ML 数据结构联调后再决定。
 
 后续 Qt 侧应在业务动作完成并获得可信统计后，调用既有接口：
 

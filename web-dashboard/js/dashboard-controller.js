@@ -1,6 +1,12 @@
-const asArray = (value) => Array.isArray(value) ? value : [];
-const asNumber = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
+import { normalizePredictionItems } from './charts.js';
+
+const asNumber = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+};
 const text = (value, fallback = '—') => value === null || value === undefined || value === '' ? fallback : String(value);
+const isUnitInterval = (value) => value !== null && value >= 0 && value <= 1;
 
 export class DashboardController {
   constructor({ store, charts, elements }) {
@@ -27,14 +33,17 @@ export class DashboardController {
 
   setSource(source) { this.source = source; }
 
+  setEmptyState(element, hasData) { element.hidden = Boolean(hasData); }
+
   render(state) {
     this.renderConnection(state);
     this.renderSummary(state.data.summary);
-    this.renderPredictionFilters(state.data.prediction);
-    this.elements.pileStatusEmpty.hidden = this.charts.updatePileStatus(state.data.pileStatus);
-    this.elements.revenueTrendEmpty.hidden = this.charts.updateRevenueTrend(state.data.revenueTrend, this.filters.range);
-    this.elements.predictionEmpty.hidden = this.charts.updatePrediction(state.data.prediction, this.filters);
-    this.renderPredictionDetails(state.data.prediction);
+    const predictionItems = normalizePredictionItems(state.data.prediction);
+    this.renderPredictionFilters(predictionItems);
+    this.setEmptyState(this.elements.pileStatusEmpty, this.charts.updatePileStatus(state.data.pileStatus));
+    this.setEmptyState(this.elements.revenueTrendEmpty, this.charts.updateRevenueTrend(state.data.revenueTrend, this.filters.range));
+    this.setEmptyState(this.elements.predictionEmpty, this.charts.updatePrediction({ items: predictionItems }, this.filters));
+    this.renderPredictionDetails(predictionItems);
   }
 
   renderConnection(state) {
@@ -50,14 +59,15 @@ export class DashboardController {
     const revenue = asNumber(summary?.todayRevenueFen);
     const orders = asNumber(summary?.totalOrderCount);
     const load = asNumber(summary?.stationLoad);
+    const validLoad = isUnitInterval(load);
+    if (!validLoad && summary && Object.hasOwn(summary, 'stationLoad')) console.warn('[Dashboard] Invalid stationLoad; expected a number from 0 to 1.');
     this.elements.todayEnergy.textContent = energy === null ? '—' : `${energy.toFixed(1)} kWh`;
     this.elements.todayRevenue.textContent = revenue === null ? '—' : `¥${(revenue / 100).toFixed(2)}`;
     this.elements.totalOrders.textContent = orders === null ? '—' : String(Math.round(orders));
-    this.elements.stationLoad.textContent = load === null ? '—' : `${(load * 100).toFixed(1)}%`;
+    this.elements.stationLoad.textContent = validLoad ? `${(load * 100).toFixed(1)}%` : '—';
   }
 
-  renderPredictionFilters(prediction) {
-    const rows = asArray(prediction?.predictions || prediction?.items || prediction);
+  renderPredictionFilters(rows) {
     const knownStations = new Map(rows.map((row) => [String(row.stationId), row.stationName || `站点 ${row.stationId}`]));
     const previous = this.filters.stationId;
     this.elements.stationSelect.replaceChildren(new Option('全部站点', 'all'));
@@ -66,19 +76,17 @@ export class DashboardController {
     this.elements.stationSelect.value = this.filters.stationId;
   }
 
-  renderPredictionDetails(prediction) {
-    const rows = asArray(prediction?.predictions || prediction?.items || prediction).filter((row) =>
+  renderPredictionDetails(rows) {
+    const filteredRows = rows.filter((row) =>
       (this.filters.stationId === 'all' || String(row.stationId) === this.filters.stationId) && row.horizon === this.filters.horizon
     );
-    this.elements.predictionBody.replaceChildren(...rows.map((row) => {
+    this.elements.predictionBody.replaceChildren(...filteredRows.map((row) => {
       const tr = document.createElement('tr');
       [row.stationName || `站点 ${text(row.stationId)}`, text(row.horizon), text(row.predictionTime),
-        asNumber(row.predictedLoad) === null ? '—' : `${(asNumber(row.predictedLoad) * 100).toFixed(1)}%`,
-        text(row.predictedAvailableCount), text(row.peakLevel)].forEach((value) => {
+        `${(row.predictedLoad * 100).toFixed(1)}%`, text(row.predictedAvailableCount), text(row.peakLevel)].forEach((value) => {
         const td = document.createElement('td'); td.textContent = value; tr.append(td);
       });
       return tr;
     }));
-    this.elements.predictionEmpty.hidden = rows.length > 0;
   }
 }
