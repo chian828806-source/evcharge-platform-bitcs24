@@ -12,6 +12,7 @@ public:
     ResponseMessage restartPile(const RequestMessage &request, qint64 adminId) const;
     ResponseMessage stationList(const RequestMessage &request) const;
     ResponseMessage createStation(const RequestMessage &request, qint64 adminId) const;
+    ResponseMessage userList(const RequestMessage &request) const;
 
 private:
     QSqlDatabase m_database;
