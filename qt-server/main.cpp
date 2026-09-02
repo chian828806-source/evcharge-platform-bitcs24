@@ -2,15 +2,31 @@
  * 功能：独立业务服务端程序入口，装配Session、Dispatcher、TCP和WebSocket。
  * 边界：本进程不包含用户端或管理员端界面，业务Handler由Service模块注册。
  */
+#include "database/databasemanager.h"
+#include "handlers/user/registeruserhandlers.h"
+#include "handlers/user/registerstationhandlers.h"
+#include "handlers/user/stationhandler.h"
+#include "handlers/user/registerorderhandlers.h"
+#include "handlers/user/orderhandler.h"
+#include "handlers/user/userhandler.h"
 #include "network/dashboardwebsocketserver.h"
 #include "network/messagedispatcher.h"
 #include "network/sessionmanager.h"
 #include "network/socketserver.h"
+#include "repositories/userrepository.h"
+#include "repositories/stationrepository.h"
+#include "repositories/orderrepository.h"
+#include "services/user/orderservice.h"
+#include "services/user/stationservice.h"
+#include "services/user/userservice.h"
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QCoreApplication>
 #include <QHostAddress>
+#include <QSqlDatabase>
+#include <QSqlError>
+#include <QSqlQuery>
 #include <QTextStream>
 
 int main(int argc, char *argv[])
@@ -36,6 +52,12 @@ int main(int argc, char *argv[])
         QStringLiteral("port"),
         QStringLiteral("18081")
     });
+    parser.addOption({
+        {QStringLiteral("d"), QStringLiteral("database")},
+        QStringLiteral("SQLite database file; initialize it with database/schema.sql first"),
+        QStringLiteral("path"),
+        QStringLiteral("database/evcharge.db")
+    });
     parser.process(application);
 
     // 在监听前校验端口，避免toUShort失败后静默使用0。
@@ -55,8 +77,38 @@ int main(int argc, char *argv[])
     SessionManager sessions;
     MessageDispatcher dispatcher(&sessions);
 
-    // 业务负责人通过 registerHandler() 注入 Service 调用。
-    // 本网络外壳不伪造登录、订单或数据库结果。
+    // 启动前验证SQLite连接和user表，避免服务监听成功后才暴露配置错误。
+    DatabaseManager databaseManager(parser.value(QStringLiteral("database")));
+    QSqlDatabase database;
+    QString databaseError;
+    if (!databaseManager.database(&database, &databaseError)) {
+        QTextStream(stderr) << "SQLite open failed: " << databaseError << '\n';
+        return 3;
+    }
+    QSqlQuery schemaCheck(database);
+    if (!schemaCheck.exec(QStringLiteral("SELECT 1 FROM user LIMIT 1"))) {
+        QTextStream(stderr)
+            << "SQLite schema is unavailable; initialize database/schema.sql first: "
+            << schemaCheck.lastError().text() << '\n';
+        return 3;
+    }
+
+    // 用户模块：Repository负责SQL，Service负责规则，Handler负责Socket映射。
+    UserRepository userRepository;
+    UserService userService(&databaseManager, &userRepository);
+    UserHandler userHandler(&userService, &sessions);
+    registerUserHandlers(&dispatcher, &userHandler);
+
+    StationRepository stationRepository;
+    StationService stationService(&databaseManager, &stationRepository);
+    StationHandler stationHandler(&stationService);
+    registerStationHandlers(&dispatcher, &stationHandler);
+
+    OrderRepository orderRepository;
+    OrderService orderService(&databaseManager, &userRepository, &orderRepository);
+    OrderHandler orderHandler(&orderService);
+    registerOrderHandlers(&dispatcher, &orderHandler);
+
     // 同一个TCP入口接收用户端和管理员端请求，角色由Session与路由权限区分。
     SocketServer socketServer(&dispatcher);
     if (!socketServer.listen(QHostAddress::Any, tcpPort)) {
