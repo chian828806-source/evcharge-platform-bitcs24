@@ -117,6 +117,14 @@ void MainWindow::handleResponse(const QJsonObject &response)
     if (requestId == m_pileListRequestId) {
         if (response.value(QStringLiteral("code")).toInt() == 200) {
             showPileList(response.value(QStringLiteral("data")).toObject());
+            m_stationListRequestId = m_client->sendRequest(
+                MessageTypes::AdminStationList, m_sessionId, {});
+        }
+        return;
+    }
+    if (requestId == m_stationListRequestId) {
+        if (response.value(QStringLiteral("code")).toInt() == 200) {
+            showStationList(response.value(QStringLiteral("data")).toObject());
         }
         return;
     }
@@ -140,6 +148,32 @@ void MainWindow::handleResponse(const QJsonObject &response)
     m_sessionId = data.value(QStringLiteral("sessionId")).toString();
     m_summaryRequestId = m_client->sendRequest(
         MessageTypes::AdminRevenueSummary, m_sessionId, {});
+}
+
+void MainWindow::showStationList(const QJsonObject &data)
+{
+    const QJsonArray stations = data.value(QStringLiteral("stations")).toArray();
+    auto *table = new QTableWidget(stations.size(), 7, centralWidget());
+    table->setHorizontalHeaderLabels({QStringLiteral("站点编号"), QStringLiteral("名称"),
+        QStringLiteral("地址"), QStringLiteral("经度"), QStringLiteral("纬度"),
+        QStringLiteral("电桩数"), QStringLiteral("在线率")});
+    for (int row = 0; row < stations.size(); ++row) {
+        const QJsonObject station = stations.at(row).toObject();
+        const QStringList values = {station.value(QStringLiteral("stationNo")).toString(),
+            station.value(QStringLiteral("name")).toString(),
+            station.value(QStringLiteral("address")).toString(),
+            QString::number(station.value(QStringLiteral("longitude")).toDouble(), 'f', 6),
+            QString::number(station.value(QStringLiteral("latitude")).toDouble(), 'f', 6),
+            QString::number(station.value(QStringLiteral("pileCount")).toInt()),
+            QString::number(station.value(QStringLiteral("onlineRate")).toDouble() * 100, 'f', 1) + '%'};
+        for (int column = 0; column < values.size(); ++column) {
+            table->setItem(row, column, new QTableWidgetItem(values.at(column)));
+        }
+    }
+    table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    if (auto *layout = qobject_cast<QVBoxLayout *>(centralWidget()->layout())) {
+        layout->insertWidget(layout->count() - 1, table, 2);
+    }
 }
 
 void MainWindow::showPileList(const QJsonObject &data)

@@ -21,6 +21,7 @@ private:
     void showRevenueTrend(const QJsonObject &data);
     void showPileStatusSummary(const QJsonObject &data);
     void showPileList(const QJsonObject &data);
+    void showStationList(const QJsonObject &data);
 
     AdminSocketClient *m_client = nullptr;
     QLineEdit *m_host = nullptr;
@@ -35,5 +36,6 @@ private:
     QString m_pileStatusRequestId;
     QString m_pileListRequestId;
     QString m_pileRestartRequestId;
+    QString m_stationListRequestId;
     QString m_sessionId;
 };

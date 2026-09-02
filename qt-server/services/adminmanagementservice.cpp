@@ -126,3 +126,33 @@ ResponseMessage AdminManagementService::pileList(const RequestMessage &request) 
     return ResponseMessage::success(request.requestId,
                                     {{QStringLiteral("piles"), piles}});
 }
+
+ResponseMessage AdminManagementService::stationList(const RequestMessage &request) const
+{
+    QSqlQuery query(m_database);
+    if (!query.exec(QStringLiteral(
+            "SELECT s.id, s.station_no, s.name, s.address, s.longitude, s.latitude, "
+            "COUNT(p.id), COALESCE(SUM(CASE WHEN p.status <> 'OFFLINE' THEN 1 ELSE 0 END), 0) "
+            "FROM charging_station s LEFT JOIN charging_pile p ON p.station_id=s.id "
+            "GROUP BY s.id ORDER BY s.station_no"))) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::DatabaseError,
+                                      query.lastError().text());
+    }
+    QJsonArray stations;
+    while (query.next()) {
+        const int pileCount = query.value(6).toInt();
+        stations.append(QJsonObject{
+            {QStringLiteral("stationId"), query.value(0).toLongLong()},
+            {QStringLiteral("stationNo"), query.value(1).toString()},
+            {QStringLiteral("name"), query.value(2).toString()},
+            {QStringLiteral("address"), query.value(3).toString()},
+            {QStringLiteral("longitude"), query.value(4).toDouble()},
+            {QStringLiteral("latitude"), query.value(5).toDouble()},
+            {QStringLiteral("pileCount"), pileCount},
+            {QStringLiteral("onlineRate"), pileCount > 0
+                 ? query.value(7).toDouble() / pileCount : 0.0}
+        });
+    }
+    return ResponseMessage::success(request.requestId,
+                                    {{QStringLiteral("stations"), stations}});
+}

@@ -104,6 +104,11 @@ int main(int argc, char *argv[])
         [&adminManagement](const RequestMessage &request, const SessionContext &session) {
             return adminManagement.restartPile(request, session.principalId);
         });
+    dispatcher.registerHandler(
+        MessageTypes::AdminStationList, MessageDispatcher::Access::Admin,
+        [&adminManagement](const RequestMessage &request, const SessionContext &) {
+            return adminManagement.stationList(request);
+        });
 
     // 业务负责人通过 registerHandler() 注入 Service 调用。
     // 本网络外壳不伪造登录、订单或数据库结果。
