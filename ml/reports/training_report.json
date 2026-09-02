@@ -1,0 +1,236 @@
+{
+  "schemaVersion": "1.0",
+  "trainedAt": "2026-09-02T08:20:48.806269+00:00",
+  "source": "ml/data/processed/station_hourly_load.csv",
+  "sourceSha256": "665f0d7fe3fb9d8cf592c34ed64eb58d75f3b1f02bacbcc8fadc3f909322b85d",
+  "calendarTimezone": "America/New_York",
+  "stationIds": [
+    1,
+    2,
+    3
+  ],
+  "horizons": {
+    "1h": {
+      "horizonHours": 1,
+      "selectedModel": "hist-gradient-boosting",
+      "modelName": "hgb-1h-v1",
+      "rowCounts": {
+        "train": 56920,
+        "validation": 12197,
+        "test": 12200
+      },
+      "learnedModelValidation": {
+        "overall": {
+          "mae": 0.06941926339725475,
+          "rmse": 0.130564575708735,
+          "seasonalMae": 0.1345372652291547,
+          "seasonalRmse": 0.251278681307283,
+          "maeSkill": 0.484014609045202
+        },
+        "byStation": {
+          "1": {
+            "mae": 0.10148664025526627,
+            "rmse": 0.1703687754660627,
+            "seasonalMae": 0.1723441554943975,
+            "seasonalRmse": 0.2979771980718055,
+            "maeSkill": 0.41113964692254756
+          },
+          "2": {
+            "mae": 0.02473047852076548,
+            "rmse": 0.042359147734692015,
+            "seasonalMae": 0.051255352701080434,
+            "seasonalRmse": 0.08426560603661429,
+            "maeSkill": 0.5175044708990135
+          },
+          "3": {
+            "mae": 0.077229804291609,
+            "rmse": 0.1338949165850035,
+            "seasonalMae": 0.18701451986417655,
+            "seasonalRmse": 0.313195523100447,
+            "maeSkill": 0.5870384591116302
+          }
+        }
+      },
+      "selectedModelTest": {
+        "overall": {
+          "mae": 0.0772799201342971,
+          "rmse": 0.13448952832496025,
+          "seasonalMae": 0.15938451844262294,
+          "seasonalRmse": 0.2706005675510946,
+          "maeSkill": 0.5151353413153661
+        },
+        "byStation": {
+          "1": {
+            "mae": 0.10685472384902778,
+            "rmse": 0.17304566876274102,
+            "seasonalMae": 0.20113000039308176,
+            "seasonalRmse": 0.3243052902020595,
+            "maeSkill": 0.4687280682136207
+          },
+          "2": {
+            "mae": 0.04354635210140467,
+            "rmse": 0.06834425557917884,
+            "seasonalMae": 0.08820825396063371,
+            "seasonalRmse": 0.1344286055928232,
+            "maeSkill": 0.5063233864617829
+          },
+          "3": {
+            "mae": 0.07390498568911048,
+            "rmse": 0.12876825285532195,
+            "seasonalMae": 0.18793825424304142,
+            "seasonalRmse": 0.3099022214547664,
+            "maeSkill": 0.606759220006712
+          }
+        }
+      }
+    },
+    "6h": {
+      "horizonHours": 6,
+      "selectedModel": "hist-gradient-boosting",
+      "modelName": "hgb-6h-v1",
+      "rowCounts": {
+        "train": 56910,
+        "validation": 12195,
+        "test": 12197
+      },
+      "learnedModelValidation": {
+        "overall": {
+          "mae": 0.07881087171227139,
+          "rmse": 0.12631246681570882,
+          "seasonalMae": 0.10315799274292743,
+          "seasonalRmse": 0.1716464397523542,
+          "maeSkill": 0.23601778576023424
+        },
+        "byStation": {
+          "1": {
+            "mae": 0.09940412500101485,
+            "rmse": 0.14734685792532254,
+            "seasonalMae": 0.12447193023332022,
+            "seasonalRmse": 0.1897541515835477,
+            "maeSkill": 0.20139323930557074
+          },
+          "2": {
+            "mae": 0.030190020670342838,
+            "rmse": 0.04250907892156454,
+            "seasonalMae": 0.040268025296189565,
+            "seasonalRmse": 0.058751998450534054,
+            "maeSkill": 0.250273127418552
+          },
+          "3": {
+            "mae": 0.11199251433096112,
+            "rmse": 0.1613000969873656,
+            "seasonalMae": 0.15527043361629883,
+            "seasonalRmse": 0.23438837488211156,
+            "maeSkill": 0.2787260798941622
+          }
+        }
+      },
+      "selectedModelTest": {
+        "overall": {
+          "mae": 0.08835764774427392,
+          "rmse": 0.13029107048060987,
+          "seasonalMae": 0.11998722042305485,
+          "seasonalRmse": 0.18573728333297979,
+          "maeSkill": 0.26360784562939577
+        },
+        "byStation": {
+          "1": {
+            "mae": 0.10679607049966898,
+            "rmse": 0.15054733682866628,
+            "seasonalMae": 0.14361119621912063,
+            "seasonalRmse": 0.21276116432343609,
+            "maeSkill": 0.25635275444178796
+          },
+          "2": {
+            "mae": 0.050519904603925456,
+            "rmse": 0.07290451049639998,
+            "seasonalMae": 0.06640220108043217,
+            "seasonalRmse": 0.09717722126581062,
+            "maeSkill": 0.23918328335635564
+          },
+          "3": {
+            "mae": 0.1100207864956684,
+            "rmse": 0.15375526872230055,
+            "seasonalMae": 0.15496394052065648,
+            "seasonalRmse": 0.22656331068151725,
+            "maeSkill": 0.2900233039633967
+          }
+        }
+      }
+    },
+    "24h": {
+      "horizonHours": 24,
+      "selectedModel": "hist-gradient-boosting",
+      "modelName": "hgb-24h-v1",
+      "rowCounts": {
+        "train": 56872,
+        "validation": 12188,
+        "test": 12188
+      },
+      "learnedModelValidation": {
+        "overall": {
+          "mae": 0.06451502162568207,
+          "rmse": 0.09418596743144969,
+          "seasonalMae": 0.07030766649573351,
+          "seasonalRmse": 0.10276935096091214,
+          "maeSkill": 0.08238994634252239
+        },
+        "byStation": {
+          "1": {
+            "mae": 0.08383013973786957,
+            "rmse": 0.10342120525247145,
+            "seasonalMae": 0.08140593254163388,
+            "seasonalRmse": 0.10208437741979855,
+            "maeSkill": -0.029779244835698826
+          },
+          "2": {
+            "mae": 0.020920229480480033,
+            "rmse": 0.025873033448758895,
+            "seasonalMae": 0.026941182113967642,
+            "seasonalRmse": 0.03342910362906885,
+            "maeSkill": 0.2234850946041469
+          },
+          "3": {
+            "mae": 0.09280987697101505,
+            "rmse": 0.13160544061723414,
+            "seasonalMae": 0.11247888451733516,
+            "seasonalRmse": 0.15544885192350827,
+            "maeSkill": 0.1748684442482068
+          }
+        }
+      },
+      "selectedModelTest": {
+        "overall": {
+          "mae": 0.06644506940908286,
+          "rmse": 0.08823918658931648,
+          "seasonalMae": 0.07806975065296466,
+          "seasonalRmse": 0.10624648962297926,
+          "maeSkill": 0.14890122162110886
+        },
+        "byStation": {
+          "1": {
+            "mae": 0.07890053415854775,
+            "rmse": 0.10074779462247961,
+            "seasonalMae": 0.09584204277307895,
+            "seasonalRmse": 0.12170264918600175,
+            "maeSkill": 0.1767648948660545
+          },
+          "2": {
+            "mae": 0.041431477611459294,
+            "rmse": 0.054242905864777265,
+            "seasonalMae": 0.04072181314071761,
+            "seasonalRmse": 0.05377946914338148,
+            "maeSkill": -0.017427133420837126
+          },
+          "3": {
+            "mae": 0.08030740328924256,
+            "rmse": 0.10273060187777892,
+            "seasonalMae": 0.10019340217822342,
+            "seasonalRmse": 0.13068180319331524,
+            "maeSkill": 0.19847613172779344
+          }
+        }
+      }
+    }
+  }
+}

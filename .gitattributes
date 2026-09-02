@@ -1,0 +1,7 @@
+# 数据集保持来源字节和 CSV 标准 CRLF，不执行平台行尾转换或文本差异展开。
+ml/data/raw/*.csv -text -diff
+ml/data/processed/*.csv -text -diff
+
+# SQLite 和已训练模型是二进制发布产物。
+database/*.db -text -diff
+ml/models/*.joblib -text -diff

@@ -404,6 +404,33 @@ stationLoad = chargingPileMinutes / (totalPileCount * windowMinutes)
 
 远程重启必须记录管理员、电桩、操作前状态、操作后状态和结果消息。
 
+### 5.9 `data_import_batch`
+
+用途：记录公开数据或模拟数据的来源、授权、文件哈希、时间平移量和质量计数。核心字段为 `batch_no`、`source_name`、`source_url`、`license_name`、`source_sha256`、`source_row_count`、`accepted_row_count` 和 `imported_at`。`batch_no` 全局唯一，接收数量不得超过来源数量。
+
+### 5.10 `charging_session_history`
+
+用途：保存外部数据真实提供的会话事实，不伪造成 `charging_order`、用户消费或钱包交易。字段包括来源批次、来源会话键、项目站点 ID、UTC 开始/结束时间、持续秒数和电量。`batch_id + source_session_key` 唯一。
+
+该表只用于模型历史和数据溯源，不参与用户订单状态机、计费、支付和营收统计。
+
+### 5.11 `station_hourly_metric`
+
+用途：保存服务端可直接导出给 ML 的连续小时指标。主要字段如下：
+
+| 字段 | 说明 |
+| --- | --- |
+| `station_id`, `hour_start` | 项目站点和 UTC 小时起点 |
+| `total_pile_count` | 该来源在该小时使用的容量基数 |
+| `session_starts`, `energy_kwh` | 小时会话数和充电量 |
+| `charging_pile_minutes` | 所有充电占用分钟之和 |
+| `average_occupied_count`, `peak_occupied_count` | 平均及峰值占用数 |
+| `average_available_count`, `station_load` | 平均空闲数和 0 到 1 负荷率 |
+| `reserved_pile_minutes`, `fault_pile_minutes`, `offline_pile_minutes` | 业务运行数据可补充的不可用原因 |
+| `source_type`, `source_batch_id` | `BUSINESS` 或 `CARY_SIMULATION` 及来源批次 |
+
+`lag_24`、`lag_168`、滚动均值、日历周期和 one-hot 等模型特征必须由 Python 动态构造，不写入数据库。
+
 ## 6. 推荐索引
 
 ```sql
@@ -423,6 +450,11 @@ CREATE INDEX idx_order_status_created ON charging_order(status, created_at);
 CREATE INDEX idx_recharge_user_created ON recharge_record(user_id, created_at);
 CREATE INDEX idx_prediction_station_time ON prediction(station_id, prediction_time);
 CREATE INDEX idx_operation_target_created ON operation_log(target_type, target_id, created_at);
+CREATE UNIQUE INDEX idx_import_batch_no ON data_import_batch(batch_no);
+CREATE UNIQUE INDEX idx_session_batch_key ON charging_session_history(batch_id, source_session_key);
+CREATE INDEX idx_session_station_start ON charging_session_history(station_id, start_at);
+CREATE UNIQUE INDEX idx_metric_station_hour_source ON station_hourly_metric(station_id, hour_start, source_type);
+CREATE INDEX idx_metric_source_hour ON station_hourly_metric(source_type, hour_start);
 ```
 
 说明：
@@ -675,9 +707,9 @@ Python ML 不直接查询下列来源表。Qt/C++ 服务端按以下字段导出
 
 | 来源 | 字段 |
 | --- | --- |
-| `charging_order` | `station_id`, `pile_id`, `start_at`, `end_at`, `charge_minutes`, `energy_kwh`, `amount_fen`, `status` |
-| `charging_station` | `id`, `district`, `price_fen_per_kwh`, `service_fee_fen_per_kwh` |
-| `charging_pile` | `station_id`, `type`, `power_kw`, `status` |
+| `station_hourly_metric` | `hour_start`, `station_id`, `total_pile_count`, `session_starts`, `energy_kwh`, `station_load` |
+
+服务端导出时将 `hour_start` 命名为 `timestamp`，并按 `station_id, hour_start` 排序。每个站点必须每小时一行；没有会话的小时也要补零。`database/simulation/export_ml_history.py` 是开发期参考实现，生产运行仍由 Qt/C++ 服务端完成相同导出。
 
 ML 输出的每条预测记录必须提供以下字段，由 Qt/C++ 服务端写入 `prediction`：
 

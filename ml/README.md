@@ -6,8 +6,10 @@
 
 ```text
 Town of Cary 原始会话 CSV
-        ↓ prepare_cary_data.py
-连续 UTC 站点小时历史 CSV
+        ↓ database/simulation/build_cary_database.py
+SQLite 会话历史 + 站点小时指标
+        ↓ database/simulation/export_ml_history.py
+标准连续 UTC 站点小时历史 CSV
         ↓ train.py
 三个模型文件 + 独立测试集评估报告
         ↓ predict.py
@@ -26,11 +28,11 @@ SQLite prediction 表 → Qt 客户端 / Web 大屏
 | 路径 | 作用 |
 | --- | --- |
 | `config/` | 外部数据站点到项目 `stationId` 的显式映射 |
-| `data/raw/` | 原始数据，本地使用且不进入 Git |
-| `data/processed/` | 连续 UTC 小时历史，本地使用且不进入 Git |
-| `models/` | 训练模型，本地生成且不进入 Git |
+| `data/raw/` | CC0 原始数据；当前冻结版本随仓库发布 |
+| `data/processed/` | 从模拟数据库导出的标准连续 UTC 小时历史 |
+| `models/` | 与固定 Python 依赖配套的 1h/6h/24h 已训练模型 |
 | `output/` | 交给服务端导入的预测 JSON，本地生成且不进入 Git |
-| `reports/` | 数据质量和模型评估报告；生成的 JSON 不进入 Git |
+| `reports/` | 随模型提交的数据质量和独立测试集评估报告 |
 | `tests/` | 特征、契约和端到端自动化测试 |
 | `prepare_cary_data.py` | 清洗并聚合 Town of Cary 会话 |
 | `features.py` | 训练和预测共用的无泄漏特征 |
@@ -48,19 +50,23 @@ source .venv/bin/activate
 python -m pip install -r ml/requirements.txt
 ```
 
-Windows PowerShell 激活命令为 `.venv\\Scripts\\Activate.ps1`。虚拟环境和所有大数据/模型产物都已忽略；本项目工作目录应继续放在 E 盘或虚拟机的 `/home/bit/workspace`。
+Windows PowerShell 激活命令为 `.venv\\Scripts\\Activate.ps1`。虚拟环境和运行时预测批次已忽略；冻结的数据、模型和报告随功能分支提交，便于队友直接复现。
 
-## 1. 准备真实数据
+## 1. 从公开数据构建模拟数据库并导出模型输入
 
 ```bash
-python -m ml.prepare_cary_data \
+.venv/bin/python -m database.simulation.build_cary_database \
   --input ml/data/raw/cary_ev_charging_sessions.csv \
-  --output ml/data/processed/station_hourly_load.csv \
-  --from-date 2019-01-01 \
-  --report ml/reports/data_quality.json
+  --database database/evcharge_cary_simulation.db \
+  --from-date 2019-01-01
+
+.venv/bin/python -m database.simulation.export_ml_history \
+  --database database/evcharge_cary_simulation.db \
+  --batch-no CARY-2019-V1 \
+  --output ml/data/processed/station_hourly_load.csv
 ```
 
-输出使用连续 UTC 小时轴，避免夏令时产生重复或缺失小时。地址只通过 `config/station_mapping.json` 映射，不会根据全数据自动猜测站点容量。
+模拟数据库保存来源会话和连续小时指标。导出使用 UTC 小时轴，避免夏令时产生重复或缺失小时。地址只通过 `config/station_mapping.json` 映射，不会根据全数据自动猜测站点容量。
 
 ## 2. 训练与评估
 

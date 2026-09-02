@@ -279,10 +279,20 @@ Qt/C++ 服务端在定时任务、管理员触发或演示流程中生成一个�
 
 ```text
 ml/data/<batchId>/history.csv
-ml/data/<batchId>/orders.csv
 ```
 
-导出字段、来源和统计口径以 `docs/04-DATABASE.md` 第 9.5 节为准；服务端只导出模型所需的字段，不导出用户手机号、昵称、头像、余额等个人信息。
+CSV 必填表头及含义：
+
+| 字段 | 类型 | 约束 |
+| --- | --- | --- |
+| `timestamp` | ISO 8601 时间 | UTC、整点、每站连续每小时一行 |
+| `station_id` | 整数 | 必须引用存在的站点 |
+| `total_pile_count` | 整数 | 大于 0 |
+| `session_starts` | 整数 | 大于等于 0 |
+| `energy_kwh` | 数值 | 大于等于 0 |
+| `station_load` | 数值 | 0 到 1 |
+
+可附加 `charging_minutes`、`average_occupied_count`、`peak_occupied_count` 和 `average_available_count`，当前模型会保留但不要求服务端导出。服务端只导出模型所需字段，不导出用户手机号、昵称、头像、余额等个人信息；来源和统计口径以 `docs/04-DATABASE.md` 第 9.5 节为准。
 
 ### 14.2 ML 输出
 

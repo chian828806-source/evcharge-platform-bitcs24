@@ -1,14 +1,16 @@
 # database/ — 数据库脚本
 
-对齐 `docs/04-DATABASE.md` 新版契约（8 表 + 15 索引 + 事务规则）。
+对齐 `docs/04-DATABASE.md` 契约（11 表 + 20 索引 + 事务规则 + ML 历史交换）。
 
 ## 文件
 
 | 文件 | 作用 |
 | --- | --- |
-| `schema.sql` | 建库脚本：8 张表 + 15 个索引，可重复执行（先 DROP 再 CREATE） |
+| `schema.sql` | 建库脚本：11 张表 + 20 个索引，可重复执行（先 DROP 再 CREATE） |
 | `init_data.sql` | 演示种子数据：满足 04 文档第 11 节全部初始化要求 |
 | `evcharge.db` | 运行时生成的 SQLite 数据库文件（已被 .gitignore 忽略，不入库） |
+| `evcharge_cary_simulation.db` | 含 CC0 历史会话和小时指标的预构建演示数据库 |
+| `simulation/` | 可重复建库和导出模型 CSV 的参考工具 |
 
 ## 快速开始
 
@@ -23,6 +25,22 @@ sqlite> .read database/init_data.sql
 ```
 
 > 注意：`schema.sql` 会先 DROP 再 CREATE，**重复执行会清空全部业务数据**。
+
+## 数据库与 ML 闭环
+
+```bash
+.venv/bin/python -m database.simulation.build_cary_database \
+  --input ml/data/raw/cary_ev_charging_sessions.csv \
+  --database database/evcharge_cary_simulation.db \
+  --from-date 2019-01-01
+
+.venv/bin/python -m database.simulation.export_ml_history \
+  --database database/evcharge_cary_simulation.db \
+  --batch-no CARY-2019-V1 \
+  --output ml/data/processed/station_hourly_load.csv
+```
+
+这些 Python 脚本是开发期的可复现参考实现。正式运行时由 Qt/C++ 服务端导出相同 CSV、校验预测 JSON并用事务写入 `prediction`；ML 不直接连接生产数据库。
 
 ## 内置演示账号
 
