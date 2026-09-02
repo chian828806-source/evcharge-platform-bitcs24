@@ -1,6 +1,7 @@
 import { DashboardStore } from '../js/dashboard-store.js';
 import { DashboardWebSocketClient } from '../js/websocket-client.js';
-import { DashboardMockSource } from '../mock/dashboard-mock.js';
+import { DashboardCharts } from '../js/charts.js';
+import { DashboardMockSource, dashboardMockData } from '../mock/dashboard-mock.js';
 
 const results = []; const check = (condition, name) => results.push(`${condition ? 'PASS' : 'FAIL'} ${name}`);
 const store = new DashboardStore(); let snapshots = 0; store.subscribe(() => { snapshots += 1; });
@@ -20,4 +21,17 @@ await new Promise((resolve) => setTimeout(resolve, 10)); const secondSocket = re
 check(secondSocket !== firstSocket && secondSocket.sent[0].type === 'DASHBOARD_SUBSCRIBE', 'client reconnects and resubscribes'); reconnectingClient.disconnect();
 let mockTopics = []; const mock = new DashboardMockSource({ onUpdate: ({ topic }) => mockTopics.push(topic) }); mock.refresh();
 check(mockTopics.length === 4, 'mock source emits all four topics');
+const mockTrend = dashboardMockData().revenueTrend.ranges;
+check(mockTrend['7d'].items.length === 7 && mockTrend['30d'].items.length === 30 && mockTrend['30d'].items.every((item) => Number.isFinite(item.energyKwh) && Number.isFinite(item.revenueFen)), 'mock provides complete 7d and 30d energy and revenue data');
+
+const fakeInstances = [];
+const fakeEcharts = { init: () => { const instance = { options: [], clears: 0, resizes: 0, setOption(option) { this.options.push(option); }, clear() { this.clears += 1; }, resize() { this.resizes += 1; } }; fakeInstances.push(instance); return instance; } };
+const charts = new DashboardCharts({ pileStatus: {}, revenueTrend: {}, prediction: {} }, fakeEcharts);
+charts.initOnce(); charts.initOnce();
+check(fakeInstances.length === 3, 'charts initialize each instance only once');
+check(charts.updateRevenueTrend({ range: '7d', items: [{ date: '2026-09-01', energyKwh: 128.5, revenueFen: 93600 }] }, '7d'), 'revenue trend accepts energyKwh and revenueFen');
+const revenueOption = fakeInstances[1].options.at(-1);
+check(revenueOption.series.length === 2 && revenueOption.series[0].data[0] === 128.5 && revenueOption.series[1].data[0] === 936, 'revenue chart converts Fen only for display and renders both series');
+check(!charts.updatePileStatus(null) && !charts.updateRevenueTrend(null, '7d') && !charts.updatePrediction(null, { stationId: 'all', horizon: '1h' }), 'empty chart data is safe and clears stale options');
+charts.resize(); check(fakeInstances.every((instance) => instance.resizes === 1), 'charts resize safely');
 document.getElementById('result').textContent = `${results.join('\n')}\nTOTAL_FAILURES=${results.filter((line) => line.startsWith('FAIL')).length}`;

@@ -7,7 +7,7 @@ export class DashboardController {
     this.store = store;
     this.charts = charts;
     this.elements = elements;
-    this.filters = { stationId: 'all', horizon: '1h', range: 'days7' };
+    this.filters = { stationId: 'all', horizon: '1h', range: '7d' };
     this.source = null;
   }
 
@@ -31,9 +31,9 @@ export class DashboardController {
     this.renderConnection(state);
     this.renderSummary(state.data.summary);
     this.renderPredictionFilters(state.data.prediction);
-    this.charts.updatePileStatus(state.data.pileStatus);
-    this.charts.updateRevenueTrend(state.data.revenueTrend, this.filters.range);
-    this.charts.updatePrediction(state.data.prediction, this.filters);
+    this.elements.pileStatusEmpty.hidden = this.charts.updatePileStatus(state.data.pileStatus);
+    this.elements.revenueTrendEmpty.hidden = this.charts.updateRevenueTrend(state.data.revenueTrend, this.filters.range);
+    this.elements.predictionEmpty.hidden = this.charts.updatePrediction(state.data.prediction, this.filters);
     this.renderPredictionDetails(state.data.prediction);
   }
 

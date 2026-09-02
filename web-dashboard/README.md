@@ -7,9 +7,9 @@
 - `DashboardWebSocketClient`：连接 `/dashboard`、发送 `DASHBOARD_SUBSCRIBE`、处理 `DASHBOARD_UPDATE`、安全忽略非法消息、指数退避重连并在重连后自动订阅。
 - `DashboardStore`：集中保存四个 topic、连接状态、最后更新时间和最后一次有效数据。断线不会清空页面数据。
 - `DashboardController`：将 Store 数据绑定到指标、筛选器、表格和交互入口。
-- `DashboardCharts`：每个 ECharts 实例只初始化一次，后续只调用 `setOption()`；空数据、缺失字段和 resize 都安全处理。
+- `DashboardCharts`：页面加载本地 `vendor/echarts.esm.min.js`，每个实例只初始化一次，后续只调用 `setOption()`；空数据会清除旧图并给出提示，缺失字段和 resize 都安全处理。
 - 可关闭 Mock 模式：所有演示数据集中在 `mock/dashboard-mock.js`，不散落在图表或页面代码中。
-- `tests/dashboard-logic-tests.html`：不依赖前端框架的浏览器测试页，覆盖 Store、订阅、消息路由和 Mock 四 topic。
+- `tests/dashboard-logic-tests.html`：不依赖前端框架的浏览器测试页，覆盖 Store、订阅、消息路由、Mock、Charts 初始化、更新、空数据和 resize。
 
 本模块刻意不进行视觉设计，只提供基础 HTML/CSS 结构以验证功能。
 
@@ -94,14 +94,21 @@ http://<dashboard-host>:8080/?mock=0&host=<server-host>&port=18081
 }
 ```
 
-`revenueTrend` 以分保存金额，浏览器仅在显示时换算元：
+`revenueTrend` 的每一项同时包含日期、充电量和以分为单位的营收。浏览器只在图表显示时将 `revenueFen` 换算为元；`7d` / `30d` 均使用同一项结构：
 
 ```json
 {
-  "days7": [{ "date": "09-02", "revenueFen": 93600 }],
-  "days30": []
+  "ranges": {
+    "7d": {
+      "range": "7d",
+      "items": [{ "date": "2026-09-01", "energyKwh": 128.5, "revenueFen": 93600 }]
+    },
+    "30d": { "range": "30d", "items": [] }
+  }
 }
 ```
+
+前端也兼容服务端按范围单独推送的最小 payload：`{ "range": "7d", "items": [...] }`。Qt/Web 联调时应确认服务端是一次发送两个范围，还是按范围分别推送；两种情况都不改变既有 `revenueTrend` topic 或字段语义。
 
 `prediction` 复用 API/ML 的 `stationId`、`horizon`、`predictedLoad`、`predictedAvailableCount`、`peakLevel` 语义；`stationName` 仅用于展示，可选：
 
@@ -124,11 +131,18 @@ http://<dashboard-host>:8080/?mock=0&host=<server-host>&port=18081
 
 ## Qt 服务端联调 TODO
 
-当前 `DashboardWebSocketServer::publish(topic, data)` 已经完成连接、订阅和广播，但 Qt 业务 Service/Repository 尚未提交。因此目前没有：
+当前默认 Mock 只用于独立开发、演示和测试。真实模式下浏览器仍只通过既有 `/dashboard` WebSocket 接收四类 topic，绝不直接访问数据库。
 
-1. 业务统计聚合；
-2. 订阅后的 initial snapshot；
-3. 订单、充电桩、预测变化触发的 publish 调用。
+当前 `DashboardWebSocketServer::publish(topic, data)` 已经完成连接、订阅和广播，但 Qt 业务 Service/Repository 尚未提交。因此以下项目仍未完成：
+
+1. Qt 业务统计聚合；
+2. `summary` 的真实来源；
+3. `pileStatus` 的真实来源；
+4. `revenueTrend` 的真实来源；
+5. `prediction` 的真实来源；
+6. 业务变化后的 `publish(topic, data)` 调用；
+7. WebSocket 订阅后的 initial snapshot；
+8. Qt / Web 最终联调。
 
 后续 Qt 侧应在业务动作完成并获得可信统计后，调用既有接口：
 

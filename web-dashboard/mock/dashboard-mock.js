@@ -4,11 +4,16 @@ export const dashboardMockData = () => ({
   summary: { todayEnergyKwh: 128.5, todayRevenueFen: 93600, totalOrderCount: 42, stationLoad: 0.62 },
   pileStatus: { counts: { AVAILABLE: 12, RESERVED: 2, CHARGING: 8, FAULT: 1, OFFLINE: 1, RESTARTING: 0 } },
   revenueTrend: {
-    days7: [
-      { date: '08-27', revenueFen: 8200 }, { date: '08-28', revenueFen: 10600 }, { date: '08-29', revenueFen: 9300 },
-      { date: '08-30', revenueFen: 12100 }, { date: '08-31', revenueFen: 11200 }, { date: '09-01', revenueFen: 14900 }, { date: '09-02', revenueFen: 93600 }
-    ],
-    days30: []
+    ranges: {
+      '7d': { range: '7d', items: [
+        { date: '08-27', energyKwh: 61.2, revenueFen: 8200 }, { date: '08-28', energyKwh: 74.8, revenueFen: 10600 }, { date: '08-29', energyKwh: 68.4, revenueFen: 9300 },
+        { date: '08-30', energyKwh: 85.1, revenueFen: 12100 }, { date: '08-31', energyKwh: 79.6, revenueFen: 11200 }, { date: '09-01', energyKwh: 98.3, revenueFen: 14900 }, { date: '09-02', energyKwh: 128.5, revenueFen: 93600 }
+      ] },
+      '30d': { range: '30d', items: Array.from({ length: 30 }, (_, index) => {
+        const date = new Date(Date.UTC(2026, 7, 4 + index)).toISOString().slice(0, 10);
+        return { date, energyKwh: 48 + ((index * 13) % 57) + (index % 3) * 0.4, revenueFen: 6800 + ((index * 1700) % 9600) };
+      }) }
+    }
   },
   prediction: {
     generatedAt: now(),
