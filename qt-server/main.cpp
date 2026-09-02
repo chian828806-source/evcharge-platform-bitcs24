@@ -9,6 +9,7 @@
 #include "database/databasemanager.h"
 #include "services/adminauthservice.h"
 #include "services/adminanalyticsservice.h"
+#include "services/adminmanagementservice.h"
 #include "shared/protocol/messagetypes.h"
 
 #include <QCommandLineOption>
@@ -72,6 +73,7 @@ int main(int argc, char *argv[])
     }
     AdminAuthService adminAuth(databaseManager.database(), &sessions);
     AdminAnalyticsService adminAnalytics(databaseManager.database());
+    AdminManagementService adminManagement(databaseManager.database());
     dispatcher.registerHandler(
         MessageTypes::AdminLogin, MessageDispatcher::Access::Public,
         [&adminAuth](const RequestMessage &request, const SessionContext &) {
@@ -91,6 +93,11 @@ int main(int argc, char *argv[])
         MessageTypes::AdminPileStatusSummary, MessageDispatcher::Access::Admin,
         [&adminAnalytics](const RequestMessage &request, const SessionContext &) {
             return adminAnalytics.pileStatusSummary(request);
+        });
+    dispatcher.registerHandler(
+        MessageTypes::AdminPileList, MessageDispatcher::Access::Admin,
+        [&adminManagement](const RequestMessage &request, const SessionContext &) {
+            return adminManagement.pileList(request);
         });
 
     // 业务负责人通过 registerHandler() 注入 Service 调用。
