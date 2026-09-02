@@ -1,5 +1,5 @@
 # 功能：构建独立运行的TCP + WebSocket业务服务端。
-QT += core network websockets
+QT += core network websockets sql
 QT -= gui
 
 CONFIG += console c++17
@@ -15,3 +15,5 @@ SOURCES += $$PWD/main.cpp
 
 include($$REPO_ROOT/shared/protocol/protocol.pri)
 include($$PWD/network/network.pri)
+include($$PWD/database/database.pri)
+include($$PWD/services/services.pri)

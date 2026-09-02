@@ -6,6 +6,9 @@
 #include "network/messagedispatcher.h"
 #include "network/sessionmanager.h"
 #include "network/socketserver.h"
+#include "database/databasemanager.h"
+#include "services/adminauthservice.h"
+#include "shared/protocol/messagetypes.h"
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
@@ -31,6 +34,12 @@ int main(int argc, char *argv[])
         QStringLiteral("18080")
     });
     parser.addOption({
+        {QStringLiteral("d"), QStringLiteral("database")},
+        QStringLiteral("SQLite database path"),
+        QStringLiteral("path"),
+        QStringLiteral("database/evcharge.db")
+    });
+    parser.addOption({
         {QStringLiteral("w"), QStringLiteral("websocket-port")},
         QStringLiteral("WebSocket listen port"),
         QStringLiteral("port"),
@@ -54,6 +63,18 @@ int main(int argc, char *argv[])
     // 对象按依赖顺序创建，并存活到application退出。
     SessionManager sessions;
     MessageDispatcher dispatcher(&sessions);
+    DatabaseManager databaseManager;
+    QString databaseError;
+    if (!databaseManager.open(parser.value(QStringLiteral("database")), &databaseError)) {
+        QTextStream(stderr) << "Database open failed: " << databaseError << '\n';
+        return 1;
+    }
+    AdminAuthService adminAuth(databaseManager.database(), &sessions);
+    dispatcher.registerHandler(
+        MessageTypes::AdminLogin, MessageDispatcher::Access::Public,
+        [&adminAuth](const RequestMessage &request, const SessionContext &) {
+            return adminAuth.login(request);
+        });
 
     // 业务负责人通过 registerHandler() 注入 Service 调用。
     // 本网络外壳不伪造登录、订单或数据库结果。
