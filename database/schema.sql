@@ -14,8 +14,12 @@
 PRAGMA foreign_keys = ON;   -- SQLite 默认关闭外键，每次连接需重新开启
 
 -- 依赖表必须先删除，才能在启用外键后重复初始化。
+DROP TABLE IF EXISTS station_hourly_metric;
+DROP TABLE IF EXISTS charging_session_history;
+DROP TABLE IF EXISTS data_import_batch;
 DROP TABLE IF EXISTS operation_log;
 DROP TABLE IF EXISTS prediction;
+DROP TABLE IF EXISTS prediction_batch;
 DROP TABLE IF EXISTS recharge_record;
 DROP TABLE IF EXISTS charging_order;
 DROP TABLE IF EXISTS charging_pile;
@@ -161,12 +165,20 @@ CREATE TABLE recharge_record (
 );
 
 -- ----------------------------------------------------------------------------
--- 7. 预测结果表 prediction —— ML 输出，供推荐/预警/大屏（04 文档 5.7）
+-- 7. 预测批次和结果表 —— ML 输出，供推荐/预警/大屏（04 文档 5.7）
 --    负荷统一口径(8.6)：stationLoad = chargingPileMinutes / (totalPileCount*windowMinutes)
 --    只统计 CHARGING 占用时长；predicted_load 取值 0~1
 -- ----------------------------------------------------------------------------
+CREATE TABLE prediction_batch (
+    batch_id     TEXT PRIMARY KEY,
+    status       TEXT NOT NULL CHECK (status IN ('IMPORTED')),
+    generated_at TEXT NOT NULL,
+    created_at   TEXT NOT NULL
+);
+
 CREATE TABLE prediction (
     id                        INTEGER PRIMARY KEY AUTOINCREMENT,  -- 预测ID (predictionId)
+    batch_id                  TEXT    NOT NULL REFERENCES prediction_batch(batch_id),
     station_id                INTEGER NOT NULL REFERENCES charging_station(id),
     prediction_time           TEXT    NOT NULL,       -- 被预测的目标时间点
     horizon                   TEXT    NOT NULL,       -- 预测窗口：1h / 6h / 24h
@@ -185,6 +197,9 @@ CREATE TABLE prediction (
     CHECK (horizon IN ('1h', '6h', '24h')),
     CHECK (peak_level IN ('LOW', 'MEDIUM', 'HIGH'))
 );
+
+CREATE UNIQUE INDEX idx_prediction_batch_key
+ON prediction(batch_id, station_id, prediction_time, horizon);
 
 -- ----------------------------------------------------------------------------
 -- 8. 操作日志表 operation_log —— 管理员操作/远程重启/冻结解冻留痕（04 文档 5.8）
@@ -207,6 +222,84 @@ CREATE TABLE operation_log (
     CHECK (result IN ('SUCCESS', 'FAILED'))
 );
 
+-- ----------------------------------------------------------------------------
+-- 9. 外部数据导入批次 —— 记录公开数据来源、授权、哈希和清洗数量
+--    业务表不伪造公开数据中不存在的用户、支付和订单状态字段。
+-- ----------------------------------------------------------------------------
+CREATE TABLE data_import_batch (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    batch_no           TEXT    NOT NULL,
+    source_name        TEXT    NOT NULL,
+    source_url         TEXT,
+    license_name       TEXT,
+    source_sha256      TEXT    NOT NULL,
+    time_shift_days    INTEGER NOT NULL DEFAULT 0,
+    source_row_count   INTEGER NOT NULL,
+    accepted_row_count INTEGER NOT NULL,
+    imported_at        TEXT    NOT NULL,
+    note               TEXT,
+    CHECK (source_row_count >= 0),
+    CHECK (accepted_row_count >= 0),
+    CHECK (accepted_row_count <= source_row_count)
+);
+
+-- ----------------------------------------------------------------------------
+-- 10. 外部充电会话历史 —— 保存数据集中真实存在的会话事实
+--     时间按 UTC 的 yyyy-MM-dd HH:mm:ss 保存，不参与钱包和订单事务。
+-- ----------------------------------------------------------------------------
+CREATE TABLE charging_session_history (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    batch_id            INTEGER NOT NULL REFERENCES data_import_batch(id),
+    source_session_key  TEXT    NOT NULL,
+    station_id          INTEGER NOT NULL REFERENCES charging_station(id),
+    source_station_name TEXT,
+    start_at            TEXT    NOT NULL,
+    end_at              TEXT    NOT NULL,
+    duration_seconds    INTEGER NOT NULL,
+    energy_kwh          REAL    NOT NULL,
+    created_at          TEXT    NOT NULL,
+    CHECK (duration_seconds > 0),
+    CHECK (energy_kwh >= 0),
+    CHECK (end_at > start_at)
+);
+
+-- ----------------------------------------------------------------------------
+-- 11. 站点小时指标 —— 服务端导出给 ML 的稳定数据契约
+--     lag、滚动均值等模型特征由 Python 动态计算，不在数据库中重复保存。
+-- ----------------------------------------------------------------------------
+CREATE TABLE station_hourly_metric (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    station_id               INTEGER NOT NULL REFERENCES charging_station(id),
+    hour_start               TEXT    NOT NULL,
+    total_pile_count         INTEGER NOT NULL,
+    session_starts           INTEGER NOT NULL DEFAULT 0,
+    energy_kwh               REAL    NOT NULL DEFAULT 0,
+    charging_pile_minutes    REAL    NOT NULL DEFAULT 0,
+    average_occupied_count   REAL    NOT NULL DEFAULT 0,
+    peak_occupied_count      INTEGER NOT NULL DEFAULT 0,
+    average_available_count  REAL    NOT NULL DEFAULT 0,
+    station_load             REAL    NOT NULL DEFAULT 0,
+    reserved_pile_minutes    REAL    NOT NULL DEFAULT 0,
+    fault_pile_minutes       REAL    NOT NULL DEFAULT 0,
+    offline_pile_minutes     REAL    NOT NULL DEFAULT 0,
+    source_type              TEXT    NOT NULL DEFAULT 'BUSINESS',
+    source_batch_id          INTEGER REFERENCES data_import_batch(id),
+    created_at               TEXT    NOT NULL,
+    updated_at               TEXT    NOT NULL,
+    CHECK (total_pile_count > 0),
+    CHECK (session_starts >= 0),
+    CHECK (energy_kwh >= 0),
+    CHECK (charging_pile_minutes >= 0),
+    CHECK (average_occupied_count >= 0 AND average_occupied_count <= total_pile_count),
+    CHECK (peak_occupied_count >= 0 AND peak_occupied_count <= total_pile_count),
+    CHECK (average_available_count >= 0 AND average_available_count <= total_pile_count),
+    CHECK (station_load >= 0 AND station_load <= 1),
+    CHECK (reserved_pile_minutes >= 0),
+    CHECK (fault_pile_minutes >= 0),
+    CHECK (offline_pile_minutes >= 0),
+    CHECK (source_type IN ('BUSINESS', 'CARY_SIMULATION'))
+);
+
 -- ============================================================================
 -- 索引（04 文档第 6 节：唯一性约束 + 高频查询覆盖）
 -- ============================================================================
@@ -226,3 +319,8 @@ CREATE INDEX idx_order_status_created    ON charging_order(status, created_at); 
 CREATE INDEX idx_recharge_user_created   ON recharge_record(user_id, created_at);
 CREATE INDEX idx_prediction_station_time ON prediction(station_id, prediction_time);
 CREATE INDEX idx_operation_target_created ON operation_log(target_type, target_id, created_at);
+CREATE UNIQUE INDEX idx_import_batch_no ON data_import_batch(batch_no);
+CREATE UNIQUE INDEX idx_session_batch_key ON charging_session_history(batch_id, source_session_key);
+CREATE INDEX idx_session_station_start ON charging_session_history(station_id, start_at);
+CREATE UNIQUE INDEX idx_metric_station_hour_source ON station_hourly_metric(station_id, hour_start, source_type);
+CREATE INDEX idx_metric_source_hour ON station_hourly_metric(source_type, hour_start);

@@ -5,3 +5,27 @@ GIT-AGENT-HANDOFF.md
 *.db
 *.sqlite
 *.sqlite3
+!/database/evcharge_cary_simulation.db
+
+# Python caches and local virtual environments.
+__pycache__/
+*.py[cod]
+.venv/
+
+# Public source datasets, generated features, model binaries and runtime batches.
+/ml/data/raw/*
+!/ml/data/raw/README.md
+!/ml/data/raw/cary_ev_charging_sessions.csv
+/ml/data/processed/*
+!/ml/data/processed/README.md
+!/ml/data/processed/station_hourly_load.csv
+/ml/models/*
+!/ml/models/README.md
+!/ml/models/load_1h.joblib
+!/ml/models/load_6h.joblib
+!/ml/models/load_24h.joblib
+/ml/output/*
+!/ml/output/README.md
+/ml/reports/*.json
+!/ml/reports/data_quality.json
+!/ml/reports/training_report.json
