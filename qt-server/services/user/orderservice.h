@@ -9,6 +9,14 @@
 
 class DatabaseManager;
 class OrderRepository;
+
+struct OrderListResult
+{
+    QList<ChargingOrderInfo> items;
+    int page = 1;
+    int pageSize = 20;
+    qint64 total = 0;
+};
 class QDateTime;
 class QSqlDatabase;
 class UserRepository;
@@ -33,6 +41,8 @@ public:
                  OrderRepository *orderRepository);
 
     ServiceResult<ActiveOrderResult> activeOrder(qint64 userId);
+    ServiceResult<OrderListResult> list(qint64 userId, int page, int pageSize,
+                                        const QString &status);
     ServiceResult<ChargingOrderInfo> create(qint64 userId, qint64 pileId);
     ServiceResult<ChargingOrderInfo> start(qint64 userId, qint64 orderId);
     ServiceResult<ChargingOrderInfo> stop(qint64 userId, qint64 orderId);

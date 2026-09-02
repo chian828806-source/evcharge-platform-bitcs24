@@ -17,6 +17,8 @@ public:
                                const SessionContext &context);
     ResponseMessage detailGet(const RequestMessage &request,
                               const SessionContext &context);
+    ResponseMessage recommendation(const RequestMessage &request,
+                                   const SessionContext &context);
 
 private:
     StationService *m_stationService = nullptr;

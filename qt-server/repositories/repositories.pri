@@ -6,7 +6,8 @@ HEADERS += $$REPOSITORY_DIR/repositorybase.h \
            $$REPOSITORY_DIR/stationrepository.h \
            $$REPOSITORY_DIR/pilerepository.h \
            $$REPOSITORY_DIR/orderrepository.h \
-           $$REPOSITORY_DIR/operationlogrepository.h
+           $$REPOSITORY_DIR/operationlogrepository.h \
+           $$REPOSITORY_DIR/predictionrepository.h
 
 SOURCES += $$REPOSITORY_DIR/repositorybase.cpp \
            $$REPOSITORY_DIR/adminrepository.cpp \
@@ -14,4 +15,5 @@ SOURCES += $$REPOSITORY_DIR/repositorybase.cpp \
            $$REPOSITORY_DIR/stationrepository.cpp \
            $$REPOSITORY_DIR/pilerepository.cpp \
            $$REPOSITORY_DIR/orderrepository.cpp \
-           $$REPOSITORY_DIR/operationlogrepository.cpp
+           $$REPOSITORY_DIR/operationlogrepository.cpp \
+           $$REPOSITORY_DIR/predictionrepository.cpp

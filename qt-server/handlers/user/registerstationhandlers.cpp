@@ -23,4 +23,9 @@ void registerStationHandlers(MessageDispatcher *dispatcher, StationHandler *stat
         [stationHandler](const RequestMessage &request, const SessionContext &context) {
             return stationHandler->detailGet(request, context);
         });
+    dispatcher->registerHandler(
+        MessageTypes::PredictionRecommendation, MessageDispatcher::Access::User,
+        [stationHandler](const RequestMessage &request, const SessionContext &context) {
+            return stationHandler->recommendation(request, context);
+        });
 }

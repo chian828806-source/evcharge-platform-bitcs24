@@ -63,6 +63,57 @@ std::optional<ChargingOrderInfo> OrderRepository::findByIdForUser(
                         : std::nullopt;
 }
 
+QList<ChargingOrderInfo> OrderRepository::listByUser(
+    QSqlDatabase &database, qint64 userId, const QString &status, int limit, int offset,
+    QString *errorMessage) const
+{
+    const bool filterStatus = !status.isEmpty();
+    QSqlQuery query(database);
+    query.prepare(orderSelectSql(QStringLiteral(
+        "WHERE o.user_id = :userId %1 "
+        "ORDER BY o.created_at DESC, o.id DESC LIMIT :limit OFFSET :offset")
+        .arg(filterStatus ? QStringLiteral("AND o.status = :status") : QString())));
+    query.bindValue(QStringLiteral(":userId"), userId);
+    if (filterStatus) {
+        query.bindValue(QStringLiteral(":status"), status);
+    }
+    query.bindValue(QStringLiteral(":limit"), limit);
+    query.bindValue(QStringLiteral(":offset"), offset);
+    if (!query.exec()) {
+        if (errorMessage) {
+            *errorMessage = query.lastError().text();
+        }
+        return {};
+    }
+    QList<ChargingOrderInfo> orders;
+    while (query.next()) {
+        orders.append(mapOrder(query));
+    }
+    return orders;
+}
+
+qint64 OrderRepository::countByUser(QSqlDatabase &database, qint64 userId,
+                                    const QString &status,
+                                    QString *errorMessage) const
+{
+    const bool filterStatus = !status.isEmpty();
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral(
+        "SELECT COUNT(*) FROM charging_order WHERE user_id = :userId %1")
+        .arg(filterStatus ? QStringLiteral("AND status = :status") : QString()));
+    query.bindValue(QStringLiteral(":userId"), userId);
+    if (filterStatus) {
+        query.bindValue(QStringLiteral(":status"), status);
+    }
+    if (!query.exec() || !query.next()) {
+        if (errorMessage) {
+            *errorMessage = query.lastError().text();
+        }
+        return -1;
+    }
+    return query.value(0).toLongLong();
+}
+
 std::optional<OrderCreateTarget> OrderRepository::findCreateTarget(
     QSqlDatabase &database, qint64 pileId, QString *errorMessage) const
 {

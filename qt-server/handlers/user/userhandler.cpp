@@ -7,6 +7,17 @@
 #include "services/user/userservice.h"
 #include "shared/protocol/errorcodes.h"
 
+namespace {
+
+bool isPositiveInteger(const QJsonValue &value)
+{
+    const double number = value.toDouble();
+    return value.isDouble() && number > 0.0
+        && number == static_cast<double>(static_cast<qint64>(number));
+}
+
+}
+
 UserHandler::UserHandler(UserService *userService, SessionManager *sessionManager)
     : m_userService(userService), m_sessionManager(sessionManager)
 {
@@ -78,4 +89,59 @@ ResponseMessage UserHandler::profileUpdate(const RequestMessage &request,
     return ResponseMessage::success(request.requestId, {
         {QStringLiteral("user"), result.value.toJson()}
     });
+}
+
+ResponseMessage UserHandler::avatarUpload(const RequestMessage &request,
+                                          const SessionContext &context)
+{
+    const QJsonValue fileNameValue = request.payload.value(QStringLiteral("fileName"));
+    const QJsonValue mimeTypeValue = request.payload.value(QStringLiteral("mimeType"));
+    const QJsonValue contentValue = request.payload.value(QStringLiteral("contentBase64"));
+    if (!fileNameValue.isString() || !mimeTypeValue.isString() || !contentValue.isString()) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::InvalidSocketMessage,
+                                      QStringLiteral("invalid avatar upload payload"));
+    }
+    if (!m_userService) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::InternalError,
+                                      QStringLiteral("user module is unavailable"));
+    }
+    const auto result = m_userService->uploadAvatar(
+        context.principalId, fileNameValue.toString(), mimeTypeValue.toString(),
+        contentValue.toString());
+    if (!result.ok) {
+        return ResponseMessage::error(request.requestId, result.code, result.message);
+    }
+    return ResponseMessage::success(request.requestId, {
+        {QStringLiteral("avatarPath"), result.value.avatarPath},
+        {QStringLiteral("user"), result.value.toJson()}
+    });
+}
+
+ResponseMessage UserHandler::recharge(const RequestMessage &request,
+                                      const SessionContext &context)
+{
+    const QJsonValue amountValue = request.payload.value(QStringLiteral("amountFen"));
+    if (!isPositiveInteger(amountValue)) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::InvalidSocketMessage,
+                                      QStringLiteral("amountFen must be a positive integer"));
+    }
+    if (!m_userService) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::InternalError,
+                                      QStringLiteral("user module is unavailable"));
+    }
+    const QString cacheKey = QString::number(context.principalId)
+        + QLatin1Char(':') + request.requestId;
+    const auto cached = m_rechargeResponses.constFind(cacheKey);
+    if (cached != m_rechargeResponses.cend()) {
+        return *cached;
+    }
+    const auto result = m_userService->recharge(
+        context.principalId, static_cast<qint64>(amountValue.toDouble()));
+    if (!result.ok) {
+        return ResponseMessage::error(request.requestId, result.code, result.message);
+    }
+    const ResponseMessage response = ResponseMessage::success(request.requestId,
+                                                                result.value.toJson());
+    m_rechargeResponses.insert(cacheKey, response);
+    return response;
 }

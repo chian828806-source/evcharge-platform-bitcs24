@@ -30,4 +30,14 @@ void registerUserHandlers(MessageDispatcher *dispatcher, UserHandler *userHandle
         [userHandler](const RequestMessage &request, const SessionContext &context) {
             return userHandler->profileUpdate(request, context);
         });
+    dispatcher->registerHandler(
+        MessageTypes::UserAvatarUpload, MessageDispatcher::Access::User,
+        [userHandler](const RequestMessage &request, const SessionContext &context) {
+            return userHandler->avatarUpload(request, context);
+        });
+    dispatcher->registerHandler(
+        MessageTypes::UserRecharge, MessageDispatcher::Access::User,
+        [userHandler](const RequestMessage &request, const SessionContext &context) {
+            return userHandler->recharge(request, context);
+        });
 }

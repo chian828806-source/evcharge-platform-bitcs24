@@ -27,7 +27,7 @@
 1. `docs/00-SRS-V1.0.md`：功能需求、业务规则和验收流程；
 2. `docs/03-API.md`：TCP JSON Lines、Session、错误码和消息类型；
 3. `docs/04-DATABASE.md`：表结构、状态枚举和事务规则；
-4. `docs/08-EVCharge_Qt_UI_V1.0.md`：用户端页面、元素和数据来源；
+4. `docs/08-EVCharge_Qt_UI_V2.0.md`：用户端页面、元素和数据来源；
 5. `shared/protocol`：当前代码中已经登记的消息类型和错误码。
 
 发生冲突时按以上顺序处理：先回到 SRS 确认需求，再修改 API 或数据库
@@ -58,7 +58,7 @@
 - REST API。
 
 本设计遵循 `docs/01-ARCHITECTURE.md` 的三程序结构：`qt-user`、
-`qt-admin` 和无界面的 `qt-server` 分别构建。`docs/08-EVCharge_Qt_UI_V1.0.md`
+`qt-admin` 和无界面的 `qt-server` 分别构建。`docs/08-EVCharge_Qt_UI_V2.0.md`
 中“PC 端同时承担服务与管理端 UI”的旧表述不作为本设计的实现依据，后续应
 单独修正文档，但不阻塞用户端后端开发。
 
@@ -381,8 +381,8 @@ PileType    = FAST | SLOW
 | --- | --- |
 | 权限 | User |
 | 请求 payload 草案 | `fileName`, `mimeType`, `contentBase64` |
-| 成功 data | `avatarPath` |
-| 文件操作 | 服务端保存头像文件 |
+| 成功 data | `avatarPath`, `user` |
+| 文件操作 | 服务端保存头像文件；路径由 `qt-server --avatar-dir` 配置 |
 | 数据操作 | 更新 `user.avatar_path`, `user.updated_at` |
 
 建议服务端流程：
@@ -394,8 +394,9 @@ PileType    = FAST | SLOW
 5. 数据库更新失败时删除本次新文件；
 6. 成功替换后再清理旧头像。
 
-头像允许格式、最大尺寸、Base64 开销和客户端下载方式尚未冻结。由于 JSON
-Lines 单帧上限为 2 MiB，原始头像大小必须显著小于 2 MiB。
+V1 已冻结：仅允许 PNG 或 JPEG，文件名扩展名必须与 MIME 匹配，解码后的原始
+文件最大 512 KiB。服务端以随机文件名保存，数据库只保存 `avatars/<文件名>`
+形式的相对路径；旧头像在成功替换后清理。
 
 ### 8.5 `USER_RECHARGE`
 
@@ -404,24 +405,25 @@ Lines 单帧上限为 2 MiB，原始头像大小必须显著小于 2 MiB。
 | 权限 | User |
 | 请求 payload | `amountFen: integer` |
 | 成功 data | `rechargeId`, `recordNo`, `amountFen`, `balanceFen`, `createdAt` |
-| 主要规则 | 金额大于 0；用户必须为 `NORMAL`；模拟支付成功 |
+| 主要规则 | 金额为 1 到 100000000 分；用户必须为 `NORMAL`；模拟支付成功 |
 | 数据操作 | 更新 `user.balance_fen`，插入 `recharge_record` |
 
-增加余额和写入充值流水必须在同一个事务中完成。充值是高风险重复写操作，
-必须按第 12 节处理重复 `requestId`。
+增加余额和写入充值流水必须在同一个事务中完成。V1 在服务进程内按
+`userId + requestId` 缓存成功响应；同一用户重复提交同一 `requestId` 不会再次
+充值。服务重启后的跨进程持久化幂等仍属于 C10。
 
 ### 8.6 `USER_ORDER_LIST`
 
 | 项目 | 内容 |
 | --- | --- |
 | 权限 | User |
-| 请求 payload 草案 | `page`, `pageSize`, 可选 `status` |
-| 成功 data 草案 | `items`, `page`, `pageSize`, `total` |
+| 请求 payload | `page`（默认 1）、`pageSize`（默认 20，最大 50）、可选单个 `status` |
+| 成功 data | `items`, `page`, `pageSize`, `total` |
 | 排序建议 | `created_at DESC, id DESC` |
 | 数据操作 | 查询当前用户的 `charging_order` 并关联站点、电桩 |
 
-Service 必须强制使用 Session 用户 ID，不能查询其他用户的订单。分页范围、
-是否允许多个状态筛选以及默认 `pageSize` 需要与 U05 页面确认。
+Service 必须强制使用 Session 用户 ID，不能查询其他用户的订单。`status` 仅允许
+`CREATED`、`CHARGING`、`PENDING_PAYMENT`、`COMPLETED`、`CANCELLED` 中的一个值。
 
 ### 8.7 `MAP_GEOCODE`
 
@@ -473,9 +475,9 @@ Service 必须强制使用 Session 用户 ID，不能查询其他用户的订单
 | 成功 data 草案 | `hasActiveOrder`, 有订单时返回 `order` 和 `balanceFen` |
 | 活动状态 | `CREATED`, `CHARGING`, `PENDING_PAYMENT` |
 
-推荐 V1 在 U04 打开时以及充电中每 1 秒轮询本消息，由服务端在响应中计算
-当前 `chargeMinutes`、`energyKwh` 和预估 `amountFen`。这样不新增未经登记的
-TCP 推送消息。轮询间隔和后台页面是否暂停轮询仍需前端确认。
+V1 约定：U04 打开时请求一次；充电中每 1 秒轮询本消息；页面离开 U04 或订单
+不再是 `CHARGING` 时停止轮询。服务端在响应中计算当前 `chargeMinutes`、
+`energyKwh` 和预估 `amountFen`，因此不新增未经登记的 TCP 推送消息。
 
 ### 8.11 `ORDER_CREATE`
 
@@ -578,8 +580,10 @@ amountFen = round(energyKwh *
 | 成功 data | `stations`，包含推荐依据 |
 | 数据操作 | 查询最新预测并关联正常站点、电桩统计 |
 
-推荐排序规则尚未被 SRS 冻结。建议至少综合距离、预测负荷和预测空闲桩数，
-但进入实现前必须由 ML、后端和 UI 三方确定稳定口径。
+V1 已冻结：默认查询 `1h` 预测窗口，仅返回当前可用且预测可用桩数大于 0 的正常
+站点；按“预测负荷升序 → 距离升序 → 预测可用桩数降序”排序。默认 `limit=5`，
+最大 20。每项返回 `recommended`、`predictedLoad`、
+`predictedAvailablePileCount` 和 `recommendationReason`。
 
 ## 9. 业务状态机
 
@@ -728,12 +732,8 @@ V1 最低实现：
 | 编号 | 待确认项 | 建议负责人 | 推荐默认方案 |
 | --- | --- | --- | --- |
 | C01 | 用户资料、站点、订单统一响应字段 | UI + 后端 | 采用第 7.4 节对象 |
-| C02 | 订单列表分页、筛选和默认条数 | UI + 后端 | `page=1`, `pageSize=20`, 创建时间倒序 |
-| C03 | 充电页刷新方式和间隔 | UI + 后端 | 每 1 秒 `ORDER_ACTIVE_CHECK` 轮询 |
 | C04 | 模拟电量公式和演示加速倍率 | 后端 + 验收负责人 | 第 10 节公式，默认不加速 |
-| C05 | 头像格式、大小、上传字段和访问方式 | UI + 后端 | JPG/PNG；Base64；严格低于帧上限 |
 | C06 | 地图地址解析在客户端还是服务端 | UI + 后端 | 只保留一种实现 |
-| C07 | 推荐站点排序算法 | ML + UI + 后端 | 距离与预测负荷组合，规则写入文档 |
 | C08 | 昵称、金额、头像、订单归属等错误码 | UI + 后端 | 统一补充到 `03-API.md` |
 | C09 | Session 有效期、多端登录和主动注销 | UI + 后端 | V1 内存 Session，服务重启后重新登录 |
 | C10 | 服务重启后的持久化幂等要求 | 后端 + 验收负责人 | V1 仅进程内缓存，订单状态机兜底 |

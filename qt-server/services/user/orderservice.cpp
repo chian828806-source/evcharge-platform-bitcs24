@@ -9,6 +9,7 @@
 #include "shared/protocol/errorcodes.h"
 
 #include <QDateTime>
+#include <QSet>
 #include <QSqlDatabase>
 #include <QUuid>
 #include <QtMath>
@@ -49,6 +50,44 @@ ServiceResult<ActiveOrderResult> OrderService::activeOrder(qint64 userId)
         result.order = withCurrentProgress(*order, QDateTime::currentDateTime());
     }
     return ServiceResult<ActiveOrderResult>::success(result);
+}
+
+ServiceResult<OrderListResult> OrderService::list(qint64 userId, int page,
+                                                   int pageSize,
+                                                   const QString &status)
+{
+    static const QSet<QString> allowedStatuses{
+        QStringLiteral("CREATED"), QStringLiteral("CHARGING"),
+        QStringLiteral("PENDING_PAYMENT"), QStringLiteral("COMPLETED"),
+        QStringLiteral("CANCELLED")
+    };
+    const QString normalizedStatus = status.trimmed().toUpper();
+    if (page < 1 || pageSize < 1 || pageSize > 50
+        || (!normalizedStatus.isEmpty() && !allowedStatuses.contains(normalizedStatus))) {
+        return ServiceResult<OrderListResult>::failure(
+            ErrorCodes::InvalidSocketMessage, QStringLiteral("invalid order list query"));
+    }
+
+    QSqlDatabase database;
+    QString databaseError;
+    if (!openDatabase(&database, &databaseError)) {
+        return ServiceResult<OrderListResult>::failure(
+            ErrorCodes::DatabaseError, QStringLiteral("database unavailable"));
+    }
+    const qint64 total = m_orderRepository->countByUser(
+        database, userId, normalizedStatus, &databaseError);
+    if (total < 0) {
+        return ServiceResult<OrderListResult>::failure(
+            ErrorCodes::DatabaseError, QStringLiteral("count orders failed"));
+    }
+    const QList<ChargingOrderInfo> orders = m_orderRepository->listByUser(
+        database, userId, normalizedStatus, pageSize, (page - 1) * pageSize,
+        &databaseError);
+    if (!databaseError.isEmpty()) {
+        return ServiceResult<OrderListResult>::failure(
+            ErrorCodes::DatabaseError, QStringLiteral("query order list failed"));
+    }
+    return ServiceResult<OrderListResult>::success({orders, page, pageSize, total});
 }
 
 ServiceResult<ChargingOrderInfo> OrderService::start(qint64 userId, qint64 orderId)
