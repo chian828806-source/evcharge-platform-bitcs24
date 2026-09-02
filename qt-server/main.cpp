@@ -7,10 +7,7 @@
 #include "network/sessionmanager.h"
 #include "network/socketserver.h"
 #include "database/databasemanager.h"
-#include "services/adminauthservice.h"
-#include "services/adminanalyticsservice.h"
-#include "services/adminmanagementservice.h"
-#include "shared/protocol/messagetypes.h"
+#include "handlers/admin/registeradminhandlers.h"
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
@@ -71,54 +68,8 @@ int main(int argc, char *argv[])
         QTextStream(stderr) << "Database open failed: " << databaseError << '\n';
         return 1;
     }
-    AdminAuthService adminAuth(databaseManager.database(), &sessions);
-    AdminAnalyticsService adminAnalytics(databaseManager.database());
-    AdminManagementService adminManagement(databaseManager.database());
-    dispatcher.registerHandler(
-        MessageTypes::AdminLogin, MessageDispatcher::Access::Public,
-        [&adminAuth](const RequestMessage &request, const SessionContext &) {
-            return adminAuth.login(request);
-        });
-    dispatcher.registerHandler(
-        MessageTypes::AdminRevenueSummary, MessageDispatcher::Access::Admin,
-        [&adminAnalytics](const RequestMessage &request, const SessionContext &) {
-            return adminAnalytics.revenueSummary(request);
-        });
-    dispatcher.registerHandler(
-        MessageTypes::AdminRevenueTrend, MessageDispatcher::Access::Admin,
-        [&adminAnalytics](const RequestMessage &request, const SessionContext &) {
-            return adminAnalytics.revenueTrend(request);
-        });
-    dispatcher.registerHandler(
-        MessageTypes::AdminPileStatusSummary, MessageDispatcher::Access::Admin,
-        [&adminAnalytics](const RequestMessage &request, const SessionContext &) {
-            return adminAnalytics.pileStatusSummary(request);
-        });
-    dispatcher.registerHandler(
-        MessageTypes::AdminPileList, MessageDispatcher::Access::Admin,
-        [&adminManagement](const RequestMessage &request, const SessionContext &) {
-            return adminManagement.pileList(request);
-        });
-    dispatcher.registerHandler(
-        MessageTypes::AdminPileRestart, MessageDispatcher::Access::Admin,
-        [&adminManagement](const RequestMessage &request, const SessionContext &session) {
-            return adminManagement.restartPile(request, session.principalId);
-        });
-    dispatcher.registerHandler(
-        MessageTypes::AdminStationList, MessageDispatcher::Access::Admin,
-        [&adminManagement](const RequestMessage &request, const SessionContext &) {
-            return adminManagement.stationList(request);
-        });
-    dispatcher.registerHandler(
-        MessageTypes::AdminStationCreate, MessageDispatcher::Access::Admin,
-        [&adminManagement](const RequestMessage &request, const SessionContext &session) {
-            return adminManagement.createStation(request, session.principalId);
-        });
-    dispatcher.registerHandler(
-        MessageTypes::AdminUserList, MessageDispatcher::Access::Admin,
-        [&adminManagement](const RequestMessage &request, const SessionContext &) {
-            return adminManagement.userList(request);
-        });
+    AdminHandlerRegistry adminHandlers(databaseManager.database(), &sessions,
+                                       &dispatcher);
 
     // 业务负责人通过 registerHandler() 注入 Service 调用。
     // 本网络外壳不伪造登录、订单或数据库结果。

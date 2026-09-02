@@ -1,8 +1,4 @@
-HEADERS += $$PWD/passwordhasher.h \
-           $$PWD/adminauthservice.h \
-           $$PWD/adminanalyticsservice.h
-HEADERS += $$PWD/adminmanagementservice.h
-SOURCES += $$PWD/passwordhasher.cpp \
-           $$PWD/adminauthservice.cpp \
-           $$PWD/adminanalyticsservice.cpp
-SOURCES += $$PWD/adminmanagementservice.cpp
+HEADERS += $$PWD/passwordhasher.h
+SOURCES += $$PWD/passwordhasher.cpp
+
+include($$PWD/admin/admin-services.pri)
