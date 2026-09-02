@@ -1,2 +1,2 @@
-HEADERS += $$PWD/databasemanager.h
-SOURCES += $$PWD/databasemanager.cpp
+HEADERS += $$REPO_ROOT/qt-server/database/databasemanager.h
+SOURCES += $$REPO_ROOT/qt-server/database/databasemanager.cpp
