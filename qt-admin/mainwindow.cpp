@@ -142,6 +142,14 @@ void MainWindow::handleResponse(const QJsonObject &response)
         }
         return;
     }
+    if (requestId == m_userStatusRequestId) {
+        if (response.value(QStringLiteral("code")).toInt() == 200) {
+            m_userListRequestId = m_client->sendRequest(
+                MessageTypes::AdminUserList, m_sessionId,
+                {{QStringLiteral("phoneKeyword"), m_userPhoneKeyword}});
+        }
+        return;
+    }
     if (requestId == m_stationCreateRequestId) {
         m_stationListRequestId = m_client->sendRequest(
             MessageTypes::AdminStationList, m_sessionId, {});
@@ -172,10 +180,10 @@ void MainWindow::handleResponse(const QJsonObject &response)
 void MainWindow::showUserList(const QJsonObject &data)
 {
     const QJsonArray users = data.value(QStringLiteral("users")).toArray();
-    auto *table = new QTableWidget(users.size(), 6, centralWidget());
+    auto *table = new QTableWidget(users.size(), 7, centralWidget());
     table->setHorizontalHeaderLabels({QStringLiteral("用户编号"), QStringLiteral("手机号"),
         QStringLiteral("昵称"), QStringLiteral("余额/元"), QStringLiteral("注册时间"),
-        QStringLiteral("状态")});
+        QStringLiteral("状态"), QStringLiteral("操作")});
     for (int row = 0; row < users.size(); ++row) {
         const QJsonObject user = users.at(row).toObject();
         const QStringList values = {QString::number(user.value(QStringLiteral("userId")).toInteger()),
@@ -187,6 +195,19 @@ void MainWindow::showUserList(const QJsonObject &data)
         for (int column = 0; column < values.size(); ++column) {
             table->setItem(row, column, new QTableWidgetItem(values.at(column)));
         }
+        const qint64 userId = user.value(QStringLiteral("userId")).toInteger();
+        const bool frozen = user.value(QStringLiteral("status")).toString()
+                            == QStringLiteral("FROZEN");
+        auto *statusButton = new QPushButton(
+            frozen ? QStringLiteral("解冻") : QStringLiteral("冻结"), table);
+        connect(statusButton, &QPushButton::clicked, this,
+                [this, userId, frozen]() {
+            m_userStatusRequestId = m_client->sendRequest(
+                frozen ? MessageTypes::AdminUserUnfreeze
+                       : MessageTypes::AdminUserFreeze,
+                m_sessionId, {{QStringLiteral("userId"), userId}});
+        });
+        table->setCellWidget(row, 6, statusButton);
     }
     table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     if (auto *layout = qobject_cast<QVBoxLayout *>(centralWidget()->layout())) {

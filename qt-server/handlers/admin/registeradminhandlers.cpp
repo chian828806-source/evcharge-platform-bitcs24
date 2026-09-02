@@ -55,4 +55,14 @@ AdminHandlerRegistry::AdminHandlerRegistry(QSqlDatabase database,
         [this](const RequestMessage &request, const SessionContext &) {
             return m_management.userList(request);
         });
+    dispatcher->registerHandler(
+        MessageTypes::AdminUserFreeze, MessageDispatcher::Access::Admin,
+        [this](const RequestMessage &request, const SessionContext &session) {
+            return m_management.setUserFrozen(request, session.principalId, true);
+        });
+    dispatcher->registerHandler(
+        MessageTypes::AdminUserUnfreeze, MessageDispatcher::Access::Admin,
+        [this](const RequestMessage &request, const SessionContext &session) {
+            return m_management.setUserFrozen(request, session.principalId, false);
+        });
 }
