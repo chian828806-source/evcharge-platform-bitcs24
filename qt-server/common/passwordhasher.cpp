@@ -1,6 +1,7 @@
 #include "passwordhasher.h"
 
 #include <QCryptographicHash>
+#include <QStringList>
 
 namespace {
 QByteArray hmacSha256(const QByteArray &key, const QByteArray &message)
