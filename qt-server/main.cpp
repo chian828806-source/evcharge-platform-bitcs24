@@ -82,6 +82,11 @@ int main(int argc, char *argv[])
         [&adminAnalytics](const RequestMessage &request, const SessionContext &) {
             return adminAnalytics.revenueSummary(request);
         });
+    dispatcher.registerHandler(
+        MessageTypes::AdminRevenueTrend, MessageDispatcher::Access::Admin,
+        [&adminAnalytics](const RequestMessage &request, const SessionContext &) {
+            return adminAnalytics.revenueTrend(request);
+        });
 
     // 业务负责人通过 registerHandler() 注入 Service 调用。
     // 本网络外壳不伪造登录、订单或数据库结果。

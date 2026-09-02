@@ -5,11 +5,17 @@
 
 #include <QFormLayout>
 #include <QJsonObject>
+#include <QJsonArray>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QPainter>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <QtCharts/QChart>
+#include <QtCharts/QChartView>
+#include <QtCharts/QLineSeries>
+#include <QtCharts/QValueAxis>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), m_client(new AdminSocketClient(this))
@@ -81,8 +87,17 @@ void MainWindow::handleResponse(const QJsonObject &response)
     if (requestId == m_summaryRequestId) {
         if (response.value(QStringLiteral("code")).toInt() == 200) {
             showRevenueSummary(response.value(QStringLiteral("data")).toObject());
+            m_trendRequestId = m_client->sendRequest(
+                MessageTypes::AdminRevenueTrend, m_sessionId,
+                {{QStringLiteral("days"), 7}});
         } else {
             m_status->setText(response.value(QStringLiteral("message")).toString());
+        }
+        return;
+    }
+    if (requestId == m_trendRequestId) {
+        if (response.value(QStringLiteral("code")).toInt() == 200) {
+            showRevenueTrend(response.value(QStringLiteral("data")).toObject());
         }
         return;
     }
@@ -101,6 +116,27 @@ void MainWindow::handleResponse(const QJsonObject &response)
     m_sessionId = data.value(QStringLiteral("sessionId")).toString();
     m_summaryRequestId = m_client->sendRequest(
         MessageTypes::AdminRevenueSummary, m_sessionId, {});
+}
+
+void MainWindow::showRevenueTrend(const QJsonObject &data)
+{
+    auto *series = new QLineSeries;
+    const QJsonArray points = data.value(QStringLiteral("points")).toArray();
+    for (int index = 0; index < points.size(); ++index) {
+        series->append(index, points.at(index).toObject()
+                                 .value(QStringLiteral("revenueFen")).toDouble() / 100.0);
+    }
+    auto *chart = new QChart;
+    chart->addSeries(series);
+    chart->setTitle(QStringLiteral("近 %1 日营收趋势（元）")
+                    .arg(data.value(QStringLiteral("days")).toInt()));
+    chart->createDefaultAxes();
+    chart->legend()->hide();
+    auto *view = new QChartView(chart, centralWidget());
+    view->setRenderHint(QPainter::Antialiasing);
+    if (auto *layout = qobject_cast<QVBoxLayout *>(centralWidget()->layout())) {
+        layout->insertWidget(layout->count() - 1, view, 1);
+    }
 }
 
 void MainWindow::showRevenueSummary(const QJsonObject &data)
@@ -122,6 +158,20 @@ void MainWindow::showRevenueSummary(const QJsonObject &data)
         + yuan(data.value(QStringLiteral("monthRevenueFen")).toInteger()), panel));
     layout->addWidget(new QLabel(QStringLiteral("总营收：")
         + yuan(data.value(QStringLiteral("totalRevenueFen")).toInteger()), panel));
+    auto *sevenDays = new QPushButton(QStringLiteral("近 7 日趋势"), panel);
+    auto *thirtyDays = new QPushButton(QStringLiteral("近 30 日趋势"), panel);
+    layout->addWidget(sevenDays);
+    layout->addWidget(thirtyDays);
+    connect(sevenDays, &QPushButton::clicked, this, [this]() {
+        m_trendRequestId = m_client->sendRequest(
+            MessageTypes::AdminRevenueTrend, m_sessionId,
+            {{QStringLiteral("days"), 7}});
+    });
+    connect(thirtyDays, &QPushButton::clicked, this, [this]() {
+        m_trendRequestId = m_client->sendRequest(
+            MessageTypes::AdminRevenueTrend, m_sessionId,
+            {{QStringLiteral("days"), 30}});
+    });
     layout->addStretch();
     setCentralWidget(panel);
 }
