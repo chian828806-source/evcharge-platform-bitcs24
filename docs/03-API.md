@@ -233,6 +233,28 @@ Response:
 
 取消仅允许作用于 `CREATED` 状态订单。取消成功后订单进入 `CANCELLED`，对应电桩由 `RESERVED` 恢复为 `AVAILABLE`。
 
+## 12.1 管理端 API 字段
+
+以下请求除 `ADMIN_LOGIN` 外均要求有效的 Admin Session。金额字段单位为分。
+
+| Message Type | Request Payload | Response Data | 主要错误 |
+| --- | --- | --- | --- |
+| `ADMIN_LOGIN` | `username: string`，`password: string` | `sessionId`，`admin { adminId, username, displayName }` | `4301` 账号或密码错误，`5001` 数据库错误 |
+| `ADMIN_REVENUE_SUMMARY` | 空对象 | `todayRevenueFen`，`monthRevenueFen`，`totalRevenueFen` | `4003` Session 无效，`5001` 数据库错误 |
+| `ADMIN_REVENUE_TREND` | `days: int`，必填且仅允许 `7` 或 `30` | `days`，`points [{ date, revenueFen }]`；无订单日期补 0 | `4003`，`4401`，`5001` |
+| `ADMIN_PILE_STATUS_SUMMARY` | 空对象 | `total`，`statuses [{ status, count, ratio }]` | `4003`，`5001` |
+| `ADMIN_PILE_LIST` | `stationId: int`，可选；省略表示全部站点 | `piles [{ pileId, pileNo, stationId, stationName, type, powerKw, status, totalChargeCount, totalChargeMinutes }]` | `4003`，`5001` |
+| `ADMIN_PILE_RESTART` | `pileId: int` | `pileId`，`status=RESTARTING`，`restoreStatus` | `4003`，`4102` 当前状态禁止重启，`4202` 电桩不存在，`5001` |
+| `ADMIN_STATION_LIST` | 空对象 | `stations [{ stationId, stationNo, name, address, longitude, latitude, pileCount, onlineRate }]` | `4003`，`5001` |
+| `ADMIN_STATION_CREATE` | `name`，`address`，`longitude`，`latitude`，`pileCount`；`priceFenPerKwh` 可选，默认 120 | `stationId`，`stationNo`，`pileCount` | `4003`，`4401` 参数非法，`5001`；站点和模拟电桩在同一事务创建 |
+| `ADMIN_USER_LIST` | `phoneKeyword: string`，可选；支持手机号部分匹配 | `users [{ userId, phone, nickname, balanceFen, createdAt, status }]` | `4003`，`5001` |
+| `ADMIN_USER_FREEZE` | `userId: int` | `userId`，`status=FROZEN`，`changed` | `4001` 用户不存在，`4003`，`4401`，`5001` |
+| `ADMIN_USER_UNFREEZE` | `userId: int` | `userId`，`status=NORMAL`，`changed` | `4001` 用户不存在，`4003`，`4401`，`5001` |
+
+冻结和解冻采用幂等语义：目标状态已满足时仍返回成功，`changed=false`，不重复写操作日志。
+远程重启拒绝 `RESERVED`、`CHARGING` 和 `RESTARTING` 状态；其余状态进入短暂
+`RESTARTING`，模拟完成后恢复操作前状态并记录两条操作日志。
+
 ## 13. Web 大屏 WebSocket
 
 连接地址：
