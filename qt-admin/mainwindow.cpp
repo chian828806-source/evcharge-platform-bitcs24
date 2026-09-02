@@ -12,6 +12,8 @@
 #include <QPainter>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <QTableWidget>
+#include <QHeaderView>
 #include <QtCharts/QChart>
 #include <QtCharts/QChartView>
 #include <QtCharts/QLineSeries>
@@ -107,6 +109,14 @@ void MainWindow::handleResponse(const QJsonObject &response)
     if (requestId == m_pileStatusRequestId) {
         if (response.value(QStringLiteral("code")).toInt() == 200) {
             showPileStatusSummary(response.value(QStringLiteral("data")).toObject());
+            m_pileListRequestId = m_client->sendRequest(
+                MessageTypes::AdminPileList, m_sessionId, {});
+        }
+        return;
+    }
+    if (requestId == m_pileListRequestId) {
+        if (response.value(QStringLiteral("code")).toInt() == 200) {
+            showPileList(response.value(QStringLiteral("data")).toObject());
         }
         return;
     }
@@ -125,6 +135,32 @@ void MainWindow::handleResponse(const QJsonObject &response)
     m_sessionId = data.value(QStringLiteral("sessionId")).toString();
     m_summaryRequestId = m_client->sendRequest(
         MessageTypes::AdminRevenueSummary, m_sessionId, {});
+}
+
+void MainWindow::showPileList(const QJsonObject &data)
+{
+    const QJsonArray piles = data.value(QStringLiteral("piles")).toArray();
+    auto *table = new QTableWidget(piles.size(), 7, centralWidget());
+    table->setHorizontalHeaderLabels({QStringLiteral("桩号"), QStringLiteral("站点"),
+        QStringLiteral("类型"), QStringLiteral("功率/kW"), QStringLiteral("状态"),
+        QStringLiteral("累计次数"), QStringLiteral("累计分钟")});
+    for (int row = 0; row < piles.size(); ++row) {
+        const QJsonObject pile = piles.at(row).toObject();
+        const QStringList values = {pile.value(QStringLiteral("pileNo")).toString(),
+            pile.value(QStringLiteral("stationName")).toString(),
+            pile.value(QStringLiteral("type")).toString(),
+            QString::number(pile.value(QStringLiteral("powerKw")).toDouble()),
+            pile.value(QStringLiteral("status")).toString(),
+            QString::number(pile.value(QStringLiteral("totalChargeCount")).toInt()),
+            QString::number(pile.value(QStringLiteral("totalChargeMinutes")).toInt())};
+        for (int column = 0; column < values.size(); ++column) {
+            table->setItem(row, column, new QTableWidgetItem(values.at(column)));
+        }
+    }
+    table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    if (auto *layout = qobject_cast<QVBoxLayout *>(centralWidget()->layout())) {
+        layout->insertWidget(layout->count() - 1, table, 2);
+    }
 }
 
 void MainWindow::showPileStatusSummary(const QJsonObject &data)
