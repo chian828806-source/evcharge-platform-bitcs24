@@ -12,13 +12,21 @@
 
 ```text
 qt-server/
+├── qt-server.pro
 ├── main.cpp
-├── network/
-├── service/
-├── repository/
-├── model/
-├── worker/
-└── util/
+├── network/                   # 用户与管理员共用的通信外壳
+├── handlers/
+│   ├── user/                  # 用户端消息入口
+│   └── admin/                 # 管理端消息入口
+├── services/
+│   ├── user/                  # 用户端业务用例
+│   └── admin/                 # 管理端业务用例
+├── repositories/              # 共用数据访问
+├── database/                  # 共用连接、事务和数据库线程
+├── models/                    # 共用领域数据
+├── workers/                   # 共用后台任务
+├── adapters/                  # 地图、头像、ML 等外部能力
+└── common/                    # 通用结果和校验类型
 
 qt-admin/
 ├── main.cpp
@@ -41,13 +49,17 @@ qt-user/
 Qt/C++ 服务端建议采用：
 
 ```text
-Socket Handler / WebSocket Publisher
+SocketServer / ClientSession
   ↓
-Service
+MessageDispatcher（公共鉴权和路由）
   ↓
-Repository
+handlers/user | handlers/admin
   ↓
-QtSql / SQLite
+services/user | services/admin
+  ↓
+repositories（共用）
+  ↓
+database / QtSql / SQLite（共用）
 ```
 
 Qt 管理端建议采用：
@@ -61,6 +73,43 @@ Qt/C++ 服务端
 ```
 
 Socket 消息处理入口只负责解析、校验、调用 Service 和返回响应，不直接写复杂业务逻辑。
+
+### 3.1 服务端用户/管理员隔离
+
+`qt-server` 仍然构建为一个无界面的服务端程序，并不是拆成两个服务端。
+隔离发生在业务代码目录和访问权限：
+
+| 内容 | 组织方式 |
+| --- | --- |
+| 用户消息入口 | `handlers/user/`，路由访问级别为 User；登录为 Public |
+| 管理消息入口 | `handlers/admin/`，路由访问级别为 Admin；登录为 Public |
+| 用户业务规则 | `services/user/` |
+| 管理业务规则 | `services/admin/` |
+| SQL 和数据映射 | 两边共用 `repositories/` |
+| 数据库、模型、网络 | 两边共用，不复制实现 |
+
+用户端 Service 不依赖管理员 Handler 或管理界面；管理员端 Service 也不依赖
+用户 Handler。两边确实共用的状态规则、Repository 和数据模型放在公共目录，
+不能通过复制代码维持两套规则。
+
+### 3.2 注册和构建隔离
+
+用户和管理员 Handler 分别提供集中注册函数：
+
+```cpp
+registerUserHandlers(dispatcher, userDependencies);
+registerAdminHandlers(dispatcher, adminDependencies);
+```
+
+`main.cpp` 只负责创建公共依赖、调用两个注册函数并启动 Socket 服务。用户和
+管理员模块应分别维护自己的 `.pri` 文件，例如：
+
+```qmake
+include($$PWD/handlers/user/user-handlers.pri)
+include($$PWD/handlers/admin/admin-handlers.pri)
+```
+
+这样新增业务文件时不必由两名开发者同时修改同一份源码列表。
 
 ## 4. 命名规范
 
@@ -184,6 +233,7 @@ ML 使用 Python，只读取固定演示数据或 Qt/C++ 服务端导出的 CSV/
 - SRS 需求编号；
 - 涉及 Socket 消息；
 - 涉及模块边界，确认属于 `qt-user`、`qt-admin`、`qt-server`、`shared`、`web-dashboard`、`ml` 或 `database`；
+- 若属于 `qt-server`，确认是 `handlers/services` 的用户模块、管理员模块，还是双方共用基础层；
 - 涉及 SQLite 表；
 - 状态变化；
 - 验收标准。
@@ -195,6 +245,7 @@ ML 使用 Python，只读取固定演示数据或 Qt/C++ 服务端导出的 CSV/
 - 本地可运行；
 - Socket 消息联通；
 - 用户端、管理端和服务端职责没有混写；
+- 服务端用户/管理员 Handler 和 Service 已隔离，共用层没有复制实现；
 - SQLite 数据正确；
 - 基本异常处理完成；
 - 必要测试或手工验证通过；
