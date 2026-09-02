@@ -5,11 +5,88 @@
 #include <QJsonArray>
 #include <QSqlError>
 #include <QSqlQuery>
+#include <QDateTime>
+#include <QTimer>
 #include <utility>
 
 AdminManagementService::AdminManagementService(QSqlDatabase database)
     : m_database(std::move(database))
 {
+}
+
+ResponseMessage AdminManagementService::restartPile(const RequestMessage &request,
+                                                     qint64 adminId) const
+{
+    const qint64 pileId = request.payload.value(QStringLiteral("pileId")).toInteger(0);
+    QSqlQuery find(m_database);
+    find.prepare(QStringLiteral("SELECT status FROM charging_pile WHERE id = :id"));
+    find.bindValue(QStringLiteral(":id"), pileId);
+    if (!find.exec()) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::DatabaseError,
+                                      find.lastError().text());
+    }
+    if (!find.next()) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::PileNotFound,
+                                      QStringLiteral("charging pile not found"));
+    }
+    const QString previousStatus = find.value(0).toString();
+    if (previousStatus == QStringLiteral("RESERVED")
+        || previousStatus == QStringLiteral("CHARGING")
+        || previousStatus == QStringLiteral("RESTARTING")) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::PileUnavailable,
+                                      QStringLiteral("current pile status cannot be restarted"));
+    }
+    const QString now = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+    if (!m_database.transaction()) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::DatabaseError,
+                                      m_database.lastError().text());
+    }
+    QSqlQuery update(m_database);
+    update.prepare(QStringLiteral("UPDATE charging_pile SET status='RESTARTING', updated_at=:now WHERE id=:id AND status=:status"));
+    update.bindValue(QStringLiteral(":now"), now);
+    update.bindValue(QStringLiteral(":id"), pileId);
+    update.bindValue(QStringLiteral(":status"), previousStatus);
+    QSqlQuery log(m_database);
+    log.prepare(QStringLiteral("INSERT INTO operation_log(admin_id, action, target_type, target_id, before_status, after_status, result, message, created_at) VALUES(:adminId, 'PILE_RESTART', 'PILE', :pileId, :before, 'RESTARTING', 'SUCCESS', '远程重启指令已发送', :now)"));
+    log.bindValue(QStringLiteral(":adminId"), adminId);
+    log.bindValue(QStringLiteral(":pileId"), pileId);
+    log.bindValue(QStringLiteral(":before"), previousStatus);
+    log.bindValue(QStringLiteral(":now"), now);
+    if (!update.exec() || update.numRowsAffected() != 1 || !log.exec()
+        || !m_database.commit()) {
+        m_database.rollback();
+        return ResponseMessage::error(request.requestId, ErrorCodes::DatabaseError,
+                                      m_database.lastError().text());
+    }
+
+    const QSqlDatabase database = m_database;
+    QTimer::singleShot(1500, [database, pileId, previousStatus, adminId]() mutable {
+        const QString completedAt = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+        if (!database.transaction()) {
+            return;
+        }
+        QSqlQuery restore(database);
+        restore.prepare(QStringLiteral("UPDATE charging_pile SET status=:status, updated_at=:now WHERE id=:id AND status='RESTARTING'"));
+        restore.bindValue(QStringLiteral(":status"), previousStatus);
+        restore.bindValue(QStringLiteral(":now"), completedAt);
+        restore.bindValue(QStringLiteral(":id"), pileId);
+        QSqlQuery completedLog(database);
+        completedLog.prepare(QStringLiteral("INSERT INTO operation_log(admin_id, action, target_type, target_id, before_status, after_status, result, message, created_at) VALUES(:adminId, 'PILE_RESTART', 'PILE', :pileId, 'RESTARTING', :after, 'SUCCESS', '远程重启模拟完成', :now)"));
+        completedLog.bindValue(QStringLiteral(":adminId"), adminId);
+        completedLog.bindValue(QStringLiteral(":pileId"), pileId);
+        completedLog.bindValue(QStringLiteral(":after"), previousStatus);
+        completedLog.bindValue(QStringLiteral(":now"), completedAt);
+        if (!restore.exec() || restore.numRowsAffected() != 1 || !completedLog.exec()) {
+            database.rollback();
+            return;
+        }
+        database.commit();
+    });
+    return ResponseMessage::success(request.requestId, {
+        {QStringLiteral("pileId"), pileId},
+        {QStringLiteral("status"), QStringLiteral("RESTARTING")},
+        {QStringLiteral("restoreStatus"), previousStatus}
+    });
 }
 
 ResponseMessage AdminManagementService::pileList(const RequestMessage &request) const

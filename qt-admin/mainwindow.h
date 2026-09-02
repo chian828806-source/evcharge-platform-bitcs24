@@ -34,5 +34,6 @@ private:
     QString m_trendRequestId;
     QString m_pileStatusRequestId;
     QString m_pileListRequestId;
+    QString m_pileRestartRequestId;
     QString m_sessionId;
 };
