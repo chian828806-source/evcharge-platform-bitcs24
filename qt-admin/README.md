@@ -35,3 +35,16 @@ qt-admin/
 ```
 
 管理端网络访问应复用 `network/AdminSocketClient`；页面不直接操作 `QTcpSocket`。
+
+## 当前实现结构
+
+```text
+qt-admin/
+├── main.cpp
+├── mainwindow.h/.cpp          # 登录、统一请求分发和 Session 错误处理
+├── network/                   # 唯一 TCP Socket 封装
+└── ui/adminpages.h/.cpp       # Dashboard、站点、电桩、用户四个页面
+```
+
+Dashboard 支持手动刷新与 30 秒低频自动刷新；其他管理页面提供手动刷新。
+所有冻结、解冻、建站和重启状态均由服务端决定，页面只发送操作请求并展示响应。
