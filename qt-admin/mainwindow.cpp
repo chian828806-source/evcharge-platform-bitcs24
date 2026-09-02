@@ -14,6 +14,10 @@
 #include <QWidget>
 #include <QTableWidget>
 #include <QHeaderView>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QSpinBox>
+#include <QDoubleSpinBox>
 #include <QtCharts/QChart>
 #include <QtCharts/QChartView>
 #include <QtCharts/QLineSeries>
@@ -128,6 +132,11 @@ void MainWindow::handleResponse(const QJsonObject &response)
         }
         return;
     }
+    if (requestId == m_stationCreateRequestId) {
+        m_stationListRequestId = m_client->sendRequest(
+            MessageTypes::AdminStationList, m_sessionId, {});
+        return;
+    }
     if (requestId == m_pileRestartRequestId) {
         m_pileListRequestId = m_client->sendRequest(
             MessageTypes::AdminPileList, m_sessionId, {});
@@ -180,6 +189,38 @@ void MainWindow::showStationList(const QJsonObject &data)
     }
     table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     if (auto *layout = qobject_cast<QVBoxLayout *>(centralWidget()->layout())) {
+        auto *create = new QPushButton(QStringLiteral("新增充电站"), centralWidget());
+        connect(create, &QPushButton::clicked, this, [this]() {
+            QDialog dialog(this);
+            dialog.setWindowTitle(QStringLiteral("新增充电站"));
+            QFormLayout form(&dialog);
+            QLineEdit name, address;
+            QDoubleSpinBox longitude, latitude;
+            QSpinBox pileCount;
+            longitude.setRange(-180, 180); longitude.setDecimals(6);
+            latitude.setRange(-90, 90); latitude.setDecimals(6);
+            pileCount.setRange(1, 100); pileCount.setValue(4);
+            form.addRow(QStringLiteral("站名"), &name);
+            form.addRow(QStringLiteral("地址"), &address);
+            form.addRow(QStringLiteral("经度"), &longitude);
+            form.addRow(QStringLiteral("纬度"), &latitude);
+            form.addRow(QStringLiteral("电桩数量"), &pileCount);
+            QDialogButtonBox buttons(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+            form.addRow(&buttons);
+            connect(&buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+            connect(&buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+            if (dialog.exec() == QDialog::Accepted) {
+                m_stationCreateRequestId = m_client->sendRequest(
+                    MessageTypes::AdminStationCreate, m_sessionId, {
+                        {QStringLiteral("name"), name.text().trimmed()},
+                        {QStringLiteral("address"), address.text().trimmed()},
+                        {QStringLiteral("longitude"), longitude.value()},
+                        {QStringLiteral("latitude"), latitude.value()},
+                        {QStringLiteral("pileCount"), pileCount.value()}
+                    });
+            }
+        });
+        layout->insertWidget(layout->count() - 1, create);
         layout->insertWidget(layout->count() - 1, table, 2);
     }
 }
