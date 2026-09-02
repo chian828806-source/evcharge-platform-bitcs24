@@ -1,6 +1,6 @@
 # database/ — 数据库脚本
 
-对齐 `docs/04-DATABASE.md` 契约（11 表 + 20 索引 + 事务规则 + ML 历史交换）。
+对齐 `docs/04-DATABASE.md` 契约（12 表 + 21 索引 + 事务规则 + ML 历史交换）。
 
 ## 文件
 

@@ -23,6 +23,12 @@ bool SocketServer::listen(const QHostAddress &address, quint16 port)
     return m_server->listen(address, port);
 }
 
+quint16 SocketServer::serverPort() const
+{
+    // 未监听时Qt返回0，调用方可据此判断监听是否已成功。
+    return m_server->serverPort();
+}
+
 void SocketServer::close()
 {
     // close不会粗暴销毁已建立连接，便于后续实现优雅停机。

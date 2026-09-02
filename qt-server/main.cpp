@@ -1,81 +1,122 @@
-/*
- * 功能：独立业务服务端程序入口，装配Session、Dispatcher、TCP和WebSocket。
- * 边界：本进程不包含用户端或管理员端界面，业务Handler由Service模块注册。
- */
+/* The sole composition root: one database, dispatcher and TCP server. */
+#include "database/databasemanager.h"
+#include "handlers/admin/registeradminhandlers.h"
+#include "handlers/user/registeruserbackend.h"
 #include "network/dashboardwebsocketserver.h"
 #include "network/messagedispatcher.h"
 #include "network/sessionmanager.h"
 #include "network/socketserver.h"
 
-#include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QCoreApplication>
+#include <QDir>
+#include <QFileInfo>
 #include <QHostAddress>
+#include <QSqlDatabase>
+#include <QSqlError>
+#include <QSqlQuery>
 #include <QTextStream>
+
+namespace {
+
+QString defaultDatabasePath()
+{
+    const QString relativePath = QStringLiteral("database/evcharge.db");
+    const QList<QString> starts = {QDir::currentPath(), QCoreApplication::applicationDirPath()};
+    for (const QString &start : starts) {
+        QDir directory(start);
+        while (true) {
+            const QString candidate = directory.filePath(relativePath);
+            if (QFileInfo::exists(candidate)) {
+                return QDir::cleanPath(candidate);
+            }
+            if (!directory.cdUp()) {
+                break;
+            }
+        }
+    }
+    return QDir::cleanPath(QDir::current().filePath(relativePath));
+}
+
+bool hasRequiredTables(QSqlDatabase &database, QString *errorMessage)
+{
+    const QStringList requiredTables = {
+        QStringLiteral("user"), QStringLiteral("admin"),
+        QStringLiteral("charging_station"), QStringLiteral("charging_pile"),
+        QStringLiteral("charging_order"), QStringLiteral("recharge_record"),
+        QStringLiteral("prediction_batch"), QStringLiteral("prediction"),
+        QStringLiteral("operation_log"), QStringLiteral("data_import_batch"),
+        QStringLiteral("charging_session_history"),
+        QStringLiteral("station_hourly_metric")};
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = :tableName"));
+    for (const QString &table : requiredTables) {
+        query.bindValue(QStringLiteral(":tableName"), table);
+        if (!query.exec() || !query.next()) {
+            if (errorMessage) {
+                *errorMessage = query.lastError().isValid()
+                    ? query.lastError().text()
+                    : QStringLiteral("required table is missing: %1").arg(table);
+            }
+            return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
 
 int main(int argc, char *argv[])
 {
-    // QCoreApplication提供Qt事件循环，Socket信号依赖该循环工作。
     QCoreApplication application(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("evcharge-qt-server"));
-
-    // 端口通过命令行提供默认值，方便多个开发者并行运行实例。
     QCommandLineParser parser;
-    parser.setApplicationDescription(
-        QStringLiteral("EVCharge Qt service"));
     parser.addHelpOption();
-    parser.addOption({
-        {QStringLiteral("t"), QStringLiteral("tcp-port")},
-        QStringLiteral("TCP listen port"),
-        QStringLiteral("port"),
-        QStringLiteral("18080")
-    });
-    parser.addOption({
-        {QStringLiteral("w"), QStringLiteral("websocket-port")},
-        QStringLiteral("WebSocket listen port"),
-        QStringLiteral("port"),
-        QStringLiteral("18081")
-    });
+    parser.addOption({{QStringLiteral("t"), QStringLiteral("tcp-port")},
+                      QStringLiteral("TCP listen port"), QStringLiteral("port"), QStringLiteral("18080")});
+    parser.addOption({{QStringLiteral("w"), QStringLiteral("websocket-port")},
+                      QStringLiteral("WebSocket listen port"), QStringLiteral("port"), QStringLiteral("18081")});
+    parser.addOption({{QStringLiteral("d"), QStringLiteral("database")},
+                      QStringLiteral("SQLite database path"), QStringLiteral("path"),
+                      defaultDatabasePath()});
     parser.process(application);
 
-    // 在监听前校验端口，避免toUShort失败后静默使用0。
-    bool tcpPortValid = false;
-    bool websocketPortValid = false;
-    const quint16 tcpPort =
-        parser.value(QStringLiteral("tcp-port")).toUShort(&tcpPortValid);
-    const quint16 websocketPort =
-        parser.value(QStringLiteral("websocket-port"))
-            .toUShort(&websocketPortValid);
-    if (!tcpPortValid || !websocketPortValid) {
+    bool tcpOk = false;
+    bool websocketOk = false;
+    const quint16 tcpPort = parser.value(QStringLiteral("tcp-port")).toUShort(&tcpOk);
+    const quint16 websocketPort = parser.value(QStringLiteral("websocket-port")).toUShort(&websocketOk);
+    if (!tcpOk || !websocketOk) {
         QTextStream(stderr) << "Invalid port value\n";
         return 2;
     }
+    DatabaseManager databaseManager(parser.value(QStringLiteral("database")));
+    QSqlDatabase database;
+    QString error;
+    if (!databaseManager.database(&database, &error)) {
+        QTextStream(stderr) << "SQLite open failed: " << error << '\n';
+        return 3;
+    }
+    if (!hasRequiredTables(database, &error)) {
+        QTextStream(stderr) << "SQLite schema is unavailable: " << error << '\n';
+        return 3;
+    }
 
-    // 对象按依赖顺序创建，并存活到application退出。
     SessionManager sessions;
     MessageDispatcher dispatcher(&sessions);
-
-    // 业务负责人通过 registerHandler() 注入 Service 调用。
-    // 本网络外壳不伪造登录、订单或数据库结果。
-    // 同一个TCP入口接收用户端和管理员端请求，角色由Session与路由权限区分。
+    UserBackendRegistry userHandlers(&databaseManager, &sessions, &dispatcher);
+    AdminHandlerRegistry adminHandlers(database, &sessions, &dispatcher);
     SocketServer socketServer(&dispatcher);
     if (!socketServer.listen(QHostAddress::Any, tcpPort)) {
-        QTextStream(stderr) << "TCP listen failed: "
-                            << socketServer.errorString() << '\n';
+        QTextStream(stderr) << "TCP listen failed: " << socketServer.errorString() << '\n';
         return 1;
     }
-
-    // WebSocket只服务大屏订阅和推送，使用独立端口。
     DashboardWebSocketServer dashboardServer;
     if (!dashboardServer.listen(websocketPort)) {
-        QTextStream(stderr) << "WebSocket listen failed: "
-                            << dashboardServer.errorString() << '\n';
+        QTextStream(stderr) << "WebSocket listen failed: " << dashboardServer.errorString() << '\n';
         return 1;
     }
-
-    // 输出实际监听信息，供启动脚本和人工联调确认。
     QTextStream(stdout) << "TCP listening on " << tcpPort << '\n'
-                        << "WebSocket listening on " << websocketPort
-                        << " path /dashboard\n";
+                        << "WebSocket listening on " << websocketPort << " path /dashboard\n";
     return application.exec();
 }
