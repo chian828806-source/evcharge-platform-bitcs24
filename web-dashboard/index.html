@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EVCharge 运营大屏</title>
+  <link rel="stylesheet" href="css/dashboard.css">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <main>
+    <header>
+      <div><h1>EVCharge 运营大屏</h1><p>WebSocket 数据展示逻辑 V1</p></div>
+      <div class="connection"><span id="connection-state" data-state="idle">idle</span><button id="refresh-button" type="button">刷新 / 重连</button></div>
+    </header>
+    <p class="meta">最后更新时间：<time id="last-updated">尚未收到数据</time></p>
+    <p id="dashboard-error" class="error" role="status"></p>
+
+    <section class="summary-grid" aria-label="运营概览">
+      <article><h2>今日充电量</h2><output id="today-energy">—</output></article>
+      <article><h2>今日营收</h2><output id="today-revenue">—</output></article>
+      <article><h2>总订单数</h2><output id="total-orders">—</output></article>
+      <article><h2>站点负荷</h2><output id="station-load">—</output></article>
+    </section>
+
+    <section class="chart-grid">
+      <article><h2>电桩状态分布</h2><div id="pile-status-chart" class="chart" aria-label="电桩状态分布图"></div></article>
+      <article>
+        <div class="section-title"><h2>营收趋势</h2><div class="button-group"><button class="active" type="button" data-range="days7">近 7 日</button><button type="button" data-range="days30">近 30 日</button></div></div>
+        <div id="revenue-trend-chart" class="chart" aria-label="营收趋势图"></div>
+      </article>
+    </section>
+
+    <section class="prediction-section">
+      <div class="section-title"><h2>站点负荷预测</h2><div class="filters"><label for="station-select">站点</label><select id="station-select"><option value="all">全部站点</option></select><label for="horizon-select">窗口</label><select id="horizon-select"><option value="1h">1h</option><option value="6h">6h</option><option value="24h">24h</option></select></div></div>
+      <div id="prediction-chart" class="chart" aria-label="站点负荷预测图"></div>
+      <p id="prediction-empty" class="empty">当前筛选条件没有预测数据。</p>
+      <div class="table-wrap"><table><thead><tr><th>站点</th><th>窗口</th><th>预测时间</th><th>预测负荷</th><th>预测空闲桩</th><th>高峰等级</th></tr></thead><tbody id="prediction-body"></tbody></table></div>
+    </section>
+  </main>
+</body>
+</html>
