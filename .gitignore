@@ -5,3 +5,20 @@ GIT-AGENT-HANDOFF.md
 *.db
 *.sqlite
 *.sqlite3
+
+# Python caches and local virtual environments.
+__pycache__/
+*.py[cod]
+.venv/
+
+# Public source datasets, generated features, model binaries and runtime batches.
+/ml/data/raw/*
+!/ml/data/raw/README.md
+/ml/data/processed/*
+!/ml/data/processed/README.md
+/ml/models/*
+!/ml/models/README.md
+/ml/output/*
+!/ml/output/README.md
+/ml/reports/*.json
+*.joblib

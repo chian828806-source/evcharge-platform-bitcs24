@@ -7,5 +7,7 @@
 | 目录 | 功能 |
 | --- | --- |
 | network | 公共协议、分帧、Session和Dispatcher测试 |
+| `../ml/tests` | ML 特征、预测 JSON 契约和训练预测闭环测试 |
 
 新增公共协议、拆分服务端/管理端通信目录或修改网络基础设施时，至少运行 network-protocol-tests。
+修改 ML 数据字段、特征、模型选择或输出 JSON 时，至少运行 `python -m unittest discover -s ml/tests -v`。
