@@ -15,6 +15,7 @@
 #include <QtCharts/QChart>
 #include <QtCharts/QChartView>
 #include <QtCharts/QLineSeries>
+#include <QtCharts/QPieSeries>
 #include <QtCharts/QValueAxis>
 
 MainWindow::MainWindow(QWidget *parent)
@@ -98,6 +99,14 @@ void MainWindow::handleResponse(const QJsonObject &response)
     if (requestId == m_trendRequestId) {
         if (response.value(QStringLiteral("code")).toInt() == 200) {
             showRevenueTrend(response.value(QStringLiteral("data")).toObject());
+            m_pileStatusRequestId = m_client->sendRequest(
+                MessageTypes::AdminPileStatusSummary, m_sessionId, {});
+        }
+        return;
+    }
+    if (requestId == m_pileStatusRequestId) {
+        if (response.value(QStringLiteral("code")).toInt() == 200) {
+            showPileStatusSummary(response.value(QStringLiteral("data")).toObject());
         }
         return;
     }
@@ -116,6 +125,29 @@ void MainWindow::handleResponse(const QJsonObject &response)
     m_sessionId = data.value(QStringLiteral("sessionId")).toString();
     m_summaryRequestId = m_client->sendRequest(
         MessageTypes::AdminRevenueSummary, m_sessionId, {});
+}
+
+void MainWindow::showPileStatusSummary(const QJsonObject &data)
+{
+    auto *series = new QPieSeries;
+    const QJsonArray statuses = data.value(QStringLiteral("statuses")).toArray();
+    for (const QJsonValue &value : statuses) {
+        const QJsonObject item = value.toObject();
+        const int count = item.value(QStringLiteral("count")).toInt();
+        if (count > 0) {
+            series->append(item.value(QStringLiteral("status")).toString()
+                               + QStringLiteral(" %1").arg(count), count);
+        }
+    }
+    auto *chart = new QChart;
+    chart->addSeries(series);
+    chart->setTitle(QStringLiteral("电桩状态统计（总数 %1）")
+                    .arg(data.value(QStringLiteral("total")).toInt()));
+    auto *view = new QChartView(chart, centralWidget());
+    view->setRenderHint(QPainter::Antialiasing);
+    if (auto *layout = qobject_cast<QVBoxLayout *>(centralWidget()->layout())) {
+        layout->insertWidget(layout->count() - 1, view, 1);
+    }
 }
 
 void MainWindow::showRevenueTrend(const QJsonObject &data)

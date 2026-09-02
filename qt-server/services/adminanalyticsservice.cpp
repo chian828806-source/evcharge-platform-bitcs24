@@ -78,3 +78,38 @@ ResponseMessage AdminAnalyticsService::revenueSummary(const RequestMessage &requ
         {QStringLiteral("totalRevenueFen"), query.value(2).toLongLong()}
     });
 }
+
+ResponseMessage AdminAnalyticsService::pileStatusSummary(const RequestMessage &request) const
+{
+    QSqlQuery query(m_database);
+    if (!query.exec(QStringLiteral(
+            "SELECT status, COUNT(*) FROM charging_pile GROUP BY status"))) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::DatabaseError,
+                                      query.lastError().text());
+    }
+    QHash<QString, int> counts;
+    int total = 0;
+    while (query.next()) {
+        const int count = query.value(1).toInt();
+        counts.insert(query.value(0).toString(), count);
+        total += count;
+    }
+    QJsonArray statuses;
+    const QStringList allStatuses = {
+        QStringLiteral("AVAILABLE"), QStringLiteral("RESERVED"),
+        QStringLiteral("CHARGING"), QStringLiteral("FAULT"),
+        QStringLiteral("OFFLINE"), QStringLiteral("RESTARTING")
+    };
+    for (const QString &status : allStatuses) {
+        const int count = counts.value(status, 0);
+        statuses.append(QJsonObject{
+            {QStringLiteral("status"), status},
+            {QStringLiteral("count"), count},
+            {QStringLiteral("ratio"), total > 0 ? double(count) / total : 0.0}
+        });
+    }
+    return ResponseMessage::success(request.requestId, {
+        {QStringLiteral("total"), total},
+        {QStringLiteral("statuses"), statuses}
+    });
+}
