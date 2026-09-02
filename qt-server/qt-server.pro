@@ -16,5 +16,7 @@ SOURCES += $$PWD/main.cpp
 include($$REPO_ROOT/shared/protocol/protocol.pri)
 include($$PWD/network/network.pri)
 include($$PWD/database/database.pri)
+include($$PWD/common/common.pri)
+include($$PWD/repositories/repositories.pri)
 include($$PWD/services/services.pri)
 include($$PWD/handlers/admin/admin-handlers.pri)

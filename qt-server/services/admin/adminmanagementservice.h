@@ -4,6 +4,7 @@
 
 #include <QSqlDatabase>
 #include <QObject>
+#include "repositories/repositories.h"
 
 class AdminManagementService : public QObject
 {
@@ -20,4 +21,8 @@ public:
 
 private:
     QSqlDatabase m_database;
+    PileRepository m_pileRepository;
+    StationRepository m_stationRepository;
+    UserRepository m_userRepository;
+    OperationLogRepository m_logRepository;
 };

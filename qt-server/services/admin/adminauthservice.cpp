@@ -1,16 +1,15 @@
 #include "adminauthservice.h"
 
-#include "passwordhasher.h"
+#include "common/passwordhasher.h"
 #include "shared/protocol/errorcodes.h"
 
 #include <QDateTime>
 #include <QJsonObject>
-#include <QSqlError>
-#include <QSqlQuery>
 #include <utility>
 
 AdminAuthService::AdminAuthService(QSqlDatabase database, SessionManager *sessions)
-    : m_database(std::move(database)), m_sessions(sessions)
+    : m_database(database), m_sessions(sessions),
+      m_adminRepository(database), m_logRepository(database)
 {
 }
 
@@ -24,41 +23,38 @@ ResponseMessage AdminAuthService::login(const RequestMessage &request)
                                       QStringLiteral("管理员账号或密码错误"));
     }
 
-    QSqlQuery query(m_database);
-    query.prepare(QStringLiteral("SELECT id, password_hash, display_name, status FROM admin WHERE username = :username"));
-    query.bindValue(QStringLiteral(":username"), username);
-    if (!query.exec()) {
+    m_adminRepository.clearError();
+    m_logRepository.clearError();
+    const QJsonObject admin = m_adminRepository.findByUsername(username);
+    if (admin.isEmpty() && !m_adminRepository.lastError().isEmpty()) {
         return ResponseMessage::error(request.requestId, ErrorCodes::DatabaseError,
-                                      query.lastError().text());
+                                      m_adminRepository.lastError());
     }
-    if (!query.next()
-        || query.value(3).toString() != QStringLiteral("NORMAL")
-        || !PasswordHasher::verifyPbkdf2Sha256(password, query.value(1).toString())) {
+    if (admin.isEmpty()
+        || admin.value(QStringLiteral("status")).toString() != QStringLiteral("NORMAL")
+        || !PasswordHasher::verifyPbkdf2Sha256(
+            password, admin.value(QStringLiteral("passwordHash")).toString())) {
         return ResponseMessage::error(request.requestId,
                                       ErrorCodes::InvalidAdminCredentials,
                                       QStringLiteral("管理员账号或密码错误"));
     }
 
-    const qint64 adminId = query.value(0).toLongLong();
-    const QString displayName = query.value(2).toString();
+    const qint64 adminId = admin.value(QStringLiteral("adminId")).toInteger();
+    const QString displayName = admin.value(QStringLiteral("displayName")).toString();
     const QString now = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
     if (!m_database.transaction()) {
         return ResponseMessage::error(request.requestId, ErrorCodes::DatabaseError,
                                       m_database.lastError().text());
     }
-    QSqlQuery update(m_database);
-    update.prepare(QStringLiteral("UPDATE admin SET last_login_at = :now, updated_at = :now WHERE id = :id"));
-    update.bindValue(QStringLiteral(":now"), now);
-    update.bindValue(QStringLiteral(":id"), adminId);
-    QSqlQuery log(m_database);
-    log.prepare(QStringLiteral("INSERT INTO operation_log(admin_id, action, target_type, target_id, result, message, created_at) VALUES(:id, 'ADMIN_LOGIN', 'SYSTEM', :id, 'SUCCESS', :message, :now)"));
-    log.bindValue(QStringLiteral(":id"), adminId);
-    log.bindValue(QStringLiteral(":message"), QStringLiteral("管理员登录成功"));
-    log.bindValue(QStringLiteral(":now"), now);
-    if (!update.exec() || !log.exec() || !m_database.commit()) {
+    if (!m_adminRepository.updateLastLogin(adminId, now)
+        || !m_logRepository.add(adminId, QStringLiteral("ADMIN_LOGIN"),
+                                QStringLiteral("SYSTEM"), adminId, {}, {},
+                                QStringLiteral("管理员登录成功"), now)
+        || !m_database.commit()) {
         m_database.rollback();
         return ResponseMessage::error(request.requestId, ErrorCodes::DatabaseError,
-                                      m_database.lastError().text());
+                                      m_adminRepository.lastError()
+                                          + m_logRepository.lastError());
     }
     const QString sessionId = m_sessions->createSession(adminId, SessionRole::Admin);
     return ResponseMessage::success(request.requestId, {
