@@ -24,6 +24,8 @@
 #include <QtCharts/QPieSeries>
 #include <QtCharts/QValueAxis>
 
+using namespace QtCharts;
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), m_client(new AdminSocketClient(this))
 {
