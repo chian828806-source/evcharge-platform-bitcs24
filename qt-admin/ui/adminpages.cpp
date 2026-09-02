@@ -18,8 +18,6 @@
 #include <QtCharts/QLineSeries>
 #include <QtCharts/QPieSeries>
 
-using namespace QtCharts;
-
 namespace {
 QPushButton *button(const QString &text, QWidget *parent)
 {

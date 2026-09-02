@@ -107,10 +107,43 @@ and pile restart state changes. A failure rolls back the active transaction.
 - Advanced authorization, concurrency, and connection-pool work
 - Complete repository/model cleanup and automated integration coverage
 
+## 8.1 Integration evolution
+
+This Demo was assembled from three source branches.  
+`codex/docs-server-backend-isolation` defined the shared Server/Session/
+Database boundary and isolation documentation; `feature/user-backend` supplied
+the User, station and transactional order flow; and
+`fix/admin-qt-chart-namespace` supplied Admin authentication, analytics,
+management, operation logs and remote-restart behavior.
+
+First, the two role implementations converged into one Qt Server executable:
+one `SocketServer`, `MessageDispatcher`, `SessionManager`, and
+`DatabaseManager`. User/Admin handlers and services remain separate, while
+both registries attach to the same dispatcher. Second, the old aggregated Admin
+`repositories.cpp/.h` was split into the shared `AdminRepository`,
+`UserRepository`, `StationRepository`, `PileRepository`, `OrderRepository`,
+and `OperationLogRepository`; prepared SQL remains in repositories, never in
+handlers. Third, `main.cpp`, qmake `.pri` aggregation, common password code,
+transactional freeze/unfreeze, database lifetime and restart timer handling
+were unified.
+
+Finally, latest `develop` was merged and `database/` is retained byte-for-byte
+from that baseline: schema, seed data, CARY/simulation and ML-history assets,
+`simulation/`, `__init__.py`, and the simulation database. The canonical
+contract is **12 tables and 21 indexes**, including `prediction_batch`,
+`data_import_batch`, `charging_session_history`, and
+`station_hourly_metric`. `DatabaseManager` enables foreign keys per connection;
+startup locates repository-root `database/evcharge.db` and rejects a database
+missing any of the 12 required tables. Settlement clears `current_order_id`,
+sets `paid_at`, deducts `balance_fen`, and updates pile count/minutes/energy in
+one transaction. Revenue uses `COMPLETED` + `paid_at`; each trend point returns
+`revenueFen`, `energyKwh`, and `orderCount`.
+
 ## 9. Build and Run
 
-This document describes the expected commands but does not claim they were run
-as part of the source-only integration.
+Verification was executed on the project VM on 2026-09-03. `qmake6` and
+top-level `make -j2` passed after installing `libqt6charts6-dev` and removing
+the obsolete Qt 6 `using namespace QtCharts;` declaration in the Admin UI.
 
 ```text
 cd qt-server
@@ -128,15 +161,10 @@ by default and the dashboard WebSocket uses `18081` at `/dashboard`. Use
 
 ## 10. Smoke Test Checklist
 
-- [ ] Server starts
-- [ ] Database initializes
-- [ ] `USER_LOGIN` works
-- [ ] A User request reaches a User handler
-- [ ] `ADMIN_LOGIN` works
-- [ ] An Admin request reaches an Admin handler
-- [ ] User and Admin share one `SocketServer`
-- [ ] User and Admin share one `DatabaseManager`
-- [ ] Frozen-user restriction works
-- [ ] Admin freeze/unfreeze works
-- [ ] Order transaction path works
-- [ ] Admin pile restart request works
+- [x] Server starts with current `database/evcharge.db`, QSQLITE, foreign keys and 12-table check
+- [x] User login, profile, station lookup and active-order check
+- [x] `ORDER_CREATE → START → STOP → SETTLE`
+- [x] Admin login, revenue summary/trend, user list, pile list and restart
+- [x] One SocketServer/DatabaseManager with both handler registries
+- [x] Freeze rejects order start; frozen charging user can stop and settle
+- [x] Settlement updates order, balance, `current_order_id`, pile totals and revenue
