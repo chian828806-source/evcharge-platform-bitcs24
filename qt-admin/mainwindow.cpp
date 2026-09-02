@@ -188,6 +188,16 @@ void MainWindow::showUserList(const QJsonObject &data)
     }
     table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     if (auto *layout = qobject_cast<QVBoxLayout *>(centralWidget()->layout())) {
+        auto *search = new QLineEdit(centralWidget());
+        search->setPlaceholderText(QStringLiteral("输入手机号关键字后回车查询"));
+        search->setText(m_userPhoneKeyword);
+        connect(search, &QLineEdit::returnPressed, this, [this, search]() {
+            m_userPhoneKeyword = search->text().trimmed();
+            m_userListRequestId = m_client->sendRequest(
+                MessageTypes::AdminUserList, m_sessionId,
+                {{QStringLiteral("phoneKeyword"), m_userPhoneKeyword}});
+        });
+        layout->insertWidget(layout->count() - 1, search);
         layout->insertWidget(layout->count() - 1, table, 2);
     }
 }

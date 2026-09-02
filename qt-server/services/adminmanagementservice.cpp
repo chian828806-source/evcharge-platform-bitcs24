@@ -228,10 +228,16 @@ ResponseMessage AdminManagementService::createStation(const RequestMessage &requ
 
 ResponseMessage AdminManagementService::userList(const RequestMessage &request) const
 {
+    QString keyword = request.payload.value(QStringLiteral("phoneKeyword")).toString().trimmed();
+    keyword.replace(QLatin1Char('\\'), QStringLiteral("\\\\"));
+    keyword.replace(QLatin1Char('%'), QStringLiteral("\\%"));
+    keyword.replace(QLatin1Char('_'), QStringLiteral("\\_"));
     QSqlQuery query(m_database);
-    if (!query.exec(QStringLiteral(
-            "SELECT id, phone, nickname, balance_fen, created_at, status "
-            "FROM user ORDER BY id"))) {
+    query.prepare(QStringLiteral(
+        "SELECT id, phone, nickname, balance_fen, created_at, status "
+        "FROM user WHERE phone LIKE :keyword ESCAPE '\\' ORDER BY id"));
+    query.bindValue(QStringLiteral(":keyword"), QStringLiteral("%") + keyword + QStringLiteral("%"));
+    if (!query.exec()) {
         return ResponseMessage::error(request.requestId, ErrorCodes::DatabaseError,
                                       query.lastError().text());
     }
