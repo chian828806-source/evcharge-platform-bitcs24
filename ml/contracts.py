@@ -77,8 +77,9 @@ def validate_prediction_document(document: Any) -> dict[str, Any]:
             raise ValueError(f"{prefix}.peakLevel must be LOW, MEDIUM or HIGH")
         if not isinstance(item.get("modelName"), str) or not item["modelName"].strip():
             raise ValueError(f"{prefix}.modelName must be a non-empty string")
-        if "generatedAt" in item:
-            _aware_datetime(item["generatedAt"], f"{prefix}.generatedAt")
+        if "generatedAt" not in item:
+            raise ValueError(f"{prefix}.generatedAt is required")
+        _aware_datetime(item["generatedAt"], f"{prefix}.generatedAt")
         for metric in ("mae", "rmse"):
             if metric in item and _finite_number(item[metric], f"{prefix}.{metric}") < 0:
                 raise ValueError(f"{prefix}.{metric} must be non-negative")

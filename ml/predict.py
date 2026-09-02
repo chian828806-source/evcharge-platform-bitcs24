@@ -14,6 +14,7 @@ import numpy as np
 
 from .contracts import peak_level, validate_prediction_document
 from .features import HORIZONS, build_inference, load_history
+from .prepare_cary_data import load_station_config
 
 
 def _atomic_json(document: dict, path: Path) -> None:
@@ -54,6 +55,7 @@ def generate_predictions(
     output_path: Path,
     batch_id: str,
     output_timezone: str,
+    mapping_path: Path = Path("ml/config/station_mapping.json"),
 ) -> dict:
     """生成并校验整个预测批次；任一记录错误时不会产生正式输出。"""
 
@@ -62,6 +64,8 @@ def generate_predictions(
     output_zone = ZoneInfo(output_timezone)
     history = load_history(str(history_path))
     artifacts = _load_artifacts(model_dir)
+    mapping, _ = load_station_config(mapping_path)
+    project_capacities = {station.station_id: station.project_pile_count for station in mapping.values()}
     generated_at = datetime.now(timezone.utc).astimezone(output_zone).isoformat()
     predictions: list[dict] = []
 
@@ -83,12 +87,15 @@ def generate_predictions(
         metrics = artifact["metrics"]["overall"]
         for (_, row), raw_load in zip(frame.iterrows(), loads):
             predicted_load = float(np.clip(raw_load, 0, 1))
-            capacity = int(row["capacity"])
+            station_id = int(row["station_id"])
+            if station_id not in project_capacities:
+                raise ValueError(f"station {station_id} is missing projectPileCount mapping")
+            capacity = project_capacities[station_id]
             available = max(0, min(capacity, round(capacity * (1 - predicted_load))))
             prediction_time = row["target_time"].to_pydatetime().astimezone(output_zone).isoformat()
             predictions.append(
                 {
-                    "stationId": int(row["station_id"]),
+                    "stationId": station_id,
                     "predictionTime": prediction_time,
                     "horizon": f"{horizon}h",
                     "predictedLoad": round(predicted_load, 6),
@@ -121,6 +128,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--batch-id", required=True)
     parser.add_argument("--output-timezone", default="Asia/Shanghai")
+    parser.add_argument("--mapping", type=Path, default=Path("ml/config/station_mapping.json"))
     args = parser.parse_args()
     document = generate_predictions(
         args.history,
@@ -128,6 +136,7 @@ def main() -> None:
         args.output,
         args.batch_id,
         args.output_timezone,
+        args.mapping,
     )
     print(f"wrote {len(document['predictions'])} predictions to {args.output}")
 

@@ -313,14 +313,15 @@ ml/output/<batchId>/predictions.json
       "horizon": "1h",
       "predictedLoad": 0.65,
       "predictedAvailableCount": 3,
-      "peakLevel": "HIGH",
-      "modelName": "baseline-v1"
+      "peakLevel": "MEDIUM",
+      "modelName": "baseline-v1",
+      "generatedAt": "2026-09-01T12:00:00+08:00"
     }
   ]
 }
 ```
 
-`horizon` 只能是 `1h`、`6h` 或 `24h`；`predictedLoad` 必须是 0 到 1 的有限数值；`predictedAvailableCount` 必须为非负整数；`peakLevel` 只能是 `LOW`、`MEDIUM` 或 `HIGH`。
+`horizon` 只能是 `1h`、`6h` 或 `24h`；`predictedLoad` 必须是 0 到 1 的有限数值；`predictedAvailableCount` 必须为非负整数且不得超过项目站点当前实际桩数；`peakLevel` 只能是 `LOW`、`MEDIUM` 或 `HIGH`；`generatedAt` 为必填的带时区 ISO 8601 时间。
 
 ### 14.3 服务端导入
 

@@ -23,6 +23,7 @@ class StationConfig:
     source_key: str
     station_id: int
     source_port_count: int
+    project_pile_count: int
     label: str
 
 
@@ -77,10 +78,13 @@ def load_station_config(path: Path) -> tuple[dict[str, StationConfig], str]:
             source_key=str(item["sourceKey"]),
             station_id=int(item["stationId"]),
             source_port_count=int(item["sourcePortCount"]),
+            project_pile_count=int(item["projectPileCount"]),
             label=str(item.get("label", "")),
         )
         if station.source_port_count <= 0:
             raise ValueError("sourcePortCount must be positive")
+        if station.project_pile_count <= 0:
+            raise ValueError("projectPileCount must be positive")
         if station.source_key in result or station.station_id in station_ids:
             raise ValueError("station mapping keys and stationId values must be unique")
         result[station.source_key] = station

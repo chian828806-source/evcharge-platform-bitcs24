@@ -42,6 +42,7 @@ class CaryDatabaseWorkflowTests(unittest.TestCase):
                             "sourceKey": "TEST ROAD|00000",
                             "stationId": 1,
                             "sourcePortCount": 2,
+                            "projectPileCount": 4,
                             "label": "Test station",
                         }],
                     }
@@ -71,8 +72,8 @@ class CaryDatabaseWorkflowTests(unittest.TestCase):
                     "SELECT COUNT(*) FROM sqlite_master "
                     "WHERE type = 'index' AND sql IS NOT NULL"
                 ).fetchone()[0]
-                self.assertEqual(table_count, 11)
-                self.assertEqual(index_count, 20)
+                self.assertEqual(table_count, 12)
+                self.assertEqual(index_count, 21)
                 self.assertEqual(connection.execute("SELECT COUNT(*) FROM data_import_batch").fetchone()[0], 1)
                 self.assertEqual(connection.execute("SELECT COUNT(*) FROM charging_session_history").fetchone()[0], 2)
                 self.assertEqual(connection.execute("SELECT COUNT(*) FROM station_hourly_metric").fetchone()[0], 3)

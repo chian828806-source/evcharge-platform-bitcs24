@@ -145,6 +145,7 @@ erDiagram
     charging_station ||--o{ charging_pile : owns
     charging_station ||--o{ charging_order : serves
     charging_station ||--o{ prediction : predicts
+    prediction_batch ||--o{ prediction : contains
     charging_pile ||--o{ charging_order : used_by
     charging_pile ||--o{ operation_log : operated
 ```
@@ -346,6 +347,7 @@ erDiagram
 | 字段 | 类型 | Null | 默认 | 说明 | 对外字段 |
 | --- | --- | --- | --- | --- | --- |
 | `id` | `INTEGER PRIMARY KEY AUTOINCREMENT` | N |  | 预测 ID | `predictionId` |
+| `batch_id` | `TEXT` | N |  | 导入批次 ID，引用 `prediction_batch` | `batchId` |
 | `station_id` | `INTEGER` | N |  | 站点 ID | `stationId` |
 | `prediction_time` | `TEXT` | N |  | 被预测的目标时间 | `predictionTime` |
 | `horizon` | `TEXT` | N |  | `1h` / `6h` / `24h` | `horizon` |
@@ -367,10 +369,19 @@ stationLoad = chargingPileMinutes / (totalPileCount * windowMinutes)
 说明：
 
 - `predicted_load` 保存 0 到 1 的 `REAL`；
-- `predicted_available_count` 为可空字段；有值时必须 `>= 0`。可选的 `mae`、`rmse` 有值时也必须 `>= 0`；
+- `predicted_available_count`、`peak_level` 和 `model_name` 是 ML 导入契约必填字段；预测空闲桩数必须 `>= 0`。可选的 `mae`、`rmse` 有值时也必须 `>= 0`；
 - 展示层可转换为百分比；
 - `chargingPileMinutes` 只统计 `CHARGING` 占用时长，不统计 `RESERVED`、`FAULT`、`OFFLINE`、`RESTARTING`；
-- 同一站点、同一 `prediction_time`、同一 `horizon` 可保留最新一条，或通过 `generated_at` 取最新。
+- 每条预测必须属于一个 `prediction_batch`；`(batch_id, station_id, prediction_time, horizon)` 唯一。重复导入同一 batch 必须幂等，内容不一致时拒绝；不同 batch 的历史记录可以并存。
+
+### 5.7.1 `prediction_batch`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `batch_id` | `TEXT PRIMARY KEY` | ML 输出的批次 ID |
+| `status` | `TEXT` | 当前 V1 为 `IMPORTED` |
+| `generated_at` | `TEXT` | 批次生成时间，必填 |
+| `created_at` | `TEXT` | 批次入库时间，必填 |
 
 ### 5.8 `operation_log`
 
@@ -717,8 +728,9 @@ ML 输出的每条预测记录必须提供以下字段，由 Qt/C++ 服务端写
 - `prediction_time`；
 - `horizon`；
 - `predicted_load`。
+- `generated_at`（JSON 中为必填 `generatedAt`）。
 
-其余字段可按模型能力补充。服务端必须先校验站点存在性、`horizon`、负荷范围和可选字段范围；任一记录不合法时拒绝整个批次，避免部分导入。
+`batchId` 必须先写入 `prediction_batch`，然后在同一事务中写入预测记录。服务端必须校验站点存在性、真实 `charging_pile` 数量、`horizon`、负荷范围和字段完整性；`predicted_available_count` 不得超过当前站点实际桩数。任一记录不合法时整批回滚；已导入的相同 `batchId` 重复请求必须幂等。
 
 ## 10. QtSql 使用要求
 

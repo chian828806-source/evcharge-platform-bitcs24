@@ -19,7 +19,7 @@ SQLite prediction 表 → Qt 客户端 / Web 大屏
 ```
 
 - `predictedLoad` 是未来窗口平均负荷率，范围为 `0..1`。
-- `predictedAvailableCount = round(站点桩数 × (1 - predictedLoad))`，并限制在合法范围内。
+- `predictedAvailableCount = round(projectPileCount × (1 - predictedLoad))`，其中 `projectPileCount` 来自项目站点映射，不使用 Cary 的 `sourcePortCount`。服务端导入时仍必须用 `charging_pile` 实际数量再次校验。
 - `peakLevel` 由负荷率统一派生：`LOW < 0.4`、`0.4 ≤ MEDIUM < 0.7`、`HIGH ≥ 0.7`。
 - 当前真实数据没有逐桩故障/离线标签，因此“空闲桩”是基于负荷的容量估计，不等同于服务端实时状态；界面展示时应标注为预测值。
 
@@ -66,7 +66,7 @@ Windows PowerShell 激活命令为 `.venv\\Scripts\\Activate.ps1`。虚拟环境
   --output ml/data/processed/station_hourly_load.csv
 ```
 
-模拟数据库保存来源会话和连续小时指标。导出使用 UTC 小时轴，避免夏令时产生重复或缺失小时。地址只通过 `config/station_mapping.json` 映射，不会根据全数据自动猜测站点容量。
+模拟数据库保存来源会话和连续小时指标。导出使用 UTC 小时轴，避免夏令时产生重复或缺失小时。地址只通过 `config/station_mapping.json` 映射，不会根据全数据自动猜测站点容量。`sourcePortCount` 仅用于 Cary 历史负荷归一化；`projectPileCount` 仅用于生成项目语义的预计空闲桩数。
 
 ## 2. 训练与评估
 
@@ -98,6 +98,8 @@ python -m unittest discover -s ml/tests -v
 ```
 
 测试使用合成小时序列，不依赖数 MB 的真实数据，所以队友克隆仓库后可以直接执行。正式联调前还应使用服务端导出的真实历史再跑训练与导入测试。
+
+模型选择按预测跨度整体决定（horizon-level global selection），不是为每个站点单独选择模型。因此个别站点可能出现相对季节基线的负 skill，训练报告会同时提供 overall 和 byStation 指标。Cary 清洗会区分 invalid 与 unmapped：前者通常是时间、时长、电量或地址字段无法解析，后者是地址没有出现在显式三站点映射中。
 
 ## 当前数据能力边界
 

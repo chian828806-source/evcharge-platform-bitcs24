@@ -6,7 +6,7 @@
 
 | 文件 | 作用 |
 | --- | --- |
-| `schema.sql` | 建库脚本：11 张表 + 20 个索引，可重复执行（先 DROP 再 CREATE） |
+| `schema.sql` | 建库脚本：12 张表 + 21 个索引，可重复执行（先 DROP 再 CREATE） |
 | `init_data.sql` | 演示种子数据：满足 04 文档第 11 节全部初始化要求 |
 | `evcharge.db` | 运行时生成的 SQLite 数据库文件（已被 .gitignore 忽略，不入库） |
 | `evcharge_cary_simulation.db` | 含 CC0 历史会话和小时指标的预构建演示数据库 |
@@ -40,7 +40,7 @@ sqlite> .read database/init_data.sql
   --output ml/data/processed/station_hourly_load.csv
 ```
 
-这些 Python 脚本是开发期的可复现参考实现。正式运行时由 Qt/C++ 服务端导出相同 CSV、校验预测 JSON并用事务写入 `prediction`；ML 不直接连接生产数据库。
+这些 Python 脚本是开发期的可复现参考实现。正式运行时由 Qt/C++ 服务端导出相同 CSV、校验预测 JSON，并使用 `prediction_batch` + `prediction` 事务写入；ML 不直接连接生产数据库。批次键和 `(batch_id, station_id, prediction_time, horizon)` 唯一约束用于保证重复导入幂等。
 
 ## 内置演示账号
 

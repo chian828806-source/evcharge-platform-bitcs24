@@ -19,6 +19,7 @@ DROP TABLE IF EXISTS charging_session_history;
 DROP TABLE IF EXISTS data_import_batch;
 DROP TABLE IF EXISTS operation_log;
 DROP TABLE IF EXISTS prediction;
+DROP TABLE IF EXISTS prediction_batch;
 DROP TABLE IF EXISTS recharge_record;
 DROP TABLE IF EXISTS charging_order;
 DROP TABLE IF EXISTS charging_pile;
@@ -164,12 +165,20 @@ CREATE TABLE recharge_record (
 );
 
 -- ----------------------------------------------------------------------------
--- 7. 预测结果表 prediction —— ML 输出，供推荐/预警/大屏（04 文档 5.7）
+-- 7. 预测批次和结果表 —— ML 输出，供推荐/预警/大屏（04 文档 5.7）
 --    负荷统一口径(8.6)：stationLoad = chargingPileMinutes / (totalPileCount*windowMinutes)
 --    只统计 CHARGING 占用时长；predicted_load 取值 0~1
 -- ----------------------------------------------------------------------------
+CREATE TABLE prediction_batch (
+    batch_id     TEXT PRIMARY KEY,
+    status       TEXT NOT NULL CHECK (status IN ('IMPORTED')),
+    generated_at TEXT NOT NULL,
+    created_at   TEXT NOT NULL
+);
+
 CREATE TABLE prediction (
     id                        INTEGER PRIMARY KEY AUTOINCREMENT,  -- 预测ID (predictionId)
+    batch_id                  TEXT    NOT NULL REFERENCES prediction_batch(batch_id),
     station_id                INTEGER NOT NULL REFERENCES charging_station(id),
     prediction_time           TEXT    NOT NULL,       -- 被预测的目标时间点
     horizon                   TEXT    NOT NULL,       -- 预测窗口：1h / 6h / 24h
@@ -188,6 +197,9 @@ CREATE TABLE prediction (
     CHECK (horizon IN ('1h', '6h', '24h')),
     CHECK (peak_level IN ('LOW', 'MEDIUM', 'HIGH'))
 );
+
+CREATE UNIQUE INDEX idx_prediction_batch_key
+ON prediction(batch_id, station_id, prediction_time, horizon);
 
 -- ----------------------------------------------------------------------------
 -- 8. 操作日志表 operation_log —— 管理员操作/远程重启/冻结解冻留痕（04 文档 5.8）

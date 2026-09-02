@@ -78,6 +78,7 @@ class ContractTests(unittest.TestCase):
                 "predictedAvailableCount": 3,
                 "peakLevel": "MEDIUM",
                 "modelName": "test-v1",
+                "generatedAt": "2026-09-01T12:00:00+08:00",
             }],
         }
         self.assertIs(validate_prediction_document(document), document)
@@ -95,6 +96,7 @@ class ContractTests(unittest.TestCase):
                 "predictedAvailableCount": 1,
                 "peakLevel": "MEDIUM",
                 "modelName": "test-v1",
+                "generatedAt": "2026-09-01T12:00:00+08:00",
             }],
         }
         with self.assertRaisesRegex(ValueError, "timezone"):
@@ -119,9 +121,19 @@ class EndToEndTests(unittest.TestCase):
             model_dir = root / "models"
             report_path = root / "report.json"
             output_path = root / "predictions.json"
+            mapping_path = root / "station_mapping.json"
+            mapping_path.write_text(json.dumps({
+                "schemaVersion": "1.0",
+                "calendarTimezone": "UTC",
+                "stations": [
+                    {"sourceKey": "S1", "stationId": 1, "sourcePortCount": 4, "projectPileCount": 4},
+                    {"sourceKey": "S2", "stationId": 2, "sourcePortCount": 6, "projectPileCount": 4},
+                    {"sourceKey": "S3", "stationId": 3, "sourcePortCount": 8, "projectPileCount": 4},
+                ],
+            }), encoding="utf-8")
             synthetic_history().to_csv(history_path, index=False)
             report = train_all(history_path, model_dir, report_path, "UTC")
-            result = generate_predictions(history_path, model_dir, output_path, "test-batch", "Asia/Shanghai")
+            result = generate_predictions(history_path, model_dir, output_path, "test-batch", "Asia/Shanghai", mapping_path)
             self.assertEqual(set(report["horizons"]), {"1h", "6h", "24h"})
             self.assertEqual(len(result["predictions"]), 9)
             self.assertEqual(json.loads(output_path.read_text(encoding="utf-8")), result)
