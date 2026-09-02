@@ -5,7 +5,7 @@ CONFIG += ordered
 
 server.file = qt-server/qt-server.pro
 user_network.file = qt-user/qt-user-network.pro
-admin_network.file = qt-admin/qt-admin-network.pro
+admin.file = qt-admin/qt-admin.pro
 network_tests.file = tests/network/network-protocol-tests.pro
 
-SUBDIRS += server user_network admin_network network_tests
+SUBDIRS += server user_network admin network_tests
