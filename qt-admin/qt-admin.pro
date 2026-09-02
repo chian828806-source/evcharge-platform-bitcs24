@@ -8,8 +8,10 @@ INCLUDEPATH += $$REPO_ROOT
 
 HEADERS += $$PWD/mainwindow.h \
            $$PWD/network/adminsocketclient.h
+HEADERS += $$PWD/ui/adminpages.h
 SOURCES += $$PWD/main.cpp \
            $$PWD/mainwindow.cpp \
            $$PWD/network/adminsocketclient.cpp
+SOURCES += $$PWD/ui/adminpages.cpp
 
 include($$REPO_ROOT/shared/protocol/protocol.pri)
