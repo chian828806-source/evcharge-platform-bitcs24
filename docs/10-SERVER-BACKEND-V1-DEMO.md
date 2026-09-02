@@ -109,7 +109,7 @@ and pile restart state changes. A failure rolls back the active transaction.
 
 ## 8.1 Integration evolution
 
-This Demo was assembled from three source branches.  
+This Demo was assembled from three source branches.
 `codex/docs-server-backend-isolation` defined the shared Server/Session/
 Database boundary and isolation documentation; `feature/user-backend` supplied
 the User, station and transactional order flow; and
