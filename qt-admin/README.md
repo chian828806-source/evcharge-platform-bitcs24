@@ -34,4 +34,4 @@ qt-admin/
 └── util/
 ```
 
-管理端网络访问应复用 `SocketClient` / `NetworkClient` 封装。
+管理端网络访问应复用 `network/AdminSocketClient`；页面不直接操作 `QTcpSocket`。
