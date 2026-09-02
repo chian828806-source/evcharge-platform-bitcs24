@@ -73,6 +73,12 @@
 
 展示为元时由界面层转换，数据库和业务计算层不保存小数金额。
 
+订单停止计量后统一使用：
+
+```text
+amountFen = round(energyKwh * (priceFenPerKwh + serviceFeeFenPerKwh))
+```
+
 ## 3. 状态枚举
 
 ### 3.1 用户状态
@@ -204,6 +210,7 @@ erDiagram
 
 - `username` 唯一；
 - 初始演示账号为 `admin / 123456`，脚本中必须写入哈希后的密码；
+- 密码保存格式固定为 `pbkdf2_sha256$iterations$salt_hex$hash_hex`，使用 PBKDF2-HMAC-SHA256；每个账号必须生成独立的随机盐。V1 种子数据的迭代次数为 `210000`；
 - Socket 返回中不得包含 `password_hash`。
 
 ### 5.3 `charging_station`
@@ -229,6 +236,7 @@ erDiagram
 
 - `station_no` 唯一；
 - `price_fen_per_kwh >= 0`；
+- `service_fee_fen_per_kwh >= 0`；
 - `status in ('NORMAL', 'DISABLED')`；
 - 经纬度由地图 API 或演示数据提供；
 - 新增站点时，由服务层按输入数量自动创建电桩。
@@ -258,6 +266,8 @@ erDiagram
 - `(station_id, pile_no)` 唯一；
 - `station_id` 引用 `charging_station.id`；
 - `type in ('FAST', 'SLOW')`；
+- `power_kw > 0`；
+- `total_charge_count >= 0`、`total_charge_minutes >= 0`、`total_energy_kwh >= 0`；
 - `status in ('AVAILABLE', 'RESERVED', 'CHARGING', 'FAULT', 'OFFLINE', 'RESTARTING')`；
 - `current_order_id` 只在 `RESERVED` 或 `CHARGING` 时填写，释放后置空；
 - 只有 `AVAILABLE` 电桩可被用户创建订单。
@@ -294,6 +304,7 @@ erDiagram
 - `station_id` 引用 `charging_station.id`；
 - `pile_id` 引用 `charging_pile.id`；
 - `status in ('CREATED', 'CHARGING', 'PENDING_PAYMENT', 'COMPLETED', 'CANCELLED')`；
+- `price_fen_per_kwh >= 0`、`service_fee_fen_per_kwh >= 0`；
 - `energy_kwh >= 0`，`amount_fen >= 0`，`charge_minutes >= 0`；
 - `CREATED` 订单对应电桩 `RESERVED`；
 - `CHARGING` 订单对应电桩 `CHARGING`；
@@ -325,6 +336,7 @@ erDiagram
 
 - `record_no` 唯一；
 - `amount_fen > 0`；
+- `balance_after_fen >= 0`；
 - 充值成功时，`user.balance_fen` 与 `recharge_record` 写入必须在同一事务中完成。
 
 ### 5.7 `prediction`
@@ -355,6 +367,7 @@ stationLoad = chargingPileMinutes / (totalPileCount * windowMinutes)
 说明：
 
 - `predicted_load` 保存 0 到 1 的 `REAL`；
+- `predicted_available_count` 为可空字段；有值时必须 `>= 0`。可选的 `mae`、`rmse` 有值时也必须 `>= 0`；
 - 展示层可转换为百分比；
 - `chargingPileMinutes` 只统计 `CHARGING` 占用时长，不统计 `RESERVED`、`FAULT`、`OFFLINE`、`RESTARTING`；
 - 同一站点、同一 `prediction_time`、同一 `horizon` 可保留最新一条，或通过 `generated_at` 取最新。
@@ -716,7 +729,8 @@ username = admin
 password = 123456
 ```
 
-数据库中只能保存哈希后的 `password_hash`。
+数据库中只能保存 PBKDF2-HMAC-SHA256 派生的 `password_hash`，格式为
+`pbkdf2_sha256$iterations$salt_hex$hash_hex`。登录 Service 负责解析、重新派生并比较，网络层和初始化脚本不承担登录业务。
 
 ## 12. 变更流程
 

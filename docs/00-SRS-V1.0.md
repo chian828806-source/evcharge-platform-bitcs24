@@ -212,7 +212,7 @@ Priority: MUST
 计费公式：
 
 ```text
-amountFen = energyKwh × priceFenPerKwh
+amountFen = round(energyKwh × (priceFenPerKwh + serviceFeeFenPerKwh))
 ```
 
 金额以“分”为整数保存和计算。余额不足时订单保持 `PENDING_PAYMENT`，重复结算不得重复扣款。

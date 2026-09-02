@@ -104,6 +104,9 @@ ORDER_STOP
 ORDER_SETTLE
 ```
 
+订单金额契约：`ORDER_STOP` 计算并返回的 `amountFen` 必须为
+`round(energyKwh * (priceFenPerKwh + serviceFeeFenPerKwh))`。其中单价和服务费均为分/kWh，订单使用创建时保存的价格快照；客户端不得自行采用不同公式重算金额。
+
 管理：
 
 ```text
