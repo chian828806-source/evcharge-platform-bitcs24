@@ -241,7 +241,7 @@ Response:
 | --- | --- | --- | --- |
 | `ADMIN_LOGIN` | `username: string`，`password: string` | `sessionId`，`admin { adminId, username, displayName }` | `4301` 账号或密码错误，`5001` 数据库错误 |
 | `ADMIN_REVENUE_SUMMARY` | 空对象 | `todayRevenueFen`，`monthRevenueFen`，`totalRevenueFen` | `4003` Session 无效，`5001` 数据库错误 |
-| `ADMIN_REVENUE_TREND` | `days: int`，必填且仅允许 `7` 或 `30` | `days`，`points [{ date, revenueFen }]`；无订单日期补 0 | `4003`，`4401`，`5001` |
+| `ADMIN_REVENUE_TREND` | `days: int`，必填且仅允许 `7` 或 `30` | `days`，`points [{ date, revenueFen, energyKwh, orderCount }]`；无订单日期全部补 0 | `4003`，`4401`，`5001` |
 | `ADMIN_PILE_STATUS_SUMMARY` | 空对象 | `total`，`statuses [{ status, count, ratio }]` | `4003`，`5001` |
 | `ADMIN_PILE_LIST` | `stationId: int`，可选；省略表示全部站点 | `piles [{ pileId, pileNo, stationId, stationName, type, powerKw, status, totalChargeCount, totalChargeMinutes }]` | `4003`，`5001` |
 | `ADMIN_PILE_RESTART` | `pileId: int` | `pileId`，`status=RESTARTING`，`restoreStatus` | `4003`，`4102` 当前状态禁止重启，`4202` 电桩不存在，`5001` |

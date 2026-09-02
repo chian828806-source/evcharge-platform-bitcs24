@@ -9,11 +9,63 @@
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
+#include <QDir>
+#include <QFileInfo>
 #include <QHostAddress>
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QTextStream>
+
+namespace {
+
+QString defaultDatabasePath()
+{
+    const QString relativePath = QStringLiteral("database/evcharge.db");
+    const QList<QString> starts = {QDir::currentPath(), QCoreApplication::applicationDirPath()};
+    for (const QString &start : starts) {
+        QDir directory(start);
+        while (true) {
+            const QString candidate = directory.filePath(relativePath);
+            if (QFileInfo::exists(candidate)) {
+                return QDir::cleanPath(candidate);
+            }
+            if (!directory.cdUp()) {
+                break;
+            }
+        }
+    }
+    return QDir::cleanPath(QDir::current().filePath(relativePath));
+}
+
+bool hasRequiredTables(QSqlDatabase &database, QString *errorMessage)
+{
+    const QStringList requiredTables = {
+        QStringLiteral("user"), QStringLiteral("admin"),
+        QStringLiteral("charging_station"), QStringLiteral("charging_pile"),
+        QStringLiteral("charging_order"), QStringLiteral("recharge_record"),
+        QStringLiteral("prediction_batch"), QStringLiteral("prediction"),
+        QStringLiteral("operation_log"), QStringLiteral("data_import_batch"),
+        QStringLiteral("charging_session_history"),
+        QStringLiteral("station_hourly_metric")};
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = :tableName"));
+    for (const QString &table : requiredTables) {
+        query.bindValue(QStringLiteral(":tableName"), table);
+        if (!query.exec() || !query.next()) {
+            if (errorMessage) {
+                *errorMessage = query.lastError().isValid()
+                    ? query.lastError().text()
+                    : QStringLiteral("required table is missing: %1").arg(table);
+            }
+            return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
 
 int main(int argc, char *argv[])
 {
@@ -26,7 +78,8 @@ int main(int argc, char *argv[])
     parser.addOption({{QStringLiteral("w"), QStringLiteral("websocket-port")},
                       QStringLiteral("WebSocket listen port"), QStringLiteral("port"), QStringLiteral("18081")});
     parser.addOption({{QStringLiteral("d"), QStringLiteral("database")},
-                      QStringLiteral("SQLite database path"), QStringLiteral("path"), QStringLiteral("database/evcharge.db")});
+                      QStringLiteral("SQLite database path"), QStringLiteral("path"),
+                      defaultDatabasePath()});
     parser.process(application);
 
     bool tcpOk = false;
@@ -44,9 +97,8 @@ int main(int argc, char *argv[])
         QTextStream(stderr) << "SQLite open failed: " << error << '\n';
         return 3;
     }
-    QSqlQuery schemaCheck(database);
-    if (!schemaCheck.exec(QStringLiteral("SELECT 1 FROM user LIMIT 1"))) {
-        QTextStream(stderr) << "SQLite schema is unavailable: " << schemaCheck.lastError().text() << '\n';
+    if (!hasRequiredTables(database, &error)) {
+        QTextStream(stderr) << "SQLite schema is unavailable: " << error << '\n';
         return 3;
     }
 

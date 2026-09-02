@@ -363,16 +363,26 @@ QJsonArray OrderRepository::revenueTrend(QSqlDatabase &database, const QDate &fi
                                           int days, QString *errorMessage) const
 {
     QSqlQuery query(database);
-    query.prepare(QStringLiteral("SELECT substr(paid_at,1,10),COALESCE(SUM(amount_fen),0) FROM charging_order "
+    query.prepare(QStringLiteral("SELECT substr(paid_at,1,10), COALESCE(SUM(amount_fen),0), "
+                                 "COALESCE(SUM(energy_kwh),0), COUNT(*) FROM charging_order "
                                  "WHERE status='COMPLETED' AND paid_at>=:start GROUP BY substr(paid_at,1,10)"));
     query.bindValue(QStringLiteral(":start"), firstDate.toString(QStringLiteral("yyyy-MM-dd 00:00:00")));
     if (!query.exec()) { if (errorMessage) *errorMessage = query.lastError().text(); return {}; }
-    QHash<QString, qint64> values;
-    while (query.next()) values.insert(query.value(0).toString(), query.value(1).toLongLong());
+    QHash<QString, QJsonObject> values;
+    while (query.next()) {
+        values.insert(query.value(0).toString(),
+                      {{QStringLiteral("revenueFen"), query.value(1).toLongLong()},
+                       {QStringLiteral("energyKwh"), query.value(2).toDouble()},
+                       {QStringLiteral("orderCount"), query.value(3).toInt()}});
+    }
     QJsonArray result;
     for (int i = 0; i < days; ++i) {
         const QString date = firstDate.addDays(i).toString(Qt::ISODate);
-        result.append(QJsonObject{{QStringLiteral("date"), date}, {QStringLiteral("revenueFen"), values.value(date)}});
+        QJsonObject point = values.value(date,
+            {{QStringLiteral("revenueFen"), 0}, {QStringLiteral("energyKwh"), 0.0},
+             {QStringLiteral("orderCount"), 0}});
+        point.insert(QStringLiteral("date"), date);
+        result.append(point);
     }
     return result;
 }

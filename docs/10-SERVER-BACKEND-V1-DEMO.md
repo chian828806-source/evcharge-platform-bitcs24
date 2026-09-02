@@ -120,7 +120,9 @@ release/evcharge-qt-server.exe --database ../database/evcharge.db
 ```
 
 Initialize the selected SQLite file with `database/schema.sql` before startup.
-The `--database` option defaults to `database/evcharge.db`; TCP uses `18080`
+When no `--database` is supplied, the server walks upward from its launch and
+executable directories to locate the repository-root `database/evcharge.db`.
+It verifies the 12-table database contract before listening. TCP uses `18080`
 by default and the dashboard WebSocket uses `18081` at `/dashboard`. Use
 `--tcp-port` and `--websocket-port` to override the ports.
 
