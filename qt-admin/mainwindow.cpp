@@ -120,6 +120,11 @@ void MainWindow::handleResponse(const QJsonObject &response)
         }
         return;
     }
+    if (requestId == m_pileRestartRequestId) {
+        m_pileListRequestId = m_client->sendRequest(
+            MessageTypes::AdminPileList, m_sessionId, {});
+        return;
+    }
     if (requestId != m_loginRequestId) {
         return;
     }
@@ -140,10 +145,10 @@ void MainWindow::handleResponse(const QJsonObject &response)
 void MainWindow::showPileList(const QJsonObject &data)
 {
     const QJsonArray piles = data.value(QStringLiteral("piles")).toArray();
-    auto *table = new QTableWidget(piles.size(), 7, centralWidget());
+    auto *table = new QTableWidget(piles.size(), 8, centralWidget());
     table->setHorizontalHeaderLabels({QStringLiteral("桩号"), QStringLiteral("站点"),
         QStringLiteral("类型"), QStringLiteral("功率/kW"), QStringLiteral("状态"),
-        QStringLiteral("累计次数"), QStringLiteral("累计分钟")});
+        QStringLiteral("累计次数"), QStringLiteral("累计分钟"), QStringLiteral("操作")});
     for (int row = 0; row < piles.size(); ++row) {
         const QJsonObject pile = piles.at(row).toObject();
         const QStringList values = {pile.value(QStringLiteral("pileNo")).toString(),
@@ -156,6 +161,18 @@ void MainWindow::showPileList(const QJsonObject &data)
         for (int column = 0; column < values.size(); ++column) {
             table->setItem(row, column, new QTableWidgetItem(values.at(column)));
         }
+        auto *restart = new QPushButton(QStringLiteral("远程重启"), table);
+        const qint64 pileId = pile.value(QStringLiteral("pileId")).toInteger();
+        const QString status = pile.value(QStringLiteral("status")).toString();
+        restart->setEnabled(status != QStringLiteral("RESERVED")
+                            && status != QStringLiteral("CHARGING")
+                            && status != QStringLiteral("RESTARTING"));
+        connect(restart, &QPushButton::clicked, this, [this, pileId]() {
+            m_pileRestartRequestId = m_client->sendRequest(
+                MessageTypes::AdminPileRestart, m_sessionId,
+                {{QStringLiteral("pileId"), pileId}});
+        });
+        table->setCellWidget(row, 7, restart);
     }
     table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     if (auto *layout = qobject_cast<QVBoxLayout *>(centralWidget()->layout())) {
