@@ -1,6 +1,8 @@
 # 东软电动汽车充电桩应用管理平台
 
-本项目是计科小学期一周开发项目，当前阶段为需求与规范修订阶段。
+本项目是计科小学期一周开发项目。当前仓库已具备可运行的 Backend V1 Demo：
+Qt 用户端和管理端通过同一个 Qt/C++ Socket Server 访问 SQLite；其余 UI、
+Web 大屏和 ML 集成仍按各模块文档持续迭代。
 
 根据当前评审结论，项目主技术路线调整为：
 
@@ -50,8 +52,7 @@ Python ML 使用历史数据预测
 
 服务端独立承担业务服务职责，不包含管理界面：
 
-- 使用 `QTcpServer` 接收 Qt 用户端连接；
-- 使用 `QTcpServer` 接收 Qt 管理端连接；
+- 使用一个 `QTcpServer` 同时接收 Qt 用户端和 Qt 管理端连接；
 - 处理登录、站点、电桩、订单、充值、结算等核心业务；
 - 通过 QtSql 的 `QSQLITE` 驱动读写 SQLite；
 - 使用多线程处理连接、业务、充电计时、数据库写入和 WebSocket 推送；
@@ -69,7 +70,10 @@ Python ML 使用历史数据预测
 
 ### 2.4 SQLite 数据库
 
-SQLite 是主业务数据库，保存用户、管理员、充电站、充电桩、订单、充值记录、预测结果和操作日志。
+SQLite 是主业务数据库。当前 `database/schema.sql` 定义 12 张表和 21 个索引：
+业务用户/管理员/站点/电桩/订单/充值/预测/操作日志，以及 ML/CARY 历史导入、
+充电会话和站点小时指标。运行时数据库为 `database/evcharge.db`，通过
+`database/schema.sql` 和 `database/init_data.sql` 初始化。
 
 ### 2.5 Web 数据可视化大屏
 
@@ -118,7 +122,10 @@ evcharge-platform/
 ├── qt-admin/
 ├── qt-server/
 ├── database/
-│   └── .gitkeep            # 当前分支仅保留目录；数据库设计见 docs/04-DATABASE.md
+│   ├── schema.sql          # 12 表、21 索引的正式契约
+│   ├── init_data.sql       # 演示种子数据
+│   ├── simulation/         # CARY 数据导入与 ML-history 工具
+│   └── evcharge_cary_simulation.db
 ├── web-dashboard/
 ├── ml/
 ├── docs/
@@ -146,6 +153,7 @@ evcharge-platform/
 | `docs/05-GIT-WORKFLOW.md` | Git、Review、集成规范 |
 | `docs/06-AGENT-GUIDE.md` | Agent 协作约束 |
 | `docs/07-DEVICE-PROTOCOL.md` | 远程重启模拟与扩展设备协议 |
+| `docs/10-SERVER-BACKEND-V1-DEMO.md` | Backend V1 Demo 架构、验证与演进记录 |
 
 ## 6. 当前待确认事项
 

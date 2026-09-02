@@ -145,6 +145,17 @@ Verification was executed on the project VM on 2026-09-03. `qmake6` and
 top-level `make -j2` passed after installing `libqt6charts6-dev` and removing
 the obsolete Qt 6 `using namespace QtCharts;` declaration in the Admin UI.
 
+Linux VM (verified on 2026-09-03):
+
+```bash
+qmake6 /path/to/evcharge-platform/evcharge-platform.pro
+make -j2
+/path/to/build/qt-server/evcharge-qt-server \
+  --database /path/to/evcharge-platform/database/evcharge.db
+```
+
+Windows / MinGW (optional local workflow; not the VM verification command):
+
 ```text
 cd qt-server
 qmake -spec win32-g++ qt-server.pro
