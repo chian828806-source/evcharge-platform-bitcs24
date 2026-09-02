@@ -255,3 +255,78 @@ ResponseMessage AdminManagementService::userList(const RequestMessage &request) 
     return ResponseMessage::success(request.requestId,
                                     {{QStringLiteral("users"), users}});
 }
+
+ResponseMessage AdminManagementService::setUserFrozen(const RequestMessage &request,
+                                                       qint64 adminId,
+                                                       bool frozen) const
+{
+    const qint64 userId = request.payload.value(QStringLiteral("userId")).toInteger(0);
+    if (userId <= 0) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::InvalidSocketMessage,
+                                      QStringLiteral("userId must be a positive integer"));
+    }
+    QSqlQuery find(m_database);
+    find.prepare(QStringLiteral("SELECT phone, status FROM user WHERE id=:userId"));
+    find.bindValue(QStringLiteral(":userId"), userId);
+    if (!find.exec()) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::DatabaseError,
+                                      find.lastError().text());
+    }
+    if (!find.next()) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::InvalidPhone,
+                                      QStringLiteral("user not found"));
+    }
+    const QString phone = find.value(0).toString();
+    const QString beforeStatus = find.value(1).toString();
+    const QString afterStatus = frozen ? QStringLiteral("FROZEN")
+                                       : QStringLiteral("NORMAL");
+    if (beforeStatus == afterStatus) {
+        return ResponseMessage::success(request.requestId, {
+            {QStringLiteral("userId"), userId},
+            {QStringLiteral("status"), afterStatus},
+            {QStringLiteral("changed"), false}
+        });
+    }
+
+    const QString now = QDateTime::currentDateTime()
+                            .toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+    if (!m_database.transaction()) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::DatabaseError,
+                                      m_database.lastError().text());
+    }
+    QSqlQuery update(m_database);
+    update.prepare(QStringLiteral(
+        "UPDATE user SET status=:after, updated_at=:now "
+        "WHERE id=:userId AND status=:before"));
+    update.bindValue(QStringLiteral(":after"), afterStatus);
+    update.bindValue(QStringLiteral(":now"), now);
+    update.bindValue(QStringLiteral(":userId"), userId);
+    update.bindValue(QStringLiteral(":before"), beforeStatus);
+    QSqlQuery log(m_database);
+    log.prepare(QStringLiteral(
+        "INSERT INTO operation_log(admin_id,action,target_type,target_id,"
+        "before_status,after_status,result,message,created_at) "
+        "VALUES(:adminId,:action,'USER',:userId,:before,:after,'SUCCESS',:message,:now)"));
+    log.bindValue(QStringLiteral(":adminId"), adminId);
+    log.bindValue(QStringLiteral(":action"), frozen
+                      ? QStringLiteral("USER_FREEZE")
+                      : QStringLiteral("USER_UNFREEZE"));
+    log.bindValue(QStringLiteral(":userId"), userId);
+    log.bindValue(QStringLiteral(":before"), beforeStatus);
+    log.bindValue(QStringLiteral(":after"), afterStatus);
+    log.bindValue(QStringLiteral(":message"),
+                  (frozen ? QStringLiteral("冻结用户 ") : QStringLiteral("解冻用户 "))
+                      + phone);
+    log.bindValue(QStringLiteral(":now"), now);
+    if (!update.exec() || update.numRowsAffected() != 1 || !log.exec()
+        || !m_database.commit()) {
+        m_database.rollback();
+        return ResponseMessage::error(request.requestId, ErrorCodes::DatabaseError,
+                                      update.lastError().text());
+    }
+    return ResponseMessage::success(request.requestId, {
+        {QStringLiteral("userId"), userId},
+        {QStringLiteral("status"), afterStatus},
+        {QStringLiteral("changed"), true}
+    });
+}

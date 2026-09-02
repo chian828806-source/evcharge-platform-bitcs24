@@ -40,6 +40,7 @@ private:
     QString m_stationListRequestId;
     QString m_stationCreateRequestId;
     QString m_userListRequestId;
+    QString m_userStatusRequestId;
     QString m_userPhoneKeyword;
     QString m_sessionId;
 };
