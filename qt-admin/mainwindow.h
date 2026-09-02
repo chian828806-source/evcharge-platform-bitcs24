@@ -37,5 +37,6 @@ private:
     QString m_pileListRequestId;
     QString m_pileRestartRequestId;
     QString m_stationListRequestId;
+    QString m_stationCreateRequestId;
     QString m_sessionId;
 };

@@ -156,3 +156,72 @@ ResponseMessage AdminManagementService::stationList(const RequestMessage &reques
     return ResponseMessage::success(request.requestId,
                                     {{QStringLiteral("stations"), stations}});
 }
+
+ResponseMessage AdminManagementService::createStation(const RequestMessage &request,
+                                                       qint64 adminId) const
+{
+    const QString name = request.payload.value(QStringLiteral("name")).toString().trimmed();
+    const QString address = request.payload.value(QStringLiteral("address")).toString().trimmed();
+    const double longitude = request.payload.value(QStringLiteral("longitude")).toDouble(999.0);
+    const double latitude = request.payload.value(QStringLiteral("latitude")).toDouble(999.0);
+    const int pileCount = request.payload.value(QStringLiteral("pileCount")).toInt();
+    const int priceFen = request.payload.value(QStringLiteral("priceFenPerKwh")).toInt(120);
+    if (name.isEmpty() || address.isEmpty() || longitude < -180 || longitude > 180
+        || latitude < -90 || latitude > 90 || pileCount < 1 || pileCount > 100
+        || priceFen < 0) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::InvalidSocketMessage,
+                                      QStringLiteral("invalid station fields"));
+    }
+    const QString now = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+    const QString stationNo = QStringLiteral("ST%1")
+        .arg(QDateTime::currentMSecsSinceEpoch());
+    if (!m_database.transaction()) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::DatabaseError,
+                                      m_database.lastError().text());
+    }
+    QSqlQuery station(m_database);
+    station.prepare(QStringLiteral("INSERT INTO charging_station(station_no,name,address,longitude,latitude,price_fen_per_kwh,service_fee_fen_per_kwh,status,created_at,updated_at) VALUES(:no,:name,:address,:longitude,:latitude,:price,0,'NORMAL',:now,:now)"));
+    station.bindValue(QStringLiteral(":no"), stationNo);
+    station.bindValue(QStringLiteral(":name"), name);
+    station.bindValue(QStringLiteral(":address"), address);
+    station.bindValue(QStringLiteral(":longitude"), longitude);
+    station.bindValue(QStringLiteral(":latitude"), latitude);
+    station.bindValue(QStringLiteral(":price"), priceFen);
+    station.bindValue(QStringLiteral(":now"), now);
+    if (!station.exec()) {
+        m_database.rollback();
+        return ResponseMessage::error(request.requestId, ErrorCodes::DatabaseError,
+                                      station.lastError().text());
+    }
+    const qint64 stationId = station.lastInsertId().toLongLong();
+    for (int number = 1; number <= pileCount; ++number) {
+        QSqlQuery pile(m_database);
+        pile.prepare(QStringLiteral("INSERT INTO charging_pile(station_id,pile_no,type,power_kw,status,created_at,updated_at) VALUES(:stationId,:pileNo,:type,:power,'AVAILABLE',:now,:now)"));
+        pile.bindValue(QStringLiteral(":stationId"), stationId);
+        pile.bindValue(QStringLiteral(":pileNo"), QStringLiteral("P%1").arg(number, 3, 10, QLatin1Char('0')));
+        pile.bindValue(QStringLiteral(":type"), number % 2 ? QStringLiteral("FAST") : QStringLiteral("SLOW"));
+        pile.bindValue(QStringLiteral(":power"), number % 2 ? 60.0 : 7.0);
+        pile.bindValue(QStringLiteral(":now"), now);
+        if (!pile.exec()) {
+            m_database.rollback();
+            return ResponseMessage::error(request.requestId, ErrorCodes::DatabaseError,
+                                          pile.lastError().text());
+        }
+    }
+    QSqlQuery log(m_database);
+    log.prepare(QStringLiteral("INSERT INTO operation_log(admin_id,action,target_type,target_id,result,message,created_at) VALUES(:adminId,'STATION_CREATE','STATION',:stationId,'SUCCESS',:message,:now)"));
+    log.bindValue(QStringLiteral(":adminId"), adminId);
+    log.bindValue(QStringLiteral(":stationId"), stationId);
+    log.bindValue(QStringLiteral(":message"), QStringLiteral("新增充电站并生成 %1 个模拟电桩").arg(pileCount));
+    log.bindValue(QStringLiteral(":now"), now);
+    if (!log.exec() || !m_database.commit()) {
+        m_database.rollback();
+        return ResponseMessage::error(request.requestId, ErrorCodes::DatabaseError,
+                                      log.lastError().text());
+    }
+    return ResponseMessage::success(request.requestId, {
+        {QStringLiteral("stationId"), stationId},
+        {QStringLiteral("stationNo"), stationNo},
+        {QStringLiteral("pileCount"), pileCount}
+    });
+}
