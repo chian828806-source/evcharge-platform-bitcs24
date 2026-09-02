@@ -153,10 +153,10 @@ void MainWindow::handleResponse(const QJsonObject &response)
 void MainWindow::showStationList(const QJsonObject &data)
 {
     const QJsonArray stations = data.value(QStringLiteral("stations")).toArray();
-    auto *table = new QTableWidget(stations.size(), 7, centralWidget());
+    auto *table = new QTableWidget(stations.size(), 8, centralWidget());
     table->setHorizontalHeaderLabels({QStringLiteral("站点编号"), QStringLiteral("名称"),
         QStringLiteral("地址"), QStringLiteral("经度"), QStringLiteral("纬度"),
-        QStringLiteral("电桩数"), QStringLiteral("在线率")});
+        QStringLiteral("电桩数"), QStringLiteral("在线率"), QStringLiteral("操作")});
     for (int row = 0; row < stations.size(); ++row) {
         const QJsonObject station = stations.at(row).toObject();
         const QStringList values = {station.value(QStringLiteral("stationNo")).toString(),
@@ -169,6 +169,14 @@ void MainWindow::showStationList(const QJsonObject &data)
         for (int column = 0; column < values.size(); ++column) {
             table->setItem(row, column, new QTableWidgetItem(values.at(column)));
         }
+        auto *viewPiles = new QPushButton(QStringLiteral("查看站内电桩"), table);
+        const qint64 stationId = station.value(QStringLiteral("stationId")).toInteger();
+        connect(viewPiles, &QPushButton::clicked, this, [this, stationId]() {
+            m_pileListRequestId = m_client->sendRequest(
+                MessageTypes::AdminPileList, m_sessionId,
+                {{QStringLiteral("stationId"), stationId}});
+        });
+        table->setCellWidget(row, 7, viewPiles);
     }
     table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     if (auto *layout = qobject_cast<QVBoxLayout *>(centralWidget()->layout())) {
