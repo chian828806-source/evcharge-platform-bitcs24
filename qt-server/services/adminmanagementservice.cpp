@@ -225,3 +225,27 @@ ResponseMessage AdminManagementService::createStation(const RequestMessage &requ
         {QStringLiteral("pileCount"), pileCount}
     });
 }
+
+ResponseMessage AdminManagementService::userList(const RequestMessage &request) const
+{
+    QSqlQuery query(m_database);
+    if (!query.exec(QStringLiteral(
+            "SELECT id, phone, nickname, balance_fen, created_at, status "
+            "FROM user ORDER BY id"))) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::DatabaseError,
+                                      query.lastError().text());
+    }
+    QJsonArray users;
+    while (query.next()) {
+        users.append(QJsonObject{
+            {QStringLiteral("userId"), query.value(0).toLongLong()},
+            {QStringLiteral("phone"), query.value(1).toString()},
+            {QStringLiteral("nickname"), query.value(2).toString()},
+            {QStringLiteral("balanceFen"), query.value(3).toLongLong()},
+            {QStringLiteral("createdAt"), query.value(4).toString()},
+            {QStringLiteral("status"), query.value(5).toString()}
+        });
+    }
+    return ResponseMessage::success(request.requestId,
+                                    {{QStringLiteral("users"), users}});
+}

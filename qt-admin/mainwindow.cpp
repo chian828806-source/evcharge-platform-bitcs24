@@ -129,6 +129,14 @@ void MainWindow::handleResponse(const QJsonObject &response)
     if (requestId == m_stationListRequestId) {
         if (response.value(QStringLiteral("code")).toInt() == 200) {
             showStationList(response.value(QStringLiteral("data")).toObject());
+            m_userListRequestId = m_client->sendRequest(
+                MessageTypes::AdminUserList, m_sessionId, {});
+        }
+        return;
+    }
+    if (requestId == m_userListRequestId) {
+        if (response.value(QStringLiteral("code")).toInt() == 200) {
+            showUserList(response.value(QStringLiteral("data")).toObject());
         }
         return;
     }
@@ -157,6 +165,31 @@ void MainWindow::handleResponse(const QJsonObject &response)
     m_sessionId = data.value(QStringLiteral("sessionId")).toString();
     m_summaryRequestId = m_client->sendRequest(
         MessageTypes::AdminRevenueSummary, m_sessionId, {});
+}
+
+void MainWindow::showUserList(const QJsonObject &data)
+{
+    const QJsonArray users = data.value(QStringLiteral("users")).toArray();
+    auto *table = new QTableWidget(users.size(), 6, centralWidget());
+    table->setHorizontalHeaderLabels({QStringLiteral("用户编号"), QStringLiteral("手机号"),
+        QStringLiteral("昵称"), QStringLiteral("余额/元"), QStringLiteral("注册时间"),
+        QStringLiteral("状态")});
+    for (int row = 0; row < users.size(); ++row) {
+        const QJsonObject user = users.at(row).toObject();
+        const QStringList values = {QString::number(user.value(QStringLiteral("userId")).toInteger()),
+            user.value(QStringLiteral("phone")).toString(),
+            user.value(QStringLiteral("nickname")).toString(),
+            QString::number(user.value(QStringLiteral("balanceFen")).toInteger() / 100.0, 'f', 2),
+            user.value(QStringLiteral("createdAt")).toString(),
+            user.value(QStringLiteral("status")).toString()};
+        for (int column = 0; column < values.size(); ++column) {
+            table->setItem(row, column, new QTableWidgetItem(values.at(column)));
+        }
+    }
+    table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    if (auto *layout = qobject_cast<QVBoxLayout *>(centralWidget()->layout())) {
+        layout->insertWidget(layout->count() - 1, table, 2);
+    }
 }
 
 void MainWindow::showStationList(const QJsonObject &data)
