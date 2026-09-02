@@ -18,6 +18,7 @@ private:
     void submitLogin();
     void handleResponse(const QJsonObject &response);
     void showRevenueSummary(const QJsonObject &data);
+    void showRevenueTrend(const QJsonObject &data);
 
     AdminSocketClient *m_client = nullptr;
     QLineEdit *m_host = nullptr;
@@ -28,5 +29,6 @@ private:
     QLabel *m_status = nullptr;
     QString m_loginRequestId;
     QString m_summaryRequestId;
+    QString m_trendRequestId;
     QString m_sessionId;
 };

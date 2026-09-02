@@ -1,4 +1,4 @@
-QT += core gui widgets network
+QT += core gui widgets network charts
 CONFIG += c++17
 TEMPLATE = app
 TARGET = evcharge-qt-admin
