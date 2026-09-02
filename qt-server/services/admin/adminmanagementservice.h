@@ -3,11 +3,13 @@
 #include "shared/protocol/protocolmessage.h"
 
 #include <QSqlDatabase>
+#include <QObject>
 
-class AdminManagementService
+class AdminManagementService : public QObject
 {
 public:
-    explicit AdminManagementService(QSqlDatabase database);
+    explicit AdminManagementService(QSqlDatabase database,
+                                    QObject *parent = nullptr);
     ResponseMessage pileList(const RequestMessage &request) const;
     ResponseMessage restartPile(const RequestMessage &request, qint64 adminId) const;
     ResponseMessage stationList(const RequestMessage &request) const;

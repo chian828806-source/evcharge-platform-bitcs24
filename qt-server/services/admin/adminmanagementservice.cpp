@@ -9,8 +9,9 @@
 #include <QTimer>
 #include <utility>
 
-AdminManagementService::AdminManagementService(QSqlDatabase database)
-    : m_database(std::move(database))
+AdminManagementService::AdminManagementService(QSqlDatabase database,
+                                               QObject *parent)
+    : QObject(parent), m_database(std::move(database))
 {
 }
 
@@ -59,8 +60,9 @@ ResponseMessage AdminManagementService::restartPile(const RequestMessage &reques
                                       m_database.lastError().text());
     }
 
-    const QSqlDatabase database = m_database;
-    QTimer::singleShot(1500, [database, pileId, previousStatus, adminId]() mutable {
+    QTimer::singleShot(1500, this,
+                       [this, pileId, previousStatus, adminId]() {
+        QSqlDatabase database = m_database;
         const QString completedAt = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
         if (!database.transaction()) {
             return;
