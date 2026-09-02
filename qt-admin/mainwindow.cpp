@@ -40,6 +40,31 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_client, &AdminSocketClient::socketError, this, [this](const QString &message) {
         m_login->setEnabled(true); QMessageBox::warning(this, QStringLiteral("网络错误"), message);
     });
+    connect(m_client, &AdminSocketClient::protocolError, this,
+            [this](const QString &message) {
+                QMessageBox::warning(this, QStringLiteral("协议错误"), message);
+            });
+    connect(m_client, &AdminSocketClient::requestTimedOut, this,
+            [this](const QString &requestId, const QString &type) {
+                m_requestTypes.remove(requestId);
+                QMessageBox::warning(this, QStringLiteral("请求超时"),
+                                     QStringLiteral("%1 请求未及时响应").arg(type));
+            });
+    connect(m_client, &AdminSocketClient::requestFailed, this,
+            [this](const QString &requestId, const QString &type,
+                   const QString &message) {
+                m_requestTypes.remove(requestId);
+                QMessageBox::warning(this, QStringLiteral("请求失败"),
+                    QStringLiteral("%1：%2").arg(type, message));
+            });
+    connect(m_client, &AdminSocketClient::disconnected, this, [this]() {
+        if (!m_sessionId.isEmpty()) {
+            m_sessionId.clear();
+            if (m_dashboardTimer) m_dashboardTimer->stop();
+            QMessageBox::warning(this, QStringLiteral("连接已断开"),
+                                 QStringLiteral("与服务端的连接已断开。"));
+        }
+    });
 }
 
 void MainWindow::submitLogin()
