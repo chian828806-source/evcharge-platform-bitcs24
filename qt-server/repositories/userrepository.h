@@ -7,6 +7,8 @@
 #include "models/userprofile.h"
 
 #include <QSqlDatabase>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QString>
 
 #include <optional>
@@ -35,6 +37,15 @@ public:
                          QString *errorMessage) const;
     bool hasActiveOrder(QSqlDatabase &database, qint64 userId,
                         bool *hasActiveOrder, QString *errorMessage) const;
+
+    // Shared Admin management queries; this remains the sole repository for user data.
+    QJsonArray listForAdmin(QSqlDatabase &database, const QString &phoneKeyword,
+                            QString *errorMessage) const;
+    QJsonObject statusForAdmin(QSqlDatabase &database, qint64 userId,
+                               QString *errorMessage) const;
+    bool compareAndSetStatus(QSqlDatabase &database, qint64 userId,
+                             const QString &before, const QString &after,
+                             const QString &now, QString *errorMessage) const;
 
 private:
     static UserProfile mapUser(const QSqlQuery &query);

@@ -4,7 +4,10 @@
 
 #include <QSqlDatabase>
 #include <QObject>
-#include "repositories/repositories.h"
+#include "repositories/operationlogrepository.h"
+#include "repositories/pilerepository.h"
+#include "repositories/stationrepository.h"
+#include "repositories/userrepository.h"
 
 class AdminManagementService : public QObject
 {

@@ -7,6 +7,8 @@
 #include "models/stationinfo.h"
 
 #include <QList>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QSqlDatabase>
 #include <QString>
 
@@ -24,6 +26,10 @@ public:
                                                QString *errorMessage) const;
     QList<ChargingPileInfo> listPiles(QSqlDatabase &database, qint64 stationId,
                                       QString *errorMessage) const;
+    QJsonArray listForAdmin(QSqlDatabase &database, QString *errorMessage) const;
+    qint64 createForAdmin(QSqlDatabase &database, const QJsonObject &values,
+                          const QString &stationNo, const QString &now,
+                          QString *errorMessage) const;
 
 private:
     static StationInfo mapStation(const QSqlQuery &query);

@@ -4,7 +4,8 @@
 #include "shared/protocol/protocolmessage.h"
 
 #include <QSqlDatabase>
-#include "repositories/repositories.h"
+#include "repositories/adminrepository.h"
+#include "repositories/operationlogrepository.h"
 
 class AdminAuthService
 {

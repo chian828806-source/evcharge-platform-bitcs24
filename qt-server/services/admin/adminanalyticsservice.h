@@ -3,7 +3,8 @@
 #include "shared/protocol/protocolmessage.h"
 
 #include <QSqlDatabase>
-#include "repositories/repositories.h"
+#include "repositories/orderrepository.h"
+#include "repositories/pilerepository.h"
 
 class AdminAnalyticsService
 {
@@ -14,6 +15,7 @@ public:
     ResponseMessage pileStatusSummary(const RequestMessage &request) const;
 
 private:
+    QSqlDatabase m_database;
     OrderRepository m_orderRepository;
     PileRepository m_pileRepository;
 };

@@ -12,7 +12,6 @@ ResponseMessage databaseError(const RequestMessage &request, const QString &erro
 
 AdminManagementService::AdminManagementService(QSqlDatabase database, QObject *parent)
     : QObject(parent), m_database(database), m_pileRepository(database),
-      m_stationRepository(database), m_userRepository(database),
       m_logRepository(database)
 {
 }
@@ -28,18 +27,18 @@ ResponseMessage AdminManagementService::pileList(const RequestMessage &request) 
 
 ResponseMessage AdminManagementService::stationList(const RequestMessage &request) const
 {
-    m_stationRepository.clearError();
-    const QJsonArray stations = m_stationRepository.list();
-    if (!m_stationRepository.lastError().isEmpty()) return databaseError(request, m_stationRepository.lastError());
+    QString error;
+    const QJsonArray stations = m_stationRepository.listForAdmin(m_database, &error);
+    if (!error.isEmpty()) return databaseError(request, error);
     return ResponseMessage::success(request.requestId, {{QStringLiteral("stations"), stations}});
 }
 
 ResponseMessage AdminManagementService::userList(const RequestMessage &request) const
 {
-    m_userRepository.clearError();
-    const QJsonArray users = m_userRepository.list(
-        request.payload.value(QStringLiteral("phoneKeyword")).toString());
-    if (!m_userRepository.lastError().isEmpty()) return databaseError(request, m_userRepository.lastError());
+    QString error;
+    const QJsonArray users = m_userRepository.listForAdmin(
+        m_database, request.payload.value(QStringLiteral("phoneKeyword")).toString(), &error);
+    if (!error.isEmpty()) return databaseError(request, error);
     return ResponseMessage::success(request.requestId, {{QStringLiteral("users"), users}});
 }
 
@@ -73,7 +72,7 @@ ResponseMessage AdminManagementService::createStation(const RequestMessage &requ
                                                        qint64 adminId) const
 {
     const QJsonObject payload = request.payload;
-    m_stationRepository.clearError(); m_pileRepository.clearError();
+    QString error; m_pileRepository.clearError();
     m_logRepository.clearError();
     const QString name = payload.value(QStringLiteral("name")).toString().trimmed();
     const QString address = payload.value(QStringLiteral("address")).toString().trimmed();
@@ -85,11 +84,11 @@ ResponseMessage AdminManagementService::createStation(const RequestMessage &requ
         return ResponseMessage::error(request.requestId, ErrorCodes::InvalidSocketMessage, QStringLiteral("invalid station fields"));
     const QString now = nowText(); const QString stationNo = QStringLiteral("ST%1").arg(QDateTime::currentMSecsSinceEpoch());
     if (!m_database.transaction()) return databaseError(request, m_database.lastError().text());
-    const qint64 stationId = m_stationRepository.create(payload, stationNo, now);
+    const qint64 stationId = m_stationRepository.createForAdmin(m_database, payload, stationNo, now, &error);
     if (!stationId || !m_pileRepository.createForStation(stationId, count, now)
         || !m_logRepository.add(adminId, QStringLiteral("STATION_CREATE"), QStringLiteral("STATION"), stationId, {}, {}, QStringLiteral("新增充电站并生成 %1 个模拟电桩").arg(count), now)
         || !m_database.commit()) {
-        m_database.rollback(); return databaseError(request, m_stationRepository.lastError() + m_pileRepository.lastError() + m_logRepository.lastError());
+        m_database.rollback(); return databaseError(request, error + m_pileRepository.lastError() + m_logRepository.lastError());
     }
     return ResponseMessage::success(request.requestId, {{QStringLiteral("stationId"), stationId}, {QStringLiteral("stationNo"), stationNo}, {QStringLiteral("pileCount"), count}});
 }
@@ -98,9 +97,10 @@ ResponseMessage AdminManagementService::setUserFrozen(const RequestMessage &requ
                                                        qint64 adminId, bool frozen) const
 {
     const qint64 userId = request.payload.value(QStringLiteral("userId")).toInteger();
-    m_userRepository.clearError(); m_logRepository.clearError();
-    const QJsonObject user = m_userRepository.findById(userId);
-    if (!m_userRepository.lastError().isEmpty()) return databaseError(request, m_userRepository.lastError());
+    QString error;
+    m_logRepository.clearError();
+    const QJsonObject user = m_userRepository.statusForAdmin(m_database, userId, &error);
+    if (!error.isEmpty()) return databaseError(request, error);
     if (user.isEmpty()) return ResponseMessage::error(request.requestId, ErrorCodes::InvalidPhone, QStringLiteral("user not found"));
     const QString before = user.value(QStringLiteral("status")).toString();
     const QString after = frozen ? QStringLiteral("FROZEN") : QStringLiteral("NORMAL");
@@ -108,10 +108,10 @@ ResponseMessage AdminManagementService::setUserFrozen(const RequestMessage &requ
     const QString now = nowText(); if (!m_database.transaction()) return databaseError(request, m_database.lastError().text());
     const QString action = frozen ? QStringLiteral("USER_FREEZE") : QStringLiteral("USER_UNFREEZE");
     const QString message = (frozen ? QStringLiteral("冻结用户 ") : QStringLiteral("解冻用户 ")) + user.value(QStringLiteral("phone")).toString();
-    if (!m_userRepository.compareAndSetStatus(userId, before, after, now)
+    if (!m_userRepository.compareAndSetStatus(m_database, userId, before, after, now, &error)
         || !m_logRepository.add(adminId, action, QStringLiteral("USER"), userId, before, after, message, now)
         || !m_database.commit()) {
-        m_database.rollback(); return databaseError(request, m_userRepository.lastError() + m_logRepository.lastError());
+        m_database.rollback(); return databaseError(request, error + m_logRepository.lastError());
     }
     return ResponseMessage::success(request.requestId, {{QStringLiteral("userId"), userId}, {QStringLiteral("status"), after}, {QStringLiteral("changed"), true}});
 }

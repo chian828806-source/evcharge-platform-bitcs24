@@ -170,6 +170,67 @@ bool UserRepository::hasActiveOrder(QSqlDatabase &database, qint64 userId,
     return true;
 }
 
+QJsonArray UserRepository::listForAdmin(QSqlDatabase &database,
+                                         const QString &phoneKeyword,
+                                         QString *errorMessage) const
+{
+    QString keyword = phoneKeyword.trimmed();
+    keyword.replace('\\', QStringLiteral("\\\\"));
+    keyword.replace('%', QStringLiteral("\\%"));
+    keyword.replace('_', QStringLiteral("\\_"));
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral("SELECT id, phone, nickname, balance_fen, created_at, status "
+                                 "FROM user WHERE phone LIKE :keyword ESCAPE '\\' ORDER BY id"));
+    query.bindValue(QStringLiteral(":keyword"), QStringLiteral("%") + keyword + QStringLiteral("%"));
+    if (!query.exec()) {
+        if (errorMessage) *errorMessage = query.lastError().text();
+        return {};
+    }
+    QJsonArray users;
+    while (query.next()) {
+        users.append(QJsonObject{{QStringLiteral("userId"), query.value(0).toLongLong()},
+                                 {QStringLiteral("phone"), query.value(1).toString()},
+                                 {QStringLiteral("nickname"), query.value(2).toString()},
+                                 {QStringLiteral("balanceFen"), query.value(3).toLongLong()},
+                                 {QStringLiteral("createdAt"), query.value(4).toString()},
+                                 {QStringLiteral("status"), query.value(5).toString()}});
+    }
+    return users;
+}
+
+QJsonObject UserRepository::statusForAdmin(QSqlDatabase &database, qint64 userId,
+                                            QString *errorMessage) const
+{
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral("SELECT phone, status FROM user WHERE id = :id"));
+    query.bindValue(QStringLiteral(":id"), userId);
+    if (!query.exec()) {
+        if (errorMessage) *errorMessage = query.lastError().text();
+        return {};
+    }
+    if (!query.next()) return {};
+    return {{QStringLiteral("phone"), query.value(0).toString()},
+            {QStringLiteral("status"), query.value(1).toString()}};
+}
+
+bool UserRepository::compareAndSetStatus(QSqlDatabase &database, qint64 userId,
+                                         const QString &before, const QString &after,
+                                         const QString &now, QString *errorMessage) const
+{
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral("UPDATE user SET status = :after, updated_at = :now "
+                                 "WHERE id = :id AND status = :before"));
+    query.bindValue(QStringLiteral(":after"), after);
+    query.bindValue(QStringLiteral(":now"), now);
+    query.bindValue(QStringLiteral(":id"), userId);
+    query.bindValue(QStringLiteral(":before"), before);
+    if (!query.exec()) {
+        if (errorMessage) *errorMessage = query.lastError().text();
+        return false;
+    }
+    return query.numRowsAffected() == 1;
+}
+
 UserProfile UserRepository::mapUser(const QSqlQuery &query)
 {
     UserProfile user;

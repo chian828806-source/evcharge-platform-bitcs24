@@ -8,11 +8,9 @@
 
 - 使用 `QTcpServer` 接收 Qt 用户端和 Qt 管理端连接；
 - 解析 Socket JSON Lines 消息；
-- 执行登录、站点、电桩、订单、充值、结算、管理统计和远程重启业务；
+- 执行登录、资料、站点、电桩、订单、结算、管理统计和远程重启业务；
 - 通过 QtSql `QSQLITE` 访问 SQLite；
 - 提供 WebSocket 大屏数据服务；
-- 导入或读取 Python ML 预测结果；
-- 维护业务线程、数据库线程和充电计时任务。
 
 ## 禁止
 
@@ -51,7 +49,7 @@ qt-server/
 ├── network/                         # 共用：TCP、Session、Dispatcher、WebSocket
 │
 ├── handlers/                        # 消息入口：校验 payload、调用 Service、映射响应
-│   ├── user/                        # USER/STATION/ORDER/PREDICTION 用户消息
+│   ├── user/                        # USER/STATION/ORDER 用户消息
 │   │   ├── registeruserhandlers.h/.cpp
 │   │   └── user-handlers.pri
 │   └── admin/                       # ADMIN 管理消息
@@ -59,15 +57,13 @@ qt-server/
 │       └── admin-handlers.pri
 │
 ├── services/                        # 业务规则、状态机和事务意图
-│   ├── user/                        # 登录、资料、充值、查站、充电、结算
+│   ├── user/                        # 登录、资料、查站、充电、结算
 │   └── admin/                       # 管理登录、统计、冻结、建站、重启
 │
 ├── repositories/                    # 共用：参数化 SQL 和数据库对象映射
-├── database/                        # 共用：QSQLITE 连接、事务、Database Worker
+├── database/                        # 共用：QSQLITE 连接与事务支持
 ├── models/                          # 共用：User、Station、Pile、Order 等领域数据
-├── workers/                         # 共用：充电计时、ML 导入、后台任务
-├── adapters/                        # 共用：地图、头像文件、ML 文件等外部能力
-└── common/                          # 共用：ServiceResult、校验和少量通用类型
+└── common/                          # 共用：密码哈希、ServiceResult 和少量通用类型
 ```
 
 目录使用复数形式，后续统一采用 `handlers`、`services`、`repositories`、

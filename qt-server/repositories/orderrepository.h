@@ -7,6 +7,9 @@
 #include "models/chargingorder.h"
 
 #include <QSqlDatabase>
+#include <QDate>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QString>
 
 #include <optional>
@@ -49,6 +52,10 @@ public:
     bool addPileStatistics(QSqlDatabase &database, qint64 pileId,
                            int chargeMinutes, double energyKwh,
                            const QString &now, QString *errorMessage) const;
+    QJsonObject revenueSummary(QSqlDatabase &database, const QDate &today,
+                               QString *errorMessage) const;
+    QJsonArray revenueTrend(QSqlDatabase &database, const QDate &firstDate,
+                            int days, QString *errorMessage) const;
 
 private:
     static ChargingOrderInfo mapOrder(const QSqlQuery &query);

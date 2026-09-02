@@ -2,19 +2,19 @@
 #include "shared/protocol/errorcodes.h"
 
 AdminAnalyticsService::AdminAnalyticsService(QSqlDatabase database)
-    : m_orderRepository(database), m_pileRepository(database)
+    : m_database(database), m_pileRepository(database)
 {
 }
 
 ResponseMessage AdminAnalyticsService::revenueTrend(const RequestMessage &request) const
 {
     const int days = request.payload.value(QStringLiteral("days")).toInt();
-    m_orderRepository.clearError();
+    QString error;
     const QJsonArray points = m_orderRepository.revenueTrend(
-        QDate::currentDate().addDays(1 - days), days);
-    if (!m_orderRepository.lastError().isEmpty()) {
+        m_database, QDate::currentDate().addDays(1 - days), days, &error);
+    if (!error.isEmpty()) {
         return ResponseMessage::error(request.requestId, ErrorCodes::DatabaseError,
-                                      m_orderRepository.lastError());
+                                      error);
     }
     return ResponseMessage::success(request.requestId,
                                     {{QStringLiteral("days"), days},
@@ -23,11 +23,11 @@ ResponseMessage AdminAnalyticsService::revenueTrend(const RequestMessage &reques
 
 ResponseMessage AdminAnalyticsService::revenueSummary(const RequestMessage &request) const
 {
-    m_orderRepository.clearError();
-    const QJsonObject summary = m_orderRepository.revenueSummary(QDate::currentDate());
-    if (summary.isEmpty() && !m_orderRepository.lastError().isEmpty()) {
+    QString error;
+    const QJsonObject summary = m_orderRepository.revenueSummary(m_database, QDate::currentDate(), &error);
+    if (summary.isEmpty() && !error.isEmpty()) {
         return ResponseMessage::error(request.requestId, ErrorCodes::DatabaseError,
-                                      m_orderRepository.lastError());
+                                      error);
     }
     return ResponseMessage::success(request.requestId, summary);
 }

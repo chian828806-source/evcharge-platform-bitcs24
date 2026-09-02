@@ -5,6 +5,7 @@
 
 #include <QSqlError>
 #include <QSqlQuery>
+#include <QHash>
 #include <QVariant>
 
 namespace {
@@ -340,6 +341,40 @@ bool OrderRepository::addPileStatistics(QSqlDatabase &database, qint64 pileId,
         *errorMessage = query.lastError().text();
     }
     return false;
+}
+
+QJsonObject OrderRepository::revenueSummary(QSqlDatabase &database, const QDate &today,
+                                             QString *errorMessage) const
+{
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral("SELECT COALESCE(SUM(CASE WHEN paid_at>=:dayStart AND paid_at<:dayEnd THEN amount_fen ELSE 0 END),0),"
+                                 "COALESCE(SUM(CASE WHEN paid_at>=:monthStart AND paid_at<:dayEnd THEN amount_fen ELSE 0 END),0),"
+                                 "COALESCE(SUM(amount_fen),0) FROM charging_order WHERE status='COMPLETED'"));
+    query.bindValue(QStringLiteral(":dayStart"), today.toString(QStringLiteral("yyyy-MM-dd 00:00:00")));
+    query.bindValue(QStringLiteral(":dayEnd"), today.addDays(1).toString(QStringLiteral("yyyy-MM-dd 00:00:00")));
+    query.bindValue(QStringLiteral(":monthStart"), QDate(today.year(), today.month(), 1).toString(QStringLiteral("yyyy-MM-dd 00:00:00")));
+    if (!query.exec() || !query.next()) { if (errorMessage) *errorMessage = query.lastError().text(); return {}; }
+    return {{QStringLiteral("todayRevenueFen"), query.value(0).toLongLong()},
+            {QStringLiteral("monthRevenueFen"), query.value(1).toLongLong()},
+            {QStringLiteral("totalRevenueFen"), query.value(2).toLongLong()}};
+}
+
+QJsonArray OrderRepository::revenueTrend(QSqlDatabase &database, const QDate &firstDate,
+                                          int days, QString *errorMessage) const
+{
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral("SELECT substr(paid_at,1,10),COALESCE(SUM(amount_fen),0) FROM charging_order "
+                                 "WHERE status='COMPLETED' AND paid_at>=:start GROUP BY substr(paid_at,1,10)"));
+    query.bindValue(QStringLiteral(":start"), firstDate.toString(QStringLiteral("yyyy-MM-dd 00:00:00")));
+    if (!query.exec()) { if (errorMessage) *errorMessage = query.lastError().text(); return {}; }
+    QHash<QString, qint64> values;
+    while (query.next()) values.insert(query.value(0).toString(), query.value(1).toLongLong());
+    QJsonArray result;
+    for (int i = 0; i < days; ++i) {
+        const QString date = firstDate.addDays(i).toString(Qt::ISODate);
+        result.append(QJsonObject{{QStringLiteral("date"), date}, {QStringLiteral("revenueFen"), values.value(date)}});
+    }
+    return result;
 }
 
 ChargingOrderInfo OrderRepository::mapOrder(const QSqlQuery &query)
