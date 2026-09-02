@@ -6,6 +6,8 @@
 #include "services/user/orderservice.h"
 #include "shared/protocol/errorcodes.h"
 
+#include <QJsonArray>
+
 namespace {
 
 bool isPositiveInteger(const QJsonValue &value)
@@ -40,6 +42,50 @@ ResponseMessage OrderHandler::activeCheck(const RequestMessage &request,
     data.insert(QStringLiteral("order"), result.value.hasActiveOrder
         ? QJsonValue(result.value.order.toJson()) : QJsonValue(QJsonValue::Null));
     return ResponseMessage::success(request.requestId, data);
+}
+
+ResponseMessage OrderHandler::list(const RequestMessage &request,
+                                   const SessionContext &context)
+{
+    int page = 1;
+    int pageSize = 20;
+    QString status;
+    const QJsonValue pageValue = request.payload.value(QStringLiteral("page"));
+    const QJsonValue pageSizeValue = request.payload.value(QStringLiteral("pageSize"));
+    const QJsonValue statusValue = request.payload.value(QStringLiteral("status"));
+    if ((!pageValue.isUndefined() && !isPositiveInteger(pageValue))
+        || (!pageSizeValue.isUndefined() && !isPositiveInteger(pageSizeValue))
+        || (!statusValue.isUndefined() && !statusValue.isNull() && !statusValue.isString())) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::InvalidSocketMessage,
+                                      QStringLiteral("invalid order list payload"));
+    }
+    if (!pageValue.isUndefined()) {
+        page = pageValue.toInt();
+    }
+    if (!pageSizeValue.isUndefined()) {
+        pageSize = pageSizeValue.toInt();
+    }
+    if (statusValue.isString()) {
+        status = statusValue.toString();
+    }
+    if (!m_orderService) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::InternalError,
+                                      QStringLiteral("order module is unavailable"));
+    }
+    const auto result = m_orderService->list(context.principalId, page, pageSize, status);
+    if (!result.ok) {
+        return ResponseMessage::error(request.requestId, result.code, result.message);
+    }
+    QJsonArray items;
+    for (const ChargingOrderInfo &order : result.value.items) {
+        items.append(order.toJson());
+    }
+    return ResponseMessage::success(request.requestId, {
+        {QStringLiteral("items"), items},
+        {QStringLiteral("page"), result.value.page},
+        {QStringLiteral("pageSize"), result.value.pageSize},
+        {QStringLiteral("total"), result.value.total}
+    });
 }
 
 ResponseMessage OrderHandler::create(const RequestMessage &request,

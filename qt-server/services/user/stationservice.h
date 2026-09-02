@@ -13,16 +13,20 @@
 class DatabaseManager;
 class QSqlDatabase;
 class StationRepository;
+class PredictionRepository;
 
 class StationService
 {
 public:
     StationService(DatabaseManager *databaseManager,
-                   StationRepository *stationRepository);
+                   StationRepository *stationRepository,
+                   PredictionRepository *predictionRepository = nullptr);
 
     ServiceResult<QList<StationInfo>> listNearby(double longitude, double latitude,
                                                  const QString &district, int limit);
     ServiceResult<StationDetail> detail(qint64 stationId);
+    ServiceResult<QList<StationInfo>> recommendations(double longitude, double latitude,
+                                                      int limit, const QString &horizon);
 
 private:
     bool openDatabase(QSqlDatabase *database, QString *errorMessage) const;
@@ -32,4 +36,5 @@ private:
 
     DatabaseManager *m_databaseManager = nullptr;
     StationRepository *m_stationRepository = nullptr;
+    PredictionRepository *m_predictionRepository = nullptr;
 };

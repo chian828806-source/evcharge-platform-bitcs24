@@ -80,6 +80,12 @@ int main(int argc, char *argv[])
     parser.addOption({{QStringLiteral("d"), QStringLiteral("database")},
                       QStringLiteral("SQLite database path"), QStringLiteral("path"),
                       defaultDatabasePath()});
+    parser.addOption({
+        {QStringLiteral("a"), QStringLiteral("avatar-dir")},
+        QStringLiteral("Avatar storage directory; database stores relative paths only"),
+        QStringLiteral("path"),
+        QStringLiteral("data/avatars")
+    });
     parser.process(application);
 
     bool tcpOk = false;
@@ -104,7 +110,8 @@ int main(int argc, char *argv[])
 
     SessionManager sessions;
     MessageDispatcher dispatcher(&sessions);
-    UserBackendRegistry userHandlers(&databaseManager, &sessions, &dispatcher);
+    UserBackendRegistry userHandlers(&databaseManager, &sessions, &dispatcher,
+                                     parser.value(QStringLiteral("avatar-dir")));
     AdminHandlerRegistry adminHandlers(database, &sessions, &dispatcher);
     SocketServer socketServer(&dispatcher);
     if (!socketServer.listen(QHostAddress::Any, tcpPort)) {
