@@ -9,6 +9,7 @@ INCLUDEPATH += $$REPO_ROOT/qt-server $$REPO_ROOT
 
 SOURCES += $$PWD/tst_adminmanagement.cpp \
            $$REPO_ROOT/qt-server/services/admin/adminmanagementservice.cpp \
+           $$REPO_ROOT/qt-server/repositories/repositories.cpp \
            $$REPO_ROOT/shared/protocol/protocolmessage.cpp
 
 HEADERS += $$REPO_ROOT/qt-server/services/admin/adminmanagementservice.h \
