@@ -1,0 +1,9 @@
+QT += widgets network
+CONFIG += c++17
+TEMPLATE = app
+TARGET = file-transfer-server
+INCLUDEPATH += ../common
+SOURCES += main.cpp mainwindow.cpp dropzone.cpp ../common/filetransfer.cpp
+HEADERS += mainwindow.h dropzone.h ../common/filetransfer.h
+FORMS += mainwindow.ui
+RESOURCES += ../resources/resources.qrc
