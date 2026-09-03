@@ -13,6 +13,8 @@
 #include <QWebSocket>
 #include <QWebSocketServer>
 
+#include <utility>
+
 DashboardWebSocketServer::DashboardWebSocketServer(QObject *parent)
     : QObject(parent),
       m_server(new QWebSocketServer(
@@ -60,18 +62,18 @@ void DashboardWebSocketServer::publish(const QString &topic,
         return;
     }
     // 每次广播都套用统一DASHBOARD_UPDATE封装。
-    const QJsonObject update{
-        {QStringLiteral("type"), MessageTypes::DashboardUpdate},
-        {QStringLiteral("topic"), topic},
-        {QStringLiteral("data"), data}
-    };
     // 只向显式订阅该topic的连接发送，减少无关数据。
     for (auto iterator = m_subscriptions.cbegin();
          iterator != m_subscriptions.cend(); ++iterator) {
         if (iterator.value().contains(topic)) {
-            sendJson(iterator.key(), update);
+            sendUpdate(iterator.key(), topic, data);
         }
     }
+}
+
+void DashboardWebSocketServer::setSnapshotProvider(SnapshotProvider provider)
+{
+    m_snapshotProvider = std::move(provider);
 }
 
 void DashboardWebSocketServer::acceptConnection()
@@ -167,6 +169,25 @@ void DashboardWebSocketServer::handleTextMessage(const QString &message)
             {QStringLiteral("topics"), QJsonArray::fromStringList(topics.values())}
         }}
     });
+
+    // subscribe成功后立即返回当前快照，页面不依赖后续业务事件才首次展示数据。
+    if (!m_snapshotProvider) {
+        return;
+    }
+    for (const QString &topic : topics) {
+        QString snapshotError;
+        const QJsonObject snapshot = m_snapshotProvider(topic, &snapshotError);
+        if (!snapshotError.isEmpty()) {
+            sendJson(socket, {
+                {QStringLiteral("requestId"), requestId},
+                {QStringLiteral("code"), ErrorCodes::DatabaseError},
+                {QStringLiteral("message"), QStringLiteral("dashboard snapshot unavailable: %1").arg(snapshotError)},
+                {QStringLiteral("data"), QJsonObject()}
+            });
+            continue;
+        }
+        sendUpdate(socket, topic, snapshot);
+    }
 }
 
 void DashboardWebSocketServer::removeConnection()
@@ -186,4 +207,14 @@ void DashboardWebSocketServer::sendJson(QWebSocket *socket,
     // WebSocket使用文本帧，不需要TCP JSON Lines末尾的换行符。
     socket->sendTextMessage(
         QString::fromUtf8(QJsonDocument(json).toJson(QJsonDocument::Compact)));
+}
+
+void DashboardWebSocketServer::sendUpdate(QWebSocket *socket, const QString &topic,
+                                          const QJsonObject &data)
+{
+    sendJson(socket, {
+        {QStringLiteral("type"), MessageTypes::DashboardUpdate},
+        {QStringLiteral("topic"), topic},
+        {QStringLiteral("data"), data}
+    });
 }

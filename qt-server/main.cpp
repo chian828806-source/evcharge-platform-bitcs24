@@ -4,9 +4,11 @@
 #include "handlers/user/registeruserbackend.h"
 #include "handlers/prediction/registerpredictionhandlers.h"
 #include "network/dashboardwebsocketserver.h"
+#include "services/dashboard/dashboarddataservice.h"
 #include "network/messagedispatcher.h"
 #include "network/sessionmanager.h"
 #include "network/socketserver.h"
+#include "shared/protocol/messagetypes.h"
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
@@ -17,6 +19,7 @@
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QTextStream>
+#include <QTimer>
 
 namespace {
 
@@ -121,11 +124,30 @@ int main(int argc, char *argv[])
         return 1;
     }
     DashboardWebSocketServer dashboardServer;
+    DashboardDataService dashboardData(&databaseManager);
+    dashboardServer.setSnapshotProvider([&dashboardData](const QString &topic, QString *errorMessage) {
+        const auto result = dashboardData.dataForTopic(topic);
+        if (!result.ok && errorMessage) {
+            *errorMessage = result.message;
+        }
+        return result.ok ? result.value : QJsonObject();
+    });
     if (!dashboardServer.listen(websocketPort)) {
         QTextStream(stderr) << "WebSocket listen failed: " << dashboardServer.errorString() << '\n';
         return 1;
     }
     QTextStream(stdout) << "TCP listening on " << tcpPort << '\n'
                         << "WebSocket listening on " << websocketPort << " path /dashboard\n";
+    QTimer dashboardRefreshTimer;
+    dashboardRefreshTimer.setInterval(3000);
+    QObject::connect(&dashboardRefreshTimer, &QTimer::timeout, [&dashboardData, &dashboardServer]() {
+        for (const QString &topic : MessageTypes::dashboardTopics()) {
+            const auto result = dashboardData.dataForTopic(topic);
+            if (result.ok) {
+                dashboardServer.publish(topic, result.value);
+            }
+        }
+    });
+    dashboardRefreshTimer.start();
     return application.exec();
 }

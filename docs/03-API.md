@@ -342,6 +342,13 @@ ws://<server-host>:<port>/dashboard
 
 `stationLoad` 使用 SRS 中统一负荷口径，取值范围为 0 到 1。
 
+WebSocket 默认监听端口为 `18081`。订阅成功后服务端会对每个已订阅 topic 立即
+发送一帧 `DASHBOARD_UPDATE` 初始快照，随后以当前只读运营数据刷新推送；浏览器
+断线重连并重新订阅后将再次取得快照。通信层不直接访问 SQLite：`summary` 和
+`revenueTrend` 复用 `OrderRepository`，`pileStatus` 复用 `PileRepository`，
+`prediction` 复用 `PredictionService` / `PredictionRepository` 的
+`PREDICTION_LIST` 数据形状。
+
 ## 14. ML 数据交换
 
 ML 数据交换是服务端与 Python 进程之间的受控文件/JSON 契约。Python ML 进程不得获得 SQLite 文件路径、数据库连接或写库权限；它产出 JSON 后，由受保护的 `PREDICTION_IMPORT` Server 能力写入统一 SQLite。普通 User 不得调用该接口。`PREDICTION_IMPORT` 与 User Backend 的 `PREDICTION_RECOMMENDATION` 是职责不同的接口。

@@ -438,6 +438,32 @@ QJsonArray OrderRepository::revenueTrend(QSqlDatabase &database, const QDate &fi
     return result;
 }
 
+double OrderRepository::todayCompletedEnergyKwh(QSqlDatabase &database, const QDate &today,
+                                                 QString *errorMessage) const
+{
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral("SELECT COALESCE(SUM(energy_kwh),0) FROM charging_order "
+                                 "WHERE status='COMPLETED' AND paid_at>=:dayStart AND paid_at<:dayEnd"));
+    query.bindValue(QStringLiteral(":dayStart"), today.toString(QStringLiteral("yyyy-MM-dd 00:00:00")));
+    query.bindValue(QStringLiteral(":dayEnd"), today.addDays(1).toString(QStringLiteral("yyyy-MM-dd 00:00:00")));
+    if (!query.exec() || !query.next()) {
+        if (errorMessage) *errorMessage = query.lastError().text();
+        return 0.0;
+    }
+    return query.value(0).toDouble();
+}
+
+qint64 OrderRepository::completedOrderCount(QSqlDatabase &database, QString *errorMessage) const
+{
+    QSqlQuery query(database);
+    if (!query.exec(QStringLiteral("SELECT COUNT(*) FROM charging_order WHERE status='COMPLETED'"))
+        || !query.next()) {
+        if (errorMessage) *errorMessage = query.lastError().text();
+        return 0;
+    }
+    return query.value(0).toLongLong();
+}
+
 ChargingOrderInfo OrderRepository::mapOrder(const QSqlQuery &query)
 {
     ChargingOrderInfo order;
