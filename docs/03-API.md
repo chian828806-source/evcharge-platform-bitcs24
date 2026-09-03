@@ -127,7 +127,7 @@ ADMIN_USER_FREEZE
 ADMIN_USER_UNFREEZE
 ```
 
-ML 展示：
+Prediction / ML 接口：
 
 ```text
 PREDICTION_LIST
@@ -262,7 +262,6 @@ Response:
 | `USER_RECHARGE` | `amountFen: integer`，范围为 `1` 至 `100000000`。 | `rechargeId`、`recordNo`、`amountFen`、`balanceFen`、`createdAt`。 | `4002` 用户冻结，`4003` Session 无效，`4401` 金额不是正整数或超出范围，`5001` 余额与充值流水事务失败。 |
 | `USER_ORDER_LIST` | 可选 `page: integer`（默认 `1`）、`pageSize: integer`（默认 `20`，最大 `50`）、`status: string`。`status` 只允许 `CREATED`、`CHARGING`、`PENDING_PAYMENT`、`COMPLETED`、`CANCELLED`。 | `items`、`page`、`pageSize`、`total`。`items` 按 `createdAt DESC, orderId DESC` 排序，每项为订单对象。 | `4003` Session 无效，`4401` 分页或状态筛选非法，`5001` 查询失败。 |
 | `PREDICTION_RECOMMENDATION` | `longitude: number`、`latitude: number`；可选 `limit: integer`（默认 `5`，范围 `1` 至 `20`）、`horizon: string`（默认 `1h`，可选 `1h`、`6h`、`24h`）。 | `stations`。每项为站点对象，并额外含 `recommended: true`、`predictedLoad`、`predictedAvailablePileCount`、`recommendationReason`。结果按预测负荷升序、距离升序、预测空闲桩数降序排列。无合格推荐时返回空数组。 | `4003` Session 无效，`4401` 坐标、数量或预测窗口非法，`5001` 站点或预测数据查询失败，`5002` 推荐模块未装配。 |
-| `PREDICTION_IMPORT` | `document: object`，必须符合第 14.2 节的完整批次契约。仅 Admin/internal maintenance。 | `batchId`、`status`、`inserted`、`duplicate`。重复 `batchId` 返回 `already_imported`、`0`、`true`。 | `4003` 非 Admin Session，`4401` 批次、字段、时间、站点或桩数校验失败，`5001` 事务或数据库失败。 |
 
 以上为 16 个已实现用户端接口。`PREDICTION_LIST` 由 Prediction 模块提供，不属于
 User/Station Registry。`MAP_GEOCODE` 的请求/
@@ -404,6 +403,12 @@ ml/output/<batchId>/predictions.json
 Qt/C++ 服务端读取 ML 输出后，必须校验上述完整契约。一个批次中任一记录不合法时，服务端拒绝整个批次且回滚，不得写入 `prediction_batch` 或 `prediction` 表；全部合法时，以一个事务按 `BEGIN → prediction_batch → prediction rows → COMMIT` 写入。相同 `batchId` 重复提交返回 `already_imported`，不会产生重复 prediction 数据。导入成功后，服务端向用户端、管理端和 WebSocket 大屏提供最新预测结果。
 
 网络导入请求格式为 `{"type":"PREDICTION_IMPORT","payload":{"document":<上述完整 JSON>}}`。该消息注册为 Admin 权限；普通 User 无权调用。成功响应返回 `batchId`、`status`、`inserted` 和 `duplicate`，其中重复批次为 `status: "already_imported"`、`inserted: 0`、`duplicate: true`。生产环境应由受控 ML Worker 或管理员维护流程调用。
+
+### 14.4 `PREDICTION_IMPORT` Socket 接口
+
+| 权限 | Request Payload | Response Data | 主要错误 |
+| --- | --- | --- | --- |
+| Admin / internal maintenance only | `document: object`，必须符合第 14.2 节的完整批次契约。 | `batchId`、`status`、`inserted`、`duplicate`。重复 `batchId` 返回 `already_imported`、`0`、`true`。 | `4003` 非 Admin Session，`4401` 批次、字段、时间、站点或桩数校验失败，`5001` 事务或数据库失败。 |
 
 ## 15. 接口修改流程
 
