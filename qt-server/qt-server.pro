@@ -12,6 +12,8 @@ REPO_ROOT = $$clean_path($$PWD/..)
 INCLUDEPATH += $$REPO_ROOT/qt-server
 
 SOURCES += $$PWD/main.cpp
+SOURCES += $$PWD/services/dashboard/dashboarddataservice.cpp
+HEADERS += $$PWD/services/dashboard/dashboarddataservice.h
 
 include($$REPO_ROOT/shared/protocol/protocol.pri)
 include($$PWD/models/models.pri)
