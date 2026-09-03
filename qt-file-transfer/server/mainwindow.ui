@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <customwidgets>
+  <customwidget><class>DropZone</class><extends>QLabel</extends><header>dropzone.h</header></customwidget>
+ </customwidgets>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="minimumSize"><size><width>760</width><height>580</height></size></property>
+  <property name="windowTitle"><string>Qt 文件传输服务端</string></property>
+  <widget class="QWidget" name="central">
+   <layout class="QVBoxLayout" name="mainLayout">
+    <property name="leftMargin"><number>24</number></property><property name="topMargin"><number>22</number></property><property name="rightMargin"><number>24</number></property><property name="bottomMargin"><number>22</number></property><property name="spacing"><number>14</number></property>
+    <item><layout class="QVBoxLayout" name="titleLayout"><property name="spacing"><number>2</number></property><item><widget class="QLabel" name="titleLabel"><property name="text"><string>文件传输服务端</string></property></widget></item><item><widget class="QLabel" name="subtitleLabel"><property name="text"><string>监听本机端口，接收的文件会自动保存到指定目录</string></property></widget></item></layout></item>
+    <item><widget class="QGroupBox" name="listenerGroup"><property name="title"><string>监听设置</string></property><layout class="QGridLayout" name="listenerLayout"><item row="0" column="0"><widget class="QLabel" name="portLabel"><property name="text"><string>监听端口</string></property></widget></item><item row="0" column="1"><widget class="QSpinBox" name="portSpin"><property name="minimumHeight"><number>34</number></property><property name="maximum"><number>65535</number></property><property name="value"><number>19000</number></property></widget></item><item row="0" column="2"><widget class="QLabel" name="pathLabel"><property name="text"><string>接收目录</string></property></widget></item><item row="0" column="3"><widget class="QLineEdit" name="pathEdit"><property name="minimumHeight"><number>34</number></property><property name="placeholderText"><string>文件保存路径</string></property></widget></item><item row="0" column="4"><widget class="QPushButton" name="listenButton"><property name="minimumHeight"><number>34</number></property><property name="text"><string>开始监听</string></property></widget></item><item row="1" column="0" colspan="5"><widget class="QLabel" name="listenerStateLabel"><property name="text"><string>● 未监听</string></property></widget></item></layout></widget></item>
+    <item><widget class="DropZone" name="dropZone"><property name="minimumSize"><size><width>0</width><height>170</height></size></property><property name="text"><string>等待客户端发送文件</string></property><property name="alignment"><set>Qt::AlignCenter</set></property></widget></item>
+    <item><widget class="QGroupBox" name="transferGroup"><property name="title"><string>当前接收</string></property><layout class="QVBoxLayout" name="transferLayout"><item><widget class="QLabel" name="transferStateLabel"><property name="text"><string>等待客户端连接</string></property></widget></item><item><widget class="QProgressBar" name="progressBar"><property name="value"><number>0</number></property><property name="textVisible"><bool>true</bool></property></widget></item></layout></widget></item>
+    <item><widget class="QGroupBox" name="logGroup"><property name="title"><string>服务日志</string></property><layout class="QVBoxLayout" name="logLayout"><item><widget class="QTextEdit" name="logEdit"><property name="minimumSize"><size><width>0</width><height>100</height></size></property><property name="readOnly"><bool>true</bool></property><property name="placeholderText"><string>监听和接收状态会显示在这里</string></property></widget></item></layout></widget></item>
+   </layout>
+  </widget>
+ </widget>
+ <resources/><connections/>
+</ui>
