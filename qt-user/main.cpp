@@ -18,4 +18,3 @@ int main(int argc, char *argv[])
     window.show();
     return application.exec();
 }
-

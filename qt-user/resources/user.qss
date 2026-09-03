@@ -131,4 +131,3 @@ QLabel#successNotice, QLabel#errorNotice {
     font-weight: 600;
 }
 QLabel#errorNotice { background: #9e3f45; }
-
