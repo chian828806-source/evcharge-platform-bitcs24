@@ -22,7 +22,7 @@ void MessageDispatcher::registerHandler(const QString &messageType,
 
 ResponseMessage MessageDispatcher::dispatch(const RequestMessage &request) const
 {
-    // 第一层只允许公共文档登记的29种TCP消息进入系统。
+    // 第一层只允许公共文档登记的30种TCP消息进入系统。
     if (!MessageTypes::tcpTypes().contains(request.type)) {
         return ResponseMessage::error(
             request.requestId, ErrorCodes::InvalidSocketMessage,

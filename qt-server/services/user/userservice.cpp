@@ -265,6 +265,63 @@ ServiceResult<UserProfile> UserService::uploadAvatar(
     return ServiceResult<UserProfile>::success(*updatedUser);
 }
 
+ServiceResult<AvatarContent> UserService::avatarContent(qint64 userId)
+{
+    QSqlDatabase database;
+    QString databaseError;
+    if (!openDatabase(&database, &databaseError)) {
+        return ServiceResult<AvatarContent>::failure(
+            ErrorCodes::DatabaseError, QStringLiteral("database unavailable"));
+    }
+    const auto user = m_userRepository->findById(database, userId, &databaseError);
+    if (!user.has_value()) {
+        return ServiceResult<AvatarContent>::failure(
+            databaseError.isEmpty() ? ErrorCodes::InvalidSession : ErrorCodes::DatabaseError,
+            databaseError.isEmpty() ? QStringLiteral("user no longer exists")
+                                    : QStringLiteral("query user failed"));
+    }
+
+    AvatarContent avatar;
+    avatar.avatarPath = user->avatarPath;
+    if (avatar.avatarPath.isEmpty()) {
+        return ServiceResult<AvatarContent>::success(avatar);
+    }
+    if (!avatar.avatarPath.startsWith(QStringLiteral("avatars/"))) {
+        return ServiceResult<AvatarContent>::failure(
+            ErrorCodes::InternalError, QStringLiteral("invalid stored avatar path"));
+    }
+
+    const QString fileName = QFileInfo(avatar.avatarPath).fileName();
+    const QString suffix = QFileInfo(fileName).suffix().toLower();
+    if (fileName.isEmpty() || (suffix != QStringLiteral("png")
+        && suffix != QStringLiteral("jpg") && suffix != QStringLiteral("jpeg"))) {
+        return ServiceResult<AvatarContent>::failure(
+            ErrorCodes::InternalError, QStringLiteral("invalid stored avatar file"));
+    }
+    QFile avatarFile(QDir(m_avatarDirectory).filePath(fileName));
+    if (!avatarFile.open(QIODevice::ReadOnly)) {
+        return ServiceResult<AvatarContent>::failure(
+            ErrorCodes::InternalError, QStringLiteral("avatar file is unavailable"));
+    }
+    const QByteArray content = avatarFile.readAll();
+    constexpr qsizetype maxAvatarBytes = 512 * 1024;
+    const bool validPng = content.startsWith("\x89PNG\r\n\x1a\n");
+    const bool validJpeg = content.size() >= 3
+        && static_cast<unsigned char>(content.at(0)) == 0xff
+        && static_cast<unsigned char>(content.at(1)) == 0xd8
+        && static_cast<unsigned char>(content.at(2)) == 0xff;
+    if (content.isEmpty() || content.size() > maxAvatarBytes
+        || (suffix == QStringLiteral("png") && !validPng)
+        || (suffix != QStringLiteral("png") && !validJpeg)) {
+        return ServiceResult<AvatarContent>::failure(
+            ErrorCodes::InternalError, QStringLiteral("stored avatar content is invalid"));
+    }
+    avatar.mimeType = suffix == QStringLiteral("png")
+        ? QStringLiteral("image/png") : QStringLiteral("image/jpeg");
+    avatar.contentBase64 = QString::fromLatin1(content.toBase64());
+    return ServiceResult<AvatarContent>::success(avatar);
+}
+
 ServiceResult<RechargeInfo> UserService::recharge(qint64 userId, qint64 amountFen)
 {
     constexpr qint64 maxRechargeFen = 100000000;

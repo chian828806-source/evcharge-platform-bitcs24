@@ -161,8 +161,8 @@ void testSessionAndDispatcherBoundaries()
 void testKnownMessageRegistry()
 {
     // 数量变化意味着公共文档与代码可能发生漏登或私自扩展。
-    check(MessageTypes::tcpTypes().size() == 29,
-          QStringLiteral("all 29 documented TCP message types are registered"));
+    check(MessageTypes::tcpTypes().size() == 30,
+          QStringLiteral("all 30 documented TCP message types are registered"));
     check(MessageTypes::dashboardTopics().size() == 4,
           QStringLiteral("all four dashboard topics are registered"));
 }
@@ -364,6 +364,18 @@ void testUserProfileWalletOrdersAndRecommendations()
               && QFileInfo::exists(avatarDirectory.filePath(QFileInfo(avatarPath).fileName())),
           QStringLiteral("avatar upload validates content, stores file and returns relative path"));
 
+    RequestMessage avatarGetRequest{
+        QStringLiteral("REQ-AVATAR-GET"), MessageTypes::UserAvatarGet, sessionId, {}};
+    const ResponseMessage avatarGetResponse = dispatcher.dispatch(avatarGetRequest);
+    check(avatarGetResponse.code == ErrorCodes::Success
+              && avatarGetResponse.data.value(QStringLiteral("avatarPath")).toString()
+                    == avatarPath
+              && avatarGetResponse.data.value(QStringLiteral("mimeType")).toString()
+                    == QStringLiteral("image/png")
+              && avatarGetResponse.data.value(QStringLiteral("contentBase64")).toString()
+                    == QString::fromLatin1(png.toBase64()),
+          QStringLiteral("avatar content can be retrieved through the user TCP protocol"));
+
     RequestMessage rechargeRequest{
         QStringLiteral("REQ-RECHARGE"), MessageTypes::UserRecharge, sessionId,
         {{QStringLiteral("amountFen"), 500}}
@@ -481,8 +493,13 @@ void testStationListAndDetailFlow()
     check(listResponse.code == ErrorCodes::Success && stations.size() == 2
               && nearestStation.value(QStringLiteral("stationId")).toInt() == 1
               && nearestStation.value(QStringLiteral("pileCount")).toInt() == 2
-              && nearestStation.value(QStringLiteral("availablePileCount")).toInt() == 1,
-          QStringLiteral("nearby list hides disabled stations and aggregates available piles"));
+              && nearestStation.value(QStringLiteral("availablePileCount")).toInt() == 1
+              && nearestStation.value(QStringLiteral("status")).toString()
+                    == QStringLiteral("NORMAL")
+              && nearestStation.value(QStringLiteral("totalPriceFenPerKwh")).toInt()
+                    == nearestStation.value(QStringLiteral("priceFenPerKwh")).toInt()
+                        + nearestStation.value(QStringLiteral("serviceFeeFenPerKwh")).toInt(),
+          QStringLiteral("nearby list exposes NORMAL status and total price while hiding disabled stations"));
 
     RequestMessage detailRequest{
         QStringLiteral("REQ-STATION-DETAIL"),
@@ -655,9 +672,13 @@ void testOrderCreateAndActiveCheckFlow()
                     == QStringLiteral("PENDING_PAYMENT")
               && stoppedOrder.value(QStringLiteral("energyKwh")).toDouble() > 0.0
               && stoppedOrder.value(QStringLiteral("amountFen")).toInt() > 0
+              && stoppedOrder.value(QStringLiteral("chargeSeconds")).toInt() > 0
+              && stoppedOrder.value(QStringLiteral("totalPriceFenPerKwh")).toInt()
+                    == stoppedOrder.value(QStringLiteral("priceFenPerKwh")).toInt()
+                        + stoppedOrder.value(QStringLiteral("serviceFeeFenPerKwh")).toInt()
               && pileCheck.value(0).toString() == QStringLiteral("AVAILABLE")
               && pileCheck.value(1).isNull(),
-          QStringLiteral("stop order calculates amount and releases charging pile"));
+          QStringLiteral("stop order returns precise duration, total price and releases charging pile"));
 
     RequestMessage settleRequest{
         QStringLiteral("REQ-ORDER-SETTLE"), MessageTypes::OrderSettle, userOneSession,

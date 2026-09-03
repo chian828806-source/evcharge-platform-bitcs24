@@ -41,6 +41,7 @@ struct StationInfo
     double latitude = 0.0;
     qint64 priceFenPerKwh = 0;
     qint64 serviceFeeFenPerKwh = 0;
+    QString status;
     int pileCount = 0;
     int availablePileCount = 0;
     // 小于0表示当前场景没有用户坐标，例如站点详情请求。
@@ -62,6 +63,8 @@ struct StationInfo
             {QStringLiteral("latitude"), latitude},
             {QStringLiteral("priceFenPerKwh"), priceFenPerKwh},
             {QStringLiteral("serviceFeeFenPerKwh"), serviceFeeFenPerKwh},
+            {QStringLiteral("totalPriceFenPerKwh"), priceFenPerKwh + serviceFeeFenPerKwh},
+            {QStringLiteral("status"), status},
             {QStringLiteral("pileCount"), pileCount},
             {QStringLiteral("availablePileCount"), availablePileCount}
         };

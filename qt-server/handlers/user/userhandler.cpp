@@ -117,6 +117,20 @@ ResponseMessage UserHandler::avatarUpload(const RequestMessage &request,
     });
 }
 
+ResponseMessage UserHandler::avatarGet(const RequestMessage &request,
+                                       const SessionContext &context)
+{
+    if (!m_userService) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::InternalError,
+                                      QStringLiteral("user module is unavailable"));
+    }
+    const auto result = m_userService->avatarContent(context.principalId);
+    if (!result.ok) {
+        return ResponseMessage::error(request.requestId, result.code, result.message);
+    }
+    return ResponseMessage::success(request.requestId, result.value.toJson());
+}
+
 ResponseMessage UserHandler::recharge(const RequestMessage &request,
                                       const SessionContext &context)
 {
