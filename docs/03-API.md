@@ -131,6 +131,8 @@ PREDICTION_RECOMMENDATION
 PREDICTION_WARNING
 ```
 
+预测接口均返回 `data.predictions` 数组，记录包含站点、目标时间、预测跨度、负荷率、预计空闲桩数、峰值等级、模型名称和生成时间。`PREDICTION_LIST` 允许已认证用户和管理员按 `stationId`、`horizon`、`limit` 查询；`PREDICTION_RECOMMENDATION` 仅用户可调用，返回未来且预计有空闲桩的站点，按空闲桩数降序；`PREDICTION_WARNING` 仅管理员可调用，返回未来负荷率不低于 `0.7` 的预测。
+
 ## 7. 认证
 
 登录成功后返回随机 `sessionId`。受保护消息必须携带 `sessionId`。

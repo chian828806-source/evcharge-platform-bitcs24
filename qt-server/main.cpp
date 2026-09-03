@@ -2,6 +2,7 @@
 #include "database/databasemanager.h"
 #include "handlers/admin/registeradminhandlers.h"
 #include "handlers/user/registeruserbackend.h"
+#include "handlers/prediction/registerpredictionhandlers.h"
 #include "network/dashboardwebsocketserver.h"
 #include "network/messagedispatcher.h"
 #include "network/sessionmanager.h"
@@ -106,6 +107,7 @@ int main(int argc, char *argv[])
     MessageDispatcher dispatcher(&sessions);
     UserBackendRegistry userHandlers(&databaseManager, &sessions, &dispatcher);
     AdminHandlerRegistry adminHandlers(database, &sessions, &dispatcher);
+    PredictionHandlerRegistry predictionHandlers(&databaseManager, &dispatcher);
     SocketServer socketServer(&dispatcher);
     if (!socketServer.listen(QHostAddress::Any, tcpPort)) {
         QTextStream(stderr) << "TCP listen failed: " << socketServer.errorString() << '\n';
