@@ -94,6 +94,9 @@ STATION_DETAIL_GET
 MAP_GEOCODE
 ```
 
+`PREDICTION_RECOMMENDATION` 是用户/站点业务接口：由 `StationService` 结合预测数据、
+站点信息、距离及当前/预测可用桩生成推荐结果，不属于纯预测数据查询接口。
+
 充电订单：
 
 ```text
@@ -128,11 +131,10 @@ ML 展示：
 
 ```text
 PREDICTION_LIST
-PREDICTION_RECOMMENDATION
 PREDICTION_WARNING
 ```
 
-预测接口均返回 `data.predictions` 数组，记录包含站点、目标时间、预测跨度、负荷率、预计空闲桩数、峰值等级、模型名称和生成时间。`PREDICTION_LIST` 允许已认证用户和管理员按 `stationId`、`horizon`、`limit` 查询；`PREDICTION_RECOMMENDATION` 仅用户可调用，返回未来且预计有空闲桩的站点，按空闲桩数降序；`PREDICTION_WARNING` 仅管理员可调用，返回未来负荷率不低于 `0.7` 的预测。
+Prediction 模块只负责纯预测数据查询：`PREDICTION_LIST` 允许已认证用户和管理员按 `stationId`、`horizon`、`limit` 查询，`PREDICTION_WARNING` 仅管理员可调用并返回未来负荷率不低于 `0.7` 的预测。`PREDICTION_RECOMMENDATION` 的用户侧站点推荐边界见上节。
 
 ## 7. 认证
 
@@ -260,8 +262,8 @@ Response:
 | `USER_ORDER_LIST` | 可选 `page: integer`（默认 `1`）、`pageSize: integer`（默认 `20`，最大 `50`）、`status: string`。`status` 只允许 `CREATED`、`CHARGING`、`PENDING_PAYMENT`、`COMPLETED`、`CANCELLED`。 | `items`、`page`、`pageSize`、`total`。`items` 按 `createdAt DESC, orderId DESC` 排序，每项为订单对象。 | `4003` Session 无效，`4401` 分页或状态筛选非法，`5001` 查询失败。 |
 | `PREDICTION_RECOMMENDATION` | `longitude: number`、`latitude: number`；可选 `limit: integer`（默认 `5`，范围 `1` 至 `20`）、`horizon: string`（默认 `1h`，可选 `1h`、`6h`、`24h`）。 | `stations`。每项为站点对象，并额外含 `recommended: true`、`predictedLoad`、`predictedAvailablePileCount`、`recommendationReason`。结果按预测负荷升序、距离升序、预测空闲桩数降序排列。无合格推荐时返回空数组。 | `4003` Session 无效，`4401` 坐标、数量或预测窗口非法，`5001` 站点或预测数据查询失败，`5002` 推荐模块未装配。 |
 
-以上为 16 个已实现用户端接口。`PREDICTION_LIST` 虽已在消息类型列表中登记，
-但当前没有对应 Handler；它不是 UI V2 的必需页面能力。`MAP_GEOCODE` 的请求/
+以上为 16 个已实现用户端接口。`PREDICTION_LIST` 由 Prediction 模块提供，不属于
+User/Station Registry。`MAP_GEOCODE` 的请求/
 响应契约已确认，见下一节；真实腾讯地图调用待配置 Key 并以异步 Adapter 实现，
 不得阻塞 Socket 读取线程。
 
@@ -276,7 +278,7 @@ Response:
 
 ### 12.1.2 `MAP_GEOCODE` 已确认契约
 
-`MAP_GEOCODE` 由服务端调用腾讯地图地理编码能力，Qt 用户端不直接持有腾讯地图
+`MAP_GEOCODE` 的真实地图 Adapter 仍是已知 TODO，不阻塞当前 User Backend 合并。完成后由服务端调用腾讯地图地理编码能力，Qt 用户端不直接持有腾讯地图
 Key，也不自行把地址解析为坐标。请求为 `district: string`、`address: string`；成功
 响应为 `formattedAddress: string`、`longitude: number`、`latitude: number`。服务端用
 环境变量或未入库配置读取 Key，并通过异步 `MapAdapter` 完成网络请求；用户端
@@ -524,6 +526,10 @@ Socket读取回调只完成：
 - 消息type；
 - 访问级别Public、User、Admin或AnyAuthenticated；
 - Handler回调。
+
+同一 Message Type 只能由一个 Registry 注册。`PREDICTION_RECOMMENDATION` 必须且只能由
+User/Station Registry 注册；PredictionHandlerRegistry 只注册 `PREDICTION_LIST` 和
+`PREDICTION_WARNING`，不得覆盖用户侧推荐路由。
 
 未在docs/03-API.md登记的type返回4401。已经登记但尚未接入业务Handler的消息返回5002，不能返回伪造成功数据。
 

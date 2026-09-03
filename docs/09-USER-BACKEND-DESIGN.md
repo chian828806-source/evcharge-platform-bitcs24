@@ -1,6 +1,6 @@
 # Qt 用户端后端设计 V1.0
 
-状态：Draft（编码前对齐稿）  
+状态：已实现并纳入统一 Qt Server 的 User Backend V1 设计与实现说明
 适用范围：`qt-server` 中面向 Qt 用户端的业务后端  
 最后更新：2026-09-02
 
@@ -207,7 +207,7 @@ registerAdminHandlers(dispatcher, adminDependencies);
 | U01 | 手机号登录/自动注册 | `USER_LOGIN` | UserHandler | UserService | UserRepository、SessionManager | `user` |
 | U02 | 地址转坐标 | `MAP_GEOCODE` | StationHandler | StationService | MapAdapter | 无 |
 | U02 | 附近站点 | `STATION_LIST_NEARBY` | StationHandler | StationService | StationRepository、PileRepository | `charging_station`, `charging_pile` |
-| U02 | 推荐站点 | `PREDICTION_RECOMMENDATION` | PredictionHandler | PredictionService | PredictionRepository、StationRepository | `prediction`, `charging_station` |
+| U02 | 推荐站点 | `PREDICTION_RECOMMENDATION` | StationHandler | StationService | PredictionRepository、StationRepository、PileRepository | `prediction`, `charging_station`, `charging_pile` |
 | U03 | 站点和电桩详情 | `STATION_DETAIL_GET` | StationHandler | StationService | StationRepository、PileRepository | `charging_station`, `charging_pile` |
 | U03/U04 | 创建订单 | `ORDER_CREATE` | OrderHandler | OrderService | User/Order/Pile/Station Repository | `user`, `charging_order`, `charging_pile`, `charging_station` |
 | U04 | 查询活动订单/刷新进度 | `ORDER_ACTIVE_CHECK` | OrderHandler | ChargingService | OrderRepository、StationRepository、PileRepository | `charging_order`, `charging_station`, `charging_pile`, `user` |
@@ -453,8 +453,8 @@ Service 必须强制使用 Session 用户 ID，不能查询其他用户的订单
 | 外部依赖 | 腾讯地图 Web API 或 V1 Mock Adapter |
 | 数据操作 | 无 |
 
-已确认：`MAP_GEOCODE` 由服务端调用腾讯地图，`QWebEngineView` 仅依据服务端
-返回的坐标或导航 URL 展示路线。地图 Key 必须来自配置或环境变量，不得提交到
+已确认的接口边界：`MAP_GEOCODE` 完成后由服务端调用腾讯地图，`QWebEngineView` 仅依据服务端
+返回的坐标或导航 URL 展示路线。真实 `MapAdapter` 仍为已知 TODO，不阻塞本轮合并。地图 Key 必须来自配置或环境变量，不得提交到
 仓库；外部请求属于耗时操作，必须经异步 `MapAdapter`，不得阻塞 Socket 线程。
 
 ### 8.8 `STATION_LIST_NEARBY`
@@ -602,6 +602,12 @@ V1 已冻结：默认查询 `1h` 预测窗口，仅返回当前可用且预测�
 站点；按“预测负荷升序 → 距离升序 → 预测可用桩数降序”排序。默认 `limit=5`，
 最大 20。每项返回 `recommended`、`predictedLoad`、
 `predictedAvailablePileCount` 和 `recommendationReason`。
+
+该消息归 User/Station 业务侧：`StationService` 组合预测数据、站点信息、距离以及
+实时/预测可用桩形成用户推荐，因此不是纯预测数据查询。它只能由
+UserBackendRegistry 的 StationHandler 注册；PredictionHandlerRegistry 仅负责
+`PREDICTION_LIST` 和 `PREDICTION_WARNING`，两个 Registry 禁止同时注册
+`PREDICTION_RECOMMENDATION`。
 
 ## 9. 业务状态机
 

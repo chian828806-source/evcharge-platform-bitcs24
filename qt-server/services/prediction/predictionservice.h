@@ -11,7 +11,6 @@ class PredictionService
 public:
     PredictionService(DatabaseManager *databaseManager, PredictionRepository *repository);
     ServiceResult<QJsonArray> list(qint64 stationId, const QString &horizon, int limit) const;
-    ServiceResult<QJsonArray> recommendation(const QString &horizon, int limit) const;
     ServiceResult<QJsonArray> warning(const QString &horizon, int limit) const;
 private:
     DatabaseManager *m_databaseManager;

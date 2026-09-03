@@ -18,12 +18,6 @@ ResponseMessage PredictionHandler::list(const RequestMessage &r, const SessionCo
     auto result = m_service->list(station.isUndefined() ? 0 : station.toInteger(), horizon(r.payload), limit(r.payload));
     return result.ok ? ResponseMessage::success(r.requestId, {{QStringLiteral("predictions"), result.value}}) : ResponseMessage::error(r.requestId, result.code, result.message);
 }
-ResponseMessage PredictionHandler::recommendation(const RequestMessage &r, const SessionContext &)
-{
-    if (!limitOk(r.payload.value(QStringLiteral("limit"))) || !horizonOk(horizon(r.payload))) return invalid(r, QStringLiteral("invalid prediction filter"));
-    auto result = m_service->recommendation(horizon(r.payload), limit(r.payload));
-    return result.ok ? ResponseMessage::success(r.requestId, {{QStringLiteral("predictions"), result.value}}) : ResponseMessage::error(r.requestId, result.code, result.message);
-}
 ResponseMessage PredictionHandler::warning(const RequestMessage &r, const SessionContext &)
 {
     if (!limitOk(r.payload.value(QStringLiteral("limit"))) || !horizonOk(horizon(r.payload))) return invalid(r, QStringLiteral("invalid prediction filter"));
