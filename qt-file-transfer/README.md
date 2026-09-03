@@ -22,7 +22,7 @@ make -j2
 ./server/file-transfer-server
 ```
 
-输入监听端口（默认 19000）和接收目录，点击“开始监听”。再启动客户端：
+输入监听端口（默认 45454）和接收目录，点击“开始监听”。再启动客户端：
 
 ```bash
 ./client/file-transfer-client
