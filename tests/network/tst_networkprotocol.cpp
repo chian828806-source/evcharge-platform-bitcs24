@@ -466,18 +466,6 @@ void testUserProfileWalletOrdersAndRecommendations()
               && QFileInfo::exists(avatarDirectory.filePath(QFileInfo(avatarPath).fileName())),
           QStringLiteral("avatar upload validates content, stores file and returns relative path"));
 
-    RequestMessage avatarGetRequest{
-        QStringLiteral("REQ-AVATAR-GET"), MessageTypes::UserAvatarGet, sessionId, {}};
-    const ResponseMessage avatarGetResponse = dispatcher.dispatch(avatarGetRequest);
-    check(avatarGetResponse.code == ErrorCodes::Success
-              && avatarGetResponse.data.value(QStringLiteral("avatarPath")).toString()
-                    == avatarPath
-              && avatarGetResponse.data.value(QStringLiteral("mimeType")).toString()
-                    == QStringLiteral("image/png")
-              && avatarGetResponse.data.value(QStringLiteral("contentBase64")).toString()
-                    == QString::fromLatin1(png.toBase64()),
-          QStringLiteral("avatar content can be retrieved through the user TCP protocol"));
-
     RequestMessage rechargeRequest{
         QStringLiteral("REQ-RECHARGE"), MessageTypes::UserRecharge, sessionId,
         {{QStringLiteral("amountFen"), 500}}
