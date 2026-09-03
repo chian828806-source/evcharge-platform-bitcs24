@@ -1,8 +1,20 @@
-QMainWindow,QDialog { background:#f4f7fb; }
-QPushButton { background:#2563eb; color:white; border:0; border-radius:6px; padding:8px 14px; }
-QPushButton:hover { background:#1d4ed8; }
-QTextEdit { background:white; border:1px solid #cbd5e1; border-radius:6px; }
-QProgressBar { border:1px solid #cbd5e1; border-radius:5px; background:white; text-align:center; }
-QProgressBar::chunk { background:#22c55e; border-radius:4px; }
-#dropZone { border:2px dashed #94a3b8; border-radius:10px; background:#eef2ff; }
-#dropZone[dragging="true"] { border-color:#2563eb; background:#dbeafe; }
+QMainWindow, QDialog { background: #f5f7fa; color: #17212b; }
+QLabel#titleLabel { color: #17212b; font-size: 24px; font-weight: 700; }
+QLabel#subtitleLabel { color: #6b7785; font-size: 13px; }
+QGroupBox { background: #ffffff; border: 1px solid #dce3ea; border-radius: 8px; margin-top: 10px; padding: 14px 12px 12px 12px; font-weight: 600; color: #334155; }
+QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; background: #f5f7fa; }
+QLabel#connectionStateLabel, QLabel#listenerStateLabel { color: #8794a3; font-size: 12px; padding-top: 3px; }
+QLabel#transferStateLabel { color: #4b5968; font-size: 13px; }
+QLineEdit, QSpinBox { background: #fbfcfd; border: 1px solid #cbd5df; border-radius: 5px; padding: 5px 8px; color: #17212b; }
+QLineEdit:focus, QSpinBox:focus { border: 1px solid #2f80a8; background: #ffffff; }
+QPushButton { background: #236b8e; color: #ffffff; border: 0; border-radius: 5px; padding: 7px 16px; font-weight: 600; }
+QPushButton:hover { background: #1b5875; }
+QPushButton:pressed { background: #16465e; }
+#chooseButton { background: #3f8f6b; }
+#chooseButton:hover { background: #327858; }
+QProgressBar { min-height: 18px; border: 1px solid #cbd5df; border-radius: 5px; background: #eef2f5; color: #334155; text-align: center; }
+QProgressBar::chunk { background: #3f8f6b; border-radius: 4px; }
+QTextEdit { background: #fbfcfd; border: 1px solid #d5dde5; border-radius: 5px; padding: 6px; color: #334155; font-family: monospace; }
+#dropZone { border: 2px dashed #9eacb9; border-radius: 8px; background: #edf3f6; color: #536474; font-size: 16px; font-weight: 600; }
+#dropZone:hover { border-color: #5792ad; background: #e5eff3; }
+#dropZone[dragging="true"] { border-color: #236b8e; background: #dcecf2; color: #1b5875; }
