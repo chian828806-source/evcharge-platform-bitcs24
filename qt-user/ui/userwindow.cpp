@@ -21,7 +21,6 @@
 #include <QMessageBox>
 #include <QPair>
 #include <QProgressBar>
-#include <QPixmap>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
@@ -1094,14 +1093,6 @@ void UserWindow::handleResponse(const QJsonObject &response)
         renderOrders(data.value(QStringLiteral("items")).toArray());
     } else if (type == MessageTypes::UserAvatarUpload) {
         applyUser(data.value(QStringLiteral("user")).toObject());
-        sendRequest(MessageTypes::UserAvatarGet);
-    } else if (type == MessageTypes::UserAvatarGet) {
-        const QByteArray bytes = QByteArray::fromBase64(
-            data.value(QStringLiteral("contentBase64")).toString().toLatin1());
-        QPixmap avatar;
-        if (avatar.loadFromData(bytes)) {
-            m_avatarLabel->setPixmap(avatar.scaled(m_avatarLabel->size(), Qt::KeepAspectRatio,
-                                                   Qt::SmoothTransformation));
-        }
+        showNotice(QStringLiteral("头像上传成功"));
     }
 }
