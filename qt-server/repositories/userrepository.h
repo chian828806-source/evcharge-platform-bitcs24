@@ -4,6 +4,7 @@
  */
 #pragma once
 
+#include "models/rechargeinfo.h"
 #include "models/userprofile.h"
 
 #include <QSqlDatabase>
@@ -32,6 +33,15 @@ public:
     bool updateNickname(QSqlDatabase &database, qint64 userId,
                         const QString &nickname, const QString &now,
                         QString *errorMessage) const;
+    bool updateAvatarPath(QSqlDatabase &database, qint64 userId,
+                          const QString &avatarPath, const QString &now,
+                          QString *errorMessage) const;
+    bool increaseBalance(QSqlDatabase &database, qint64 userId, qint64 amountFen,
+                         const QString &now, qint64 *balanceFen,
+                         QString *errorMessage) const;
+    bool insertRechargeRecord(QSqlDatabase &database, qint64 userId,
+                              const RechargeInfo &recharge, qint64 *rechargeId,
+                              QString *errorMessage) const;
     bool decreaseBalance(QSqlDatabase &database, qint64 userId, qint64 amountFen,
                          const QString &now, bool *deducted,
                          QString *errorMessage) const;

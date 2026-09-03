@@ -25,6 +25,8 @@ SOURCES += \
     $$REPO_ROOT/qt-server/handlers/user/orderhandler.cpp \
     $$REPO_ROOT/qt-server/handlers/user/stationhandler.cpp \
     $$REPO_ROOT/qt-server/handlers/user/userhandler.cpp \
+    $$REPO_ROOT/qt-server/handlers/prediction/predictionhandler.cpp \
+    $$REPO_ROOT/qt-server/handlers/prediction/registerpredictionhandlers.cpp \
     $$REPO_ROOT/qt-server/network/clientsession.cpp \
     $$REPO_ROOT/qt-server/network/messagedispatcher.cpp \
     $$REPO_ROOT/qt-server/network/sessionmanager.cpp \
@@ -32,9 +34,11 @@ SOURCES += \
     $$REPO_ROOT/qt-server/repositories/userrepository.cpp \
     $$REPO_ROOT/qt-server/repositories/stationrepository.cpp \
     $$REPO_ROOT/qt-server/repositories/orderrepository.cpp \
+    $$REPO_ROOT/qt-server/repositories/predictionrepository.cpp \
     $$REPO_ROOT/qt-server/services/user/orderservice.cpp \
     $$REPO_ROOT/qt-server/services/user/stationservice.cpp \
-    $$REPO_ROOT/qt-server/services/user/userservice.cpp
+    $$REPO_ROOT/qt-server/services/user/userservice.cpp \
+    $$REPO_ROOT/qt-server/services/prediction/predictionservice.cpp
 
 HEADERS += \
     $$REPO_ROOT/qt-user/network/socketclient.h \
@@ -47,6 +51,8 @@ HEADERS += \
     $$REPO_ROOT/qt-server/handlers/user/orderhandler.h \
     $$REPO_ROOT/qt-server/handlers/user/stationhandler.h \
     $$REPO_ROOT/qt-server/handlers/user/userhandler.h \
+    $$REPO_ROOT/qt-server/handlers/prediction/predictionhandler.h \
+    $$REPO_ROOT/qt-server/handlers/prediction/registerpredictionhandlers.h \
     $$REPO_ROOT/qt-server/network/clientsession.h \
     $$REPO_ROOT/qt-server/network/messagedispatcher.h \
     $$REPO_ROOT/qt-server/network/sessionmanager.h \
@@ -54,11 +60,15 @@ HEADERS += \
     $$REPO_ROOT/qt-server/models/userprofile.h \
     $$REPO_ROOT/qt-server/models/stationinfo.h \
     $$REPO_ROOT/qt-server/models/chargingorder.h \
+    $$REPO_ROOT/qt-server/models/predictioninfo.h \
+    $$REPO_ROOT/qt-server/models/rechargeinfo.h \
     $$REPO_ROOT/qt-server/repositories/orderrepository.h \
+    $$REPO_ROOT/qt-server/repositories/predictionrepository.h \
     $$REPO_ROOT/qt-server/repositories/stationrepository.h \
     $$REPO_ROOT/qt-server/repositories/userrepository.h \
     $$REPO_ROOT/qt-server/services/user/stationservice.h \
     $$REPO_ROOT/qt-server/services/user/orderservice.h \
-    $$REPO_ROOT/qt-server/services/user/userservice.h
+    $$REPO_ROOT/qt-server/services/user/userservice.h \
+    $$REPO_ROOT/qt-server/services/prediction/predictionservice.h
 
 include($$REPO_ROOT/shared/protocol/protocol.pri)

@@ -81,6 +81,7 @@ USER_LOGIN
 USER_PROFILE_GET
 USER_PROFILE_UPDATE
 USER_AVATAR_UPLOAD
+USER_AVATAR_GET
 USER_RECHARGE
 USER_ORDER_LIST
 ```
@@ -92,6 +93,9 @@ STATION_LIST_NEARBY
 STATION_DETAIL_GET
 MAP_GEOCODE
 ```
+
+`PREDICTION_RECOMMENDATION` 是用户/站点业务接口：由 `StationService` 结合预测数据、
+站点信息、距离及当前/预测可用桩生成推荐结果，不属于纯预测数据查询接口。
 
 充电订单：
 
@@ -127,12 +131,11 @@ ML 展示：
 
 ```text
 PREDICTION_LIST
-PREDICTION_RECOMMENDATION
 PREDICTION_WARNING
 PREDICTION_IMPORT
 ```
 
-预测接口均返回 `data.predictions` 数组，记录包含站点、目标时间、预测跨度、负荷率、预计空闲桩数、峰值等级、模型名称和生成时间。`PREDICTION_LIST` 允许已认证用户和管理员按 `stationId`、`horizon`、`limit` 查询；`PREDICTION_RECOMMENDATION` 仅用户可调用，返回未来且预计有空闲桩的站点，按空闲桩数降序；`PREDICTION_WARNING` 仅管理员可调用，返回未来负荷率不低于 `0.7` 的预测。`PREDICTION_IMPORT` 仅管理员/内部 ML 任务调用，用于导入已经通过契约校验的完整预测批次。
+Prediction 模块只负责纯预测数据查询与受保护的导入：`PREDICTION_LIST` 允许已认证用户和管理员按 `stationId`、`horizon`、`limit` 查询，`PREDICTION_WARNING` 仅管理员可调用并返回未来负荷率不低于 `0.7` 的预测。`PREDICTION_IMPORT` 属于 Prediction / ML integration，仅 Admin / internal maintenance 可调用，用于导入完整预测批次。`PREDICTION_RECOMMENDATION` 属于 User Backend，由用户侧站点推荐调用链处理，边界见上节；它不是 ML 导入或 Admin 接口。
 
 ## 7. 认证
 
@@ -236,7 +239,55 @@ Response:
 
 取消仅允许作用于 `CREATED` 状态订单。取消成功后订单进入 `CANCELLED`，对应电桩由 `RESERVED` 恢复为 `AVAILABLE`。
 
-## 12.1 管理端 API 字段
+## 12.1 用户端 API 字段
+
+本节中的接口均要求有效的 User Session。金额字段单位为分；payload 中即使出现
+`userId` 也不作为身份依据，用户身份只由 Session 决定。
+
+| Message Type | Request Payload | Response Data | 主要错误 |
+| --- | --- | --- | --- |
+| `USER_LOGIN` | `phone: string`，去除首尾空白后必须为 11 位手机号。不存在的手机号自动注册。 | `sessionId`、`user`。 | `4001` 手机号格式非法，`4002` 冻结且没有活动订单，`5001` 注册、登录时间更新或查询失败。 |
+| `USER_PROFILE_GET` | 空对象。 | `user`。 | `4003` Session 无效，`5001` 查询失败。 |
+| `USER_PROFILE_UPDATE` | `nickname: string`，去除首尾空白后长度为 2 至 20 个字符。 | `user`。 | `4002` 用户冻结，`4003` Session 无效，`4401` 昵称字段或长度非法，`5001` 更新失败。 |
+| `STATION_LIST_NEARBY` | `longitude: number`、`latitude: number`；可选 `district: string`、`limit: integer`（默认 `20`，范围 `1` 至 `50`）。 | `stations`，每项为站点对象，包含站点基本信息、分项单价、综合单价、总桩数、空闲桩数和 `distanceKm`。只返回 `NORMAL` 站点。 | `4003` Session 无效，`4401` 坐标、区域或数量非法，`5001` 查询失败。 |
+| `STATION_DETAIL_GET` | `stationId: integer`，必须大于 `0`。 | `station`、`piles`。`piles` 中每项包含 `pileId`、`stationId`、`pileNo`、`type`、`powerKw`、`status`。 | `4003` Session 无效，`4201` 站点不存在或已禁用，`4401` 站点 ID 非法，`5001` 查询失败。 |
+| `ORDER_ACTIVE_CHECK` | 空对象。 | `hasActiveOrder`、`balanceFen`、`order`。没有活动订单时 `order` 为 `null`；活动订单包含 `CREATED`、`CHARGING`、`PENDING_PAYMENT` 状态。 | `4003` Session 无效，`5001` 查询失败。 |
+| `ORDER_CREATE` | `pileId: integer`，必须大于 `0`。 | `order`。服务端保存创建订单时的价格快照，并在同一事务中将电桩设为 `RESERVED`。 | `4002` 用户冻结，`4101` 已有活动订单，`4102` 电桩不可用，`4202` 电桩不存在，`4401` 电桩 ID 非法，`5001` 事务失败。 |
+| `ORDER_CANCEL` | `orderId: integer`，必须大于 `0`；可选 `reason: string`。 | `order`。仅允许取消 `CREATED` 订单，成功后释放电桩。 | `4003` Session 无效，`4105` 订单不可取消，`4401` 参数非法，`5001` 事务失败。 |
+| `ORDER_START` | `orderId: integer`，必须大于 `0`。 | `order`。仅允许将本人 `CREATED` 订单启动为 `CHARGING`。 | `4002` 用户冻结，`4003` Session 无效，`4102` 电桩预约状态无效，`4104` 订单状态非法，`4401` 订单 ID 非法，`5001` 事务失败。 |
+| `ORDER_STOP` | `orderId: integer`，必须大于 `0`。 | `order`，包含最终 `chargeSeconds`、`chargeMinutes`、`energyKwh`、`amountFen`。服务端计算金额并释放电桩，订单进入 `PENDING_PAYMENT`。 | `4003` Session 无效，`4102` 电桩释放失败，`4104` 订单状态非法，`4401` 订单 ID 非法，`5001` 事务失败。 |
+| `ORDER_SETTLE` | `orderId: integer`，必须大于 `0`。 | `order`、`balanceFen`。成功时在一个事务中扣减余额、完成订单并更新电桩累计统计；已完成订单重复请求不重复扣款。 | `4003` Session 无效，`4103` 余额不足，`4104` 订单状态非法，`4401` 订单 ID 非法，`5001` 事务失败。 |
+| `USER_AVATAR_UPLOAD` | `fileName: string`、`mimeType: string`、`contentBase64: string`。仅接受扩展名与 MIME 一致的 PNG 或 JPEG，Base64 解码后的原文件最大 512 KiB。 | `avatarPath`、`user`；`avatarPath` 为如 `avatars/user-<id>-<uuid>.png` 的相对路径。 | `4002` 用户冻结，`4003` Session 无效，`4401` 文件名、MIME 或文件内容非法，`5001` 数据库失败，`5002` 文件目录或保存失败。 |
+| `USER_AVATAR_GET` | 空对象。 | `avatarPath`、`mimeType`、`contentBase64`。未设置头像时三个字段均为 `null`；有头像时内容为原始图片的 Base64。 | `4003` Session 无效，`5001` 数据库查询失败，`5002` 已登记头像文件不可读或内容非法。 |
+| `USER_RECHARGE` | `amountFen: integer`，范围为 `1` 至 `100000000`。 | `rechargeId`、`recordNo`、`amountFen`、`balanceFen`、`createdAt`。 | `4002` 用户冻结，`4003` Session 无效，`4401` 金额不是正整数或超出范围，`5001` 余额与充值流水事务失败。 |
+| `USER_ORDER_LIST` | 可选 `page: integer`（默认 `1`）、`pageSize: integer`（默认 `20`，最大 `50`）、`status: string`。`status` 只允许 `CREATED`、`CHARGING`、`PENDING_PAYMENT`、`COMPLETED`、`CANCELLED`。 | `items`、`page`、`pageSize`、`total`。`items` 按 `createdAt DESC, orderId DESC` 排序，每项为订单对象。 | `4003` Session 无效，`4401` 分页或状态筛选非法，`5001` 查询失败。 |
+| `PREDICTION_RECOMMENDATION` | `longitude: number`、`latitude: number`；可选 `limit: integer`（默认 `5`，范围 `1` 至 `20`）、`horizon: string`（默认 `1h`，可选 `1h`、`6h`、`24h`）。 | `stations`。每项为站点对象，并额外含 `recommended: true`、`predictedLoad`、`predictedAvailablePileCount`、`recommendationReason`。结果按预测负荷升序、距离升序、预测空闲桩数降序排列。无合格推荐时返回空数组。 | `4003` Session 无效，`4401` 坐标、数量或预测窗口非法，`5001` 站点或预测数据查询失败，`5002` 推荐模块未装配。 |
+| `PREDICTION_IMPORT` | `document: object`，必须符合第 14.2 节的完整批次契约。仅 Admin/internal maintenance。 | `batchId`、`status`、`inserted`、`duplicate`。重复 `batchId` 返回 `already_imported`、`0`、`true`。 | `4003` 非 Admin Session，`4401` 批次、字段、时间、站点或桩数校验失败，`5001` 事务或数据库失败。 |
+
+以上为 16 个已实现用户端接口。`PREDICTION_LIST` 由 Prediction 模块提供，不属于
+User/Station Registry。`MAP_GEOCODE` 的请求/
+响应契约已确认，见下一节；真实腾讯地图调用待配置 Key 并以异步 Adapter 实现，
+不得阻塞 Socket 读取线程。
+
+### 12.1.1 对象字段约定
+
+- `user` 包含 `userId`、`phone`、`nickname`、`avatarPath`、`balanceFen`、`status`、`createdAt`；没有头像时 `avatarPath` 为 `null`。
+- 站点对象包含 `stationId`、`stationNo`、`name`、`address`、`district`、`longitude`、`latitude`、`priceFenPerKwh`、`serviceFeeFenPerKwh`、`totalPriceFenPerKwh`、`status`、`pileCount`、`availablePileCount`。其中 `totalPriceFenPerKwh = priceFenPerKwh + serviceFeeFenPerKwh`，供 UI 首要展示；附近站点和推荐站点还包含 `distanceKm`。
+- `StationStatus = NORMAL | DISABLED`。普通用户站点查询仅返回 `NORMAL`，但仍返回 `status` 以便客户端使用稳定枚举，而非中文文案判断逻辑。
+- `items` 中的订单对象包含 `orderId`、`orderNo`、`userId`、`stationId`、`stationName`、`pileId`、`pileNo`、`powerKw`、`status`、`priceFenPerKwh`、`serviceFeeFenPerKwh`、`totalPriceFenPerKwh`、`startAt`、`endAt`、`chargeMinutes`、`chargeSeconds`、`energyKwh`、`amountFen`、`createdAt`。`chargeSeconds` 是从 `startAt` 到当前时刻（充电中）或 `endAt`（已停止）的精确秒数；`chargeMinutes` 保持兼容的截断分钟。允许为 `null` 的文本字段以 `null` 返回。
+- `USER_RECHARGE` 的重复请求在同一服务进程内以 `userId + requestId` 去重；相同用户以相同 `requestId` 重试时，服务端返回首次成功响应，不会重复增加余额。服务重启后的跨进程幂等尚未实现。
+- `USER_AVATAR_UPLOAD` 保存文件后，数据库只保存相对路径。客户端显示头像时发送 `USER_AVATAR_GET`，通过当前 TCP 连接取得 `mimeType` 和 `contentBase64`；不得将服务端头像目录或绝对路径暴露给客户端。
+
+### 12.1.2 `MAP_GEOCODE` 已确认契约
+
+`MAP_GEOCODE` 的真实地图 Adapter 仍是已知 TODO，不阻塞当前 User Backend 合并。完成后由服务端调用腾讯地图地理编码能力，Qt 用户端不直接持有腾讯地图
+Key，也不自行把地址解析为坐标。请求为 `district: string`、`address: string`；成功
+响应为 `formattedAddress: string`、`longitude: number`、`latitude: number`。服务端用
+环境变量或未入库配置读取 Key，并通过异步 `MapAdapter` 完成网络请求；用户端
+`QWebEngineView` 仅使用服务端返回的坐标或导航 URL 展示路线。真实 Adapter 尚待
+Key 配置，不能以同步网络调用占用 Socket 读取回调。
+
+## 12.2 管理端 API 字段
 
 以下请求除 `ADMIN_LOGIN` 外均要求有效的 Admin Session。金额字段单位为分。
 
@@ -296,7 +347,7 @@ ws://<server-host>:<port>/dashboard
 
 ## 14. ML 数据交换
 
-ML 数据交换是服务端与 Python 进程之间的受控文件契约，不属于 Qt 用户端或 Qt 管理端可调用的 Socket 消息。ML 进程不得获得 SQLite 文件路径、数据库连接或写库权限。
+ML 数据交换是服务端与 Python 进程之间的受控文件/JSON 契约。Python ML 进程不得获得 SQLite 文件路径、数据库连接或写库权限；它产出 JSON 后，由受保护的 `PREDICTION_IMPORT` Server 能力写入统一 SQLite。普通 User 不得调用该接口。`PREDICTION_IMPORT` 与 User Backend 的 `PREDICTION_RECOMMENDATION` 是职责不同的接口。
 
 ### 14.1 服务端导出
 
@@ -346,13 +397,13 @@ ml/output/<batchId>/predictions.json
 }
 ```
 
-`horizon` 只能是 `1h`、`6h` 或 `24h`；`predictedLoad` 必须是 0 到 1 的有限数值；`predictedAvailableCount` 必须为非负整数且不得超过项目站点当前实际桩数；`peakLevel` 只能是 `LOW`、`MEDIUM` 或 `HIGH`；`generatedAt` 为必填的带时区 ISO 8601 时间。
+`schemaVersion` 必须为 `1.0`，`batchId` 必填，`predictions` 必须是非空数组。每条记录的 `stationId` 必须为正整数且引用存在的站点；`predictionTime` 必填且为合法 ISO 8601 时间；`horizon` 只能是 `1h`、`6h` 或 `24h`；`predictedLoad` 必须是 0 到 1 的有限数值；`predictedAvailableCount` 必须为非负整数且不得超过该站点当前实际桩数；`peakLevel` 只能是 `LOW`、`MEDIUM` 或 `HIGH`；`modelName` 非空；`generatedAt` 为必填的带时区 ISO 8601 时间。可选的 `mae`、`rmse` 必须为非负有限数值。
 
 ### 14.3 服务端导入
 
-Qt/C++ 服务端读取 ML 输出后，必须校验 `schemaVersion`、`batchId`、必填字段、站点存在性和上述范围约束。一个批次中任一记录不合法时，服务端拒绝整个批次且不得写入 `prediction` 表；全部合法时，以一个数据库事务写入。导入成功后，服务端向用户端、管理端和 WebSocket 大屏提供最新预测结果。
+Qt/C++ 服务端读取 ML 输出后，必须校验上述完整契约。一个批次中任一记录不合法时，服务端拒绝整个批次且回滚，不得写入 `prediction_batch` 或 `prediction` 表；全部合法时，以一个事务按 `BEGIN → prediction_batch → prediction rows → COMMIT` 写入。相同 `batchId` 重复提交返回 `already_imported`，不会产生重复 prediction 数据。导入成功后，服务端向用户端、管理端和 WebSocket 大屏提供最新预测结果。
 
-网络导入请求格式为 `{"type":"PREDICTION_IMPORT","payload":{"document":<上述完整 JSON>}}`。成功响应返回 `batchId`、`status`、`inserted` 和 `duplicate`；相同 `batchId` 重复提交不会重复写入。该消息不得开放给普通用户，生产环境应由受控 ML Worker 或管理员维护流程调用。
+网络导入请求格式为 `{"type":"PREDICTION_IMPORT","payload":{"document":<上述完整 JSON>}}`。该消息注册为 Admin 权限；普通 User 无权调用。成功响应返回 `batchId`、`status`、`inserted` 和 `duplicate`，其中重复批次为 `status: "already_imported"`、`inserted: 0`、`duplicate: true`。生产环境应由受控 ML Worker 或管理员维护流程调用。
 
 ## 15. 接口修改流程
 
@@ -479,6 +530,10 @@ Socket读取回调只完成：
 - 消息type；
 - 访问级别Public、User、Admin或AnyAuthenticated；
 - Handler回调。
+
+同一 Message Type 只能由一个 Registry 注册。`PREDICTION_RECOMMENDATION` 必须且只能由
+User/Station Registry 注册；PredictionHandlerRegistry 注册 `PREDICTION_LIST`、
+`PREDICTION_WARNING` 和 Admin-only 的 `PREDICTION_IMPORT`，不得覆盖用户侧推荐路由。
 
 未在docs/03-API.md登记的type返回4401。已经登记但尚未接入业务Handler的消息返回5002，不能返回伪造成功数据。
 

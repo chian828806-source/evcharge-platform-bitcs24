@@ -1,9 +1,10 @@
 #include "predictionrepository.h"
 
 #include <QJsonObject>
+#include <QDateTime>
 #include <QSqlError>
 #include <QSqlQuery>
-#include <QDateTime>
+#include <QVariant>
 
 namespace {
 QJsonArray execute(QSqlQuery &query, QString *errorMessage)
@@ -40,24 +41,61 @@ QJsonObject PredictionRepository::importBatch(QSqlDatabase &database,
 {
     const QString batchId = document.value(QStringLiteral("batchId")).toString();
     const QJsonArray predictions = document.value(QStringLiteral("predictions")).toArray();
-    const QString generatedAt = document.value(QStringLiteral("generatedAt")).toString(
-        QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
     if (!database.transaction()) { if (errorMessage) *errorMessage = database.lastError().text(); return {}; }
+    QSqlQuery existing(database);
+    existing.prepare(QStringLiteral("SELECT 1 FROM prediction_batch WHERE batch_id=:id"));
+    existing.bindValue(QStringLiteral(":id"), batchId);
+    if (!existing.exec()) { database.rollback(); if (errorMessage) *errorMessage = existing.lastError().text(); return {}; }
+    if (existing.next()) {
+        if (!database.commit()) { if (errorMessage) *errorMessage = database.lastError().text(); return {}; }
+        return QJsonObject{{QStringLiteral("batchId"), batchId}, {QStringLiteral("status"), QStringLiteral("already_imported")}, {QStringLiteral("inserted"), 0}, {QStringLiteral("duplicate"), true}};
+    }
+
+    QSqlQuery station(database);
+    station.prepare(QStringLiteral("SELECT COUNT(*) FROM charging_pile WHERE station_id=:station"));
+    for (const QJsonValue &value : predictions) {
+        const QJsonObject item = value.toObject();
+        const qint64 stationId = static_cast<qint64>(item.value(QStringLiteral("stationId")).toDouble());
+        station.bindValue(QStringLiteral(":station"), stationId);
+        if (!station.exec() || !station.next()) {
+            database.rollback();
+            if (errorMessage) *errorMessage = station.lastError().isValid()
+                ? station.lastError().text() : QStringLiteral("validation: unable to validate station");
+            return {};
+        }
+        const int pileCount = station.value(0).toInt();
+        QSqlQuery stationExists(database);
+        stationExists.prepare(QStringLiteral("SELECT 1 FROM charging_station WHERE id=:station"));
+        stationExists.bindValue(QStringLiteral(":station"), stationId);
+        if (!stationExists.exec() || !stationExists.next()) {
+            database.rollback();
+            if (errorMessage) *errorMessage = stationExists.lastError().isValid()
+                ? stationExists.lastError().text() : QStringLiteral("validation: station does not exist");
+            return {};
+        }
+        if (item.value(QStringLiteral("predictedAvailableCount")).toInt() > pileCount) {
+            database.rollback();
+            if (errorMessage) *errorMessage = QStringLiteral("validation: predicted available count exceeds station pile count");
+            return {};
+        }
+    }
+
+    const QString now = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    const QString batchGeneratedAt = predictions.first().toObject()
+        .value(QStringLiteral("generatedAt")).toString();
     QSqlQuery batch(database);
-    batch.prepare(QStringLiteral("INSERT OR IGNORE INTO prediction_batch(batch_id,status,generated_at,created_at) VALUES(:id,'IMPORTED',:generated,:created)"));
+    batch.prepare(QStringLiteral("INSERT INTO prediction_batch(batch_id,status,generated_at,created_at) VALUES(:id,'IMPORTED',:generated,:created)"));
     batch.bindValue(QStringLiteral(":id"), batchId);
-    batch.bindValue(QStringLiteral(":generated"), generatedAt);
-    batch.bindValue(QStringLiteral(":created"), QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+    batch.bindValue(QStringLiteral(":generated"), batchGeneratedAt);
+    batch.bindValue(QStringLiteral(":created"), now);
     if (!batch.exec()) { database.rollback(); if (errorMessage) *errorMessage = batch.lastError().text(); return {}; }
-    const bool duplicate = batch.numRowsAffected() == 0;
-    if (duplicate) { database.rollback(); return QJsonObject{{QStringLiteral("batchId"), batchId}, {QStringLiteral("status"), QStringLiteral("already_imported")}, {QStringLiteral("inserted"), 0}, {QStringLiteral("duplicate"), true}}; }
     QSqlQuery insert(database);
     insert.prepare(QStringLiteral("INSERT INTO prediction(batch_id,station_id,prediction_time,horizon,predicted_load,predicted_available_count,peak_level,model_name,mae,rmse,generated_at,created_at) VALUES(:batch,:station,:time,:horizon,:load,:available,:peak,:model,:mae,:rmse,:generated,:created)"));
     int inserted = 0;
     for (const QJsonValue &value : predictions) {
         const QJsonObject item = value.toObject();
         insert.bindValue(QStringLiteral(":batch"), batchId);
-        insert.bindValue(QStringLiteral(":station"), item.value(QStringLiteral("stationId")).toInteger());
+        insert.bindValue(QStringLiteral(":station"), static_cast<qint64>(item.value(QStringLiteral("stationId")).toDouble()));
         insert.bindValue(QStringLiteral(":time"), item.value(QStringLiteral("predictionTime")).toString());
         insert.bindValue(QStringLiteral(":horizon"), item.value(QStringLiteral("horizon")).toString());
         insert.bindValue(QStringLiteral(":load"), item.value(QStringLiteral("predictedLoad")).toDouble());
@@ -66,8 +104,8 @@ QJsonObject PredictionRepository::importBatch(QSqlDatabase &database,
         insert.bindValue(QStringLiteral(":model"), item.value(QStringLiteral("modelName")).toString());
         insert.bindValue(QStringLiteral(":mae"), item.contains(QStringLiteral("mae")) ? item.value(QStringLiteral("mae")).toDouble() : QVariant());
         insert.bindValue(QStringLiteral(":rmse"), item.contains(QStringLiteral("rmse")) ? item.value(QStringLiteral("rmse")).toDouble() : QVariant());
-        insert.bindValue(QStringLiteral(":generated"), item.value(QStringLiteral("generatedAt")).toString(generatedAt));
-        insert.bindValue(QStringLiteral(":created"), QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+        insert.bindValue(QStringLiteral(":generated"), item.value(QStringLiteral("generatedAt")).toString());
+        insert.bindValue(QStringLiteral(":created"), now);
         if (!insert.exec()) { database.rollback(); if (errorMessage) *errorMessage = insert.lastError().text(); return {}; }
         ++inserted;
     }
@@ -127,4 +165,34 @@ QJsonArray PredictionRepository::warning(QSqlDatabase &database, const QString &
         "AND (:horizon='' OR p.horizon=:horizon) ORDER BY p.predicted_load DESC, p.prediction_time ASC LIMIT :limit"));
     bindCommon(query, horizon, limit);
     return execute(query, errorMessage);
+}
+
+QHash<qint64, PredictionInfo> PredictionRepository::listLatestByHorizon(
+    QSqlDatabase &database, const QString &horizon, QString *errorMessage) const
+{
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral(
+        "SELECT id, station_id, horizon, predicted_load, predicted_available_count, "
+        "prediction_time FROM prediction "
+        "WHERE horizon = :horizon AND id IN ("
+        "SELECT MAX(id) FROM prediction WHERE horizon = :horizon GROUP BY station_id)"));
+    query.bindValue(QStringLiteral(":horizon"), horizon);
+    if (!query.exec()) {
+        if (errorMessage) {
+            *errorMessage = query.lastError().text();
+        }
+        return {};
+    }
+
+    QHash<qint64, PredictionInfo> predictions;
+    while (query.next()) {
+        PredictionInfo prediction;
+        prediction.stationId = query.value(1).toLongLong();
+        prediction.horizon = query.value(2).toString();
+        prediction.predictedLoad = query.value(3).toDouble();
+        prediction.predictedAvailablePileCount = query.value(4).toInt();
+        prediction.predictionTime = query.value(5).toString();
+        predictions.insert(prediction.stationId, prediction);
+    }
+    return predictions;
 }

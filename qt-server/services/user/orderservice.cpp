@@ -9,6 +9,7 @@
 #include "shared/protocol/errorcodes.h"
 
 #include <QDateTime>
+#include <QSet>
 #include <QSqlDatabase>
 #include <QUuid>
 #include <QtMath>
@@ -49,6 +50,44 @@ ServiceResult<ActiveOrderResult> OrderService::activeOrder(qint64 userId)
         result.order = withCurrentProgress(*order, QDateTime::currentDateTime());
     }
     return ServiceResult<ActiveOrderResult>::success(result);
+}
+
+ServiceResult<OrderListResult> OrderService::list(qint64 userId, int page,
+                                                   int pageSize,
+                                                   const QString &status)
+{
+    static const QSet<QString> allowedStatuses{
+        QStringLiteral("CREATED"), QStringLiteral("CHARGING"),
+        QStringLiteral("PENDING_PAYMENT"), QStringLiteral("COMPLETED"),
+        QStringLiteral("CANCELLED")
+    };
+    const QString normalizedStatus = status.trimmed().toUpper();
+    if (page < 1 || pageSize < 1 || pageSize > 50
+        || (!normalizedStatus.isEmpty() && !allowedStatuses.contains(normalizedStatus))) {
+        return ServiceResult<OrderListResult>::failure(
+            ErrorCodes::InvalidSocketMessage, QStringLiteral("invalid order list query"));
+    }
+
+    QSqlDatabase database;
+    QString databaseError;
+    if (!openDatabase(&database, &databaseError)) {
+        return ServiceResult<OrderListResult>::failure(
+            ErrorCodes::DatabaseError, QStringLiteral("database unavailable"));
+    }
+    const qint64 total = m_orderRepository->countByUser(
+        database, userId, normalizedStatus, &databaseError);
+    if (total < 0) {
+        return ServiceResult<OrderListResult>::failure(
+            ErrorCodes::DatabaseError, QStringLiteral("count orders failed"));
+    }
+    const QList<ChargingOrderInfo> orders = m_orderRepository->listByUser(
+        database, userId, normalizedStatus, pageSize, (page - 1) * pageSize,
+        &databaseError);
+    if (!databaseError.isEmpty()) {
+        return ServiceResult<OrderListResult>::failure(
+            ErrorCodes::DatabaseError, QStringLiteral("query order list failed"));
+    }
+    return ServiceResult<OrderListResult>::success({orders, page, pageSize, total});
 }
 
 ServiceResult<ChargingOrderInfo> OrderService::start(qint64 userId, qint64 orderId)
@@ -119,7 +158,8 @@ ServiceResult<ChargingOrderInfo> OrderService::start(qint64 userId, qint64 order
         return ServiceResult<ChargingOrderInfo>::failure(
             ErrorCodes::DatabaseError, QStringLiteral("read started order failed"));
     }
-    return ServiceResult<ChargingOrderInfo>::success(*savedOrder);
+    return ServiceResult<ChargingOrderInfo>::success(
+        withCurrentProgress(*savedOrder, QDateTime::currentDateTime()));
 }
 
 ServiceResult<ChargingOrderInfo> OrderService::stop(qint64 userId, qint64 orderId)
@@ -174,7 +214,8 @@ ServiceResult<ChargingOrderInfo> OrderService::stop(qint64 userId, qint64 orderI
         return ServiceResult<ChargingOrderInfo>::failure(
             ErrorCodes::DatabaseError, QStringLiteral("read stopped order failed"));
     }
-    return ServiceResult<ChargingOrderInfo>::success(*savedOrder);
+    return ServiceResult<ChargingOrderInfo>::success(
+        withCurrentProgress(*savedOrder, nowDateTime));
 }
 
 ServiceResult<ChargingOrderInfo> OrderService::cancel(qint64 userId, qint64 orderId,
@@ -248,7 +289,8 @@ ServiceResult<SettlementResult> OrderService::settle(qint64 userId, qint64 order
     }
     if (order->status == QStringLiteral("COMPLETED")) {
         database.commit();
-        return ServiceResult<SettlementResult>::success({*order, user->balanceFen});
+        return ServiceResult<SettlementResult>::success({
+            withCurrentProgress(*order, QDateTime::currentDateTime()), user->balanceFen});
     }
     if (order->status != QStringLiteral("PENDING_PAYMENT")) {
         database.rollback();
@@ -288,7 +330,8 @@ ServiceResult<SettlementResult> OrderService::settle(qint64 userId, qint64 order
         return ServiceResult<SettlementResult>::failure(
             ErrorCodes::DatabaseError, QStringLiteral("read settled order failed"));
     }
-    return ServiceResult<SettlementResult>::success({*savedOrder, savedUser->balanceFen});
+    return ServiceResult<SettlementResult>::success({
+        withCurrentProgress(*savedOrder, QDateTime::currentDateTime()), savedUser->balanceFen});
 }
 
 ServiceResult<ChargingOrderInfo> OrderService::create(qint64 userId, qint64 pileId)
@@ -406,19 +449,26 @@ bool OrderService::openDatabase(QSqlDatabase *database, QString *errorMessage) c
 ChargingOrderInfo OrderService::withCurrentProgress(const ChargingOrderInfo &order,
                                                      const QDateTime &now)
 {
-    if (order.status != QStringLiteral("CHARGING")) {
-        return order;
-    }
     const QDateTime start = QDateTime::fromString(
         order.startAt, QStringLiteral("yyyy-MM-dd HH:mm:ss"));
     if (!start.isValid()) {
         return order;
     }
+    QDateTime end = now;
+    if (order.status != QStringLiteral("CHARGING")) {
+        end = QDateTime::fromString(order.endAt, QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+        if (!end.isValid()) {
+            return order;
+        }
+    }
     ChargingOrderInfo result = order;
-    const qint64 elapsedSeconds = qMax<qint64>(0, start.secsTo(now));
-    result.chargeMinutes = static_cast<int>(elapsedSeconds / 60);
-    result.energyKwh = order.powerKw * static_cast<double>(elapsedSeconds) / 3600.0;
-    result.amountFen = qRound64(result.energyKwh
-        * static_cast<double>(order.priceFenPerKwh + order.serviceFeeFenPerKwh));
+    const qint64 elapsedSeconds = qMax<qint64>(0, start.secsTo(end));
+    result.chargeSeconds = elapsedSeconds;
+    if (order.status == QStringLiteral("CHARGING")) {
+        result.chargeMinutes = static_cast<int>(elapsedSeconds / 60);
+        result.energyKwh = order.powerKw * static_cast<double>(elapsedSeconds) / 3600.0;
+        result.amountFen = qRound64(result.energyKwh
+            * static_cast<double>(order.priceFenPerKwh + order.serviceFeeFenPerKwh));
+    }
     return result;
 }

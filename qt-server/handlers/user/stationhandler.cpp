@@ -102,3 +102,46 @@ ResponseMessage StationHandler::detailGet(const RequestMessage &request,
         {QStringLiteral("piles"), piles}
     });
 }
+
+ResponseMessage StationHandler::recommendation(const RequestMessage &request,
+                                               const SessionContext &)
+{
+    const QJsonValue longitudeValue = request.payload.value(QStringLiteral("longitude"));
+    const QJsonValue latitudeValue = request.payload.value(QStringLiteral("latitude"));
+    if (!longitudeValue.isDouble() || !latitudeValue.isDouble()) {
+        return invalidPayload(request.requestId,
+                              QStringLiteral("longitude and latitude must be numbers"));
+    }
+    int limit = 5;
+    const QJsonValue limitValue = request.payload.value(QStringLiteral("limit"));
+    if (!limitValue.isUndefined()) {
+        if (!limitValue.isDouble() || !isInteger(limitValue.toDouble())) {
+            return invalidPayload(request.requestId, QStringLiteral("limit must be an integer"));
+        }
+        limit = limitValue.toInt();
+    }
+    QString horizon = QStringLiteral("1h");
+    const QJsonValue horizonValue = request.payload.value(QStringLiteral("horizon"));
+    if (!horizonValue.isUndefined()) {
+        if (!horizonValue.isString()) {
+            return invalidPayload(request.requestId, QStringLiteral("horizon must be a string"));
+        }
+        horizon = horizonValue.toString();
+    }
+    if (!m_stationService) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::InternalError,
+                                      QStringLiteral("station module is unavailable"));
+    }
+    const auto result = m_stationService->recommendations(
+        longitudeValue.toDouble(), latitudeValue.toDouble(), limit, horizon);
+    if (!result.ok) {
+        return ResponseMessage::error(request.requestId, result.code, result.message);
+    }
+    QJsonArray stations;
+    for (const StationInfo &station : result.value) {
+        stations.append(station.toJson());
+    }
+    return ResponseMessage::success(request.requestId, {
+        {QStringLiteral("stations"), stations}
+    });
+}

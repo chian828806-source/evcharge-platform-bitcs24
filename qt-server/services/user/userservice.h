@@ -5,6 +5,8 @@
 #pragma once
 
 #include "common/serviceresult.h"
+#include "models/avatarcontent.h"
+#include "models/rechargeinfo.h"
 #include "models/userprofile.h"
 
 #include <QString>
@@ -16,12 +18,18 @@ class UserRepository;
 class UserService
 {
 public:
-    UserService(DatabaseManager *databaseManager, UserRepository *userRepository);
+    UserService(DatabaseManager *databaseManager, UserRepository *userRepository,
+                const QString &avatarDirectory = {});
 
     ServiceResult<UserProfile> login(const QString &phone);
     ServiceResult<UserProfile> profile(qint64 userId);
     ServiceResult<UserProfile> updateNickname(qint64 userId,
                                               const QString &nickname);
+    ServiceResult<UserProfile> uploadAvatar(qint64 userId, const QString &fileName,
+                                            const QString &mimeType,
+                                            const QString &contentBase64);
+    ServiceResult<AvatarContent> avatarContent(qint64 userId);
+    ServiceResult<RechargeInfo> recharge(qint64 userId, qint64 amountFen);
 
 private:
     bool openDatabase(QSqlDatabase *database, QString *errorMessage) const;
@@ -29,4 +37,5 @@ private:
 
     DatabaseManager *m_databaseManager = nullptr;
     UserRepository *m_userRepository = nullptr;
+    QString m_avatarDirectory;
 };

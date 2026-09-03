@@ -11,8 +11,10 @@
 #include "qt-server/handlers/user/registerstationhandlers.h"
 #include "qt-server/handlers/user/stationhandler.h"
 #include "qt-server/handlers/user/userhandler.h"
+#include "qt-server/handlers/prediction/registerpredictionhandlers.h"
 #include "qt-server/repositories/stationrepository.h"
 #include "qt-server/repositories/orderrepository.h"
+#include "qt-server/repositories/predictionrepository.h"
 #include "qt-server/repositories/userrepository.h"
 #include "qt-server/services/user/stationservice.h"
 #include "qt-server/services/user/orderservice.h"
@@ -30,10 +32,12 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QEventLoop>
+#include <QFileInfo>
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QTcpServer>
 #include <QTimer>
+#include <QTemporaryDir>
 #include <QTextStream>
 
 namespace {
@@ -158,10 +162,111 @@ void testSessionAndDispatcherBoundaries()
 void testKnownMessageRegistry()
 {
     // 数量变化意味着公共文档与代码可能发生漏登或私自扩展。
-    check(MessageTypes::tcpTypes().size() == 29,
-          QStringLiteral("all 29 documented TCP message types are registered"));
+    check(MessageTypes::tcpTypes().size() == 31,
+          QStringLiteral("all 31 documented TCP message types are registered"));
     check(MessageTypes::dashboardTopics().size() == 4,
           QStringLiteral("all four dashboard topics are registered"));
+}
+
+QJsonObject predictionItem(qint64 stationId, int availableCount,
+                           const QString &generatedAt = QStringLiteral("2026-09-03T12:00:00+08:00"))
+{
+    return {{QStringLiteral("stationId"), stationId},
+            {QStringLiteral("predictionTime"), QStringLiteral("2026-09-03T13:00:00+08:00")},
+            {QStringLiteral("horizon"), QStringLiteral("1h")},
+            {QStringLiteral("predictedLoad"), 0.35},
+            {QStringLiteral("predictedAvailableCount"), availableCount},
+            {QStringLiteral("peakLevel"), QStringLiteral("LOW")},
+            {QStringLiteral("modelName"), QStringLiteral("network-test")},
+            {QStringLiteral("generatedAt"), generatedAt}};
+}
+
+QJsonObject predictionDocument(const QString &batchId, const QJsonArray &predictions)
+{
+    return {{QStringLiteral("schemaVersion"), QStringLiteral("1.0")},
+            {QStringLiteral("batchId"), batchId},
+            {QStringLiteral("predictions"), predictions}};
+}
+
+void testPredictionImportFlow()
+{
+    DatabaseManager databaseManager{QString::fromLatin1(":memory:"),
+                                    QString::fromLatin1("prediction-import-test")};
+    QSqlDatabase database;
+    QString databaseError;
+    check(databaseManager.database(&database, &databaseError),
+          QStringLiteral("prediction import test database opens"));
+    if (!database.isOpen()) return;
+
+    QSqlQuery schema(database);
+    const bool tablesCreated = schema.exec(QStringLiteral(
+        "CREATE TABLE charging_station (id INTEGER PRIMARY KEY)"))
+        && schema.exec(QStringLiteral(
+        "CREATE TABLE charging_pile (id INTEGER PRIMARY KEY, station_id INTEGER NOT NULL)"))
+        && schema.exec(QStringLiteral(
+        "CREATE TABLE prediction_batch (batch_id TEXT PRIMARY KEY, status TEXT NOT NULL, generated_at TEXT NOT NULL, created_at TEXT NOT NULL)"))
+        && schema.exec(QStringLiteral(
+        "CREATE TABLE prediction (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id TEXT NOT NULL, station_id INTEGER NOT NULL, prediction_time TEXT NOT NULL, horizon TEXT NOT NULL, predicted_load REAL NOT NULL, predicted_available_count INTEGER NOT NULL, peak_level TEXT NOT NULL, model_name TEXT NOT NULL, mae REAL, rmse REAL, generated_at TEXT NOT NULL, created_at TEXT NOT NULL)"))
+        && schema.exec(QStringLiteral("INSERT INTO charging_station VALUES (1)"))
+        && schema.exec(QStringLiteral("INSERT INTO charging_pile VALUES (1, 1), (2, 1)"));
+    check(tablesCreated, QStringLiteral("prediction import test schema is created"));
+    if (!tablesCreated) return;
+
+    SessionManager sessions;
+    MessageDispatcher dispatcher(&sessions);
+    PredictionHandlerRegistry predictionRegistry(&databaseManager, &dispatcher);
+    const QString adminSession = sessions.createSession(1, SessionRole::Admin);
+    const QString userSession = sessions.createSession(2, SessionRole::User);
+    const QJsonObject valid = predictionDocument(QStringLiteral("batch-valid"),
+                                                  {predictionItem(1, 2)});
+    RequestMessage importRequest{QStringLiteral("REQ-IMPORT"), MessageTypes::PredictionImport,
+                                 adminSession, {{QStringLiteral("document"), valid}}};
+    const ResponseMessage imported = dispatcher.dispatch(importRequest);
+    const ResponseMessage duplicate = dispatcher.dispatch(importRequest);
+    check(imported.code == ErrorCodes::Success
+              && imported.data.value(QStringLiteral("inserted")).toInt() == 1
+              && !imported.data.value(QStringLiteral("duplicate")).toBool()
+              && duplicate.code == ErrorCodes::Success
+              && duplicate.data.value(QStringLiteral("status")).toString() == QStringLiteral("already_imported")
+              && duplicate.data.value(QStringLiteral("inserted")).toInt() == 0
+              && duplicate.data.value(QStringLiteral("duplicate")).toBool(),
+          QStringLiteral("prediction import is transactional and duplicate batch is idempotent"));
+
+    RequestMessage unauthorized = importRequest;
+    unauthorized.requestId = QStringLiteral("REQ-IMPORT-USER");
+    unauthorized.sessionId = userSession;
+    check(dispatcher.dispatch(unauthorized).code == ErrorCodes::InvalidSession,
+          QStringLiteral("ordinary user cannot call prediction import"));
+
+    const QJsonObject overCapacity = predictionDocument(QStringLiteral("batch-over-capacity"),
+                                                         {predictionItem(1, 3)});
+    RequestMessage invalidRequest{QStringLiteral("REQ-IMPORT-CAPACITY"), MessageTypes::PredictionImport,
+                                   adminSession, {{QStringLiteral("document"), overCapacity}}};
+    const ResponseMessage overCapacityResponse = dispatcher.dispatch(invalidRequest);
+    QSqlQuery count(database);
+    count.exec(QStringLiteral("SELECT COUNT(*) FROM prediction_batch WHERE batch_id='batch-over-capacity'"));
+    count.next();
+    check(overCapacityResponse.code == ErrorCodes::InvalidSocketMessage && count.value(0).toInt() == 0,
+          QStringLiteral("prediction import rejects available count above station pile count"));
+
+    const QJsonObject mixed = predictionDocument(QStringLiteral("batch-rollback"),
+                                                  {predictionItem(1, 1), predictionItem(999, 0)});
+    RequestMessage mixedRequest{QStringLiteral("REQ-IMPORT-ROLLBACK"), MessageTypes::PredictionImport,
+                                  adminSession, {{QStringLiteral("document"), mixed}}};
+    const ResponseMessage mixedResponse = dispatcher.dispatch(mixedRequest);
+    count.exec(QStringLiteral("SELECT COUNT(*) FROM prediction WHERE batch_id='batch-rollback'"));
+    count.next();
+    check(mixedResponse.code == ErrorCodes::InvalidSocketMessage && count.value(0).toInt() == 0,
+          QStringLiteral("invalid prediction station rejects the entire batch without rows"));
+
+    QJsonObject missingTimeItem = predictionItem(1, 1);
+    missingTimeItem.remove(QStringLiteral("generatedAt"));
+    const QJsonObject missingTime = predictionDocument(QStringLiteral("batch-missing-time"),
+                                                        {missingTimeItem});
+    RequestMessage missingTimeRequest{QStringLiteral("REQ-IMPORT-TIME"), MessageTypes::PredictionImport,
+                                        adminSession, {{QStringLiteral("document"), missingTime}}};
+    check(dispatcher.dispatch(missingTimeRequest).code == ErrorCodes::InvalidSocketMessage,
+          QStringLiteral("prediction import rejects missing generated time"));
 }
 
 void testUserLoginProfileAndNicknameFlow()
@@ -251,6 +356,170 @@ void testUserLoginProfileAndNicknameFlow()
           QStringLiteral("invalid phone is rejected by user service"));
 }
 
+void testUserProfileWalletOrdersAndRecommendations()
+{
+    DatabaseManager databaseManager{
+        QString::fromLatin1(":memory:"),
+        QString::fromLatin1("user-extended-backend-test")
+    };
+    QSqlDatabase database;
+    QString databaseError;
+    check(databaseManager.database(&database, &databaseError),
+          QStringLiteral("extended user backend test database opens"));
+    if (!database.isOpen()) {
+        return;
+    }
+
+    QSqlQuery schema(database);
+    const bool tablesCreated = schema.exec(QStringLiteral(
+        "CREATE TABLE user (id INTEGER PRIMARY KEY, phone TEXT, nickname TEXT, "
+        "avatar_path TEXT, balance_fen INTEGER, status TEXT, last_login_at TEXT, "
+        "created_at TEXT, updated_at TEXT)"))
+        && schema.exec(QStringLiteral(
+            "CREATE TABLE recharge_record (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "record_no TEXT UNIQUE, user_id INTEGER, amount_fen INTEGER, "
+            "balance_after_fen INTEGER, status TEXT, remark TEXT, created_at TEXT)"))
+        && schema.exec(QStringLiteral(
+            "CREATE TABLE charging_station (id INTEGER PRIMARY KEY, station_no TEXT, "
+            "name TEXT, address TEXT, district TEXT, longitude REAL, latitude REAL, "
+            "price_fen_per_kwh INTEGER, service_fee_fen_per_kwh INTEGER, status TEXT)"))
+        && schema.exec(QStringLiteral(
+            "CREATE TABLE charging_pile (id INTEGER PRIMARY KEY, station_id INTEGER, "
+            "pile_no TEXT, type TEXT, power_kw REAL, status TEXT)"))
+        && schema.exec(QStringLiteral(
+            "CREATE TABLE charging_order (id INTEGER PRIMARY KEY, order_no TEXT, "
+            "user_id INTEGER, station_id INTEGER, pile_id INTEGER, status TEXT, "
+            "price_fen_per_kwh INTEGER, service_fee_fen_per_kwh INTEGER, start_at TEXT, "
+            "end_at TEXT, charge_minutes INTEGER, energy_kwh REAL, amount_fen INTEGER, "
+            "created_at TEXT, updated_at TEXT)"))
+        && schema.exec(QStringLiteral(
+            "CREATE TABLE prediction (id INTEGER PRIMARY KEY, station_id INTEGER, "
+            "prediction_time TEXT, horizon TEXT, predicted_load REAL, "
+            "predicted_available_count INTEGER, peak_level TEXT, model_name TEXT, "
+            "mae REAL, rmse REAL, generated_at TEXT, created_at TEXT)"));
+    check(tablesCreated, QStringLiteral("extended user backend test schema is created"));
+    if (!tablesCreated) {
+        return;
+    }
+
+    const bool demoDataCreated = schema.exec(QStringLiteral(
+        "INSERT INTO user VALUES (1, '13800138001', '用户一', NULL, 1000, 'NORMAL', "
+        "NULL, '2026-01-01 00:00:00', '2026-01-01 00:00:00')"))
+        && schema.exec(QStringLiteral(
+            "INSERT INTO charging_station VALUES "
+            "(1, 'S001', '近站', 'A路', 'A区', 116.397, 39.908, 100, 20, 'NORMAL'), "
+            "(2, 'S002', '推荐站', 'B路', 'A区', 116.407, 39.908, 100, 20, 'NORMAL')"))
+        && schema.exec(QStringLiteral(
+            "INSERT INTO charging_pile VALUES "
+            "(1, 1, 'A-01', 'FAST', 60, 'AVAILABLE'), "
+            "(2, 2, 'B-01', 'FAST', 60, 'AVAILABLE')"))
+        && schema.exec(QStringLiteral(
+            "INSERT INTO charging_order VALUES "
+            "(1, 'O-OLD', 1, 1, 1, 'COMPLETED', 100, 20, NULL, NULL, 30, 5.0, 600, "
+            "'2026-01-01 10:00:00', '2026-01-01 10:00:00'), "
+            "(2, 'O-NEW', 1, 2, 2, 'PENDING_PAYMENT', 100, 20, NULL, NULL, 10, 2.0, 240, "
+            "'2026-01-02 10:00:00', '2026-01-02 10:00:00')"))
+        && schema.exec(QStringLiteral(
+            "INSERT INTO prediction VALUES "
+            "(1, 1, '2026-01-03 11:00:00', '1h', 0.80, 1, 'HIGH', 'demo', 0.1, 0.1, "
+            "'2026-01-03 10:00:00', '2026-01-03 10:00:00'), "
+            "(2, 2, '2026-01-03 11:00:00', '1h', 0.20, 1, 'LOW', 'demo', 0.1, 0.1, "
+            "'2026-01-03 10:00:00', '2026-01-03 10:00:00')"));
+    check(demoDataCreated, QStringLiteral("extended user backend demo data is created"));
+    if (!demoDataCreated) {
+        return;
+    }
+
+    QTemporaryDir avatarDirectory;
+    check(avatarDirectory.isValid(), QStringLiteral("temporary avatar directory is available"));
+    if (!avatarDirectory.isValid()) {
+        return;
+    }
+    SessionManager sessions;
+    MessageDispatcher dispatcher(&sessions);
+    UserRepository userRepository;
+    OrderRepository orderRepository;
+    StationRepository stationRepository;
+    PredictionRepository predictionRepository;
+    UserService userService(&databaseManager, &userRepository, avatarDirectory.path());
+    OrderService orderService(&databaseManager, &userRepository, &orderRepository);
+    StationService stationService(&databaseManager, &stationRepository, &predictionRepository);
+    UserHandler userHandler(&userService, &sessions);
+    OrderHandler orderHandler(&orderService);
+    StationHandler stationHandler(&stationService);
+    registerUserHandlers(&dispatcher, &userHandler);
+    registerOrderHandlers(&dispatcher, &orderHandler);
+    registerStationHandlers(&dispatcher, &stationHandler);
+    const QString sessionId = sessions.createSession(1, SessionRole::User);
+
+    const QByteArray png = QByteArray("\x89PNG\r\n\x1a\n") + QByteArray("demo");
+    RequestMessage avatarRequest{
+        QStringLiteral("REQ-AVATAR"), MessageTypes::UserAvatarUpload, sessionId,
+        {{QStringLiteral("fileName"), QStringLiteral("avatar.png")},
+         {QStringLiteral("mimeType"), QStringLiteral("image/png")},
+         {QStringLiteral("contentBase64"), QString::fromLatin1(png.toBase64())}}
+    };
+    const ResponseMessage avatarResponse = dispatcher.dispatch(avatarRequest);
+    const QString avatarPath = avatarResponse.data.value(QStringLiteral("avatarPath")).toString();
+    check(avatarResponse.code == ErrorCodes::Success
+              && avatarPath.startsWith(QStringLiteral("avatars/"))
+              && QFileInfo::exists(avatarDirectory.filePath(QFileInfo(avatarPath).fileName())),
+          QStringLiteral("avatar upload validates content, stores file and returns relative path"));
+
+    RequestMessage avatarGetRequest{
+        QStringLiteral("REQ-AVATAR-GET"), MessageTypes::UserAvatarGet, sessionId, {}};
+    const ResponseMessage avatarGetResponse = dispatcher.dispatch(avatarGetRequest);
+    check(avatarGetResponse.code == ErrorCodes::Success
+              && avatarGetResponse.data.value(QStringLiteral("avatarPath")).toString()
+                    == avatarPath
+              && avatarGetResponse.data.value(QStringLiteral("mimeType")).toString()
+                    == QStringLiteral("image/png")
+              && avatarGetResponse.data.value(QStringLiteral("contentBase64")).toString()
+                    == QString::fromLatin1(png.toBase64()),
+          QStringLiteral("avatar content can be retrieved through the user TCP protocol"));
+
+    RequestMessage rechargeRequest{
+        QStringLiteral("REQ-RECHARGE"), MessageTypes::UserRecharge, sessionId,
+        {{QStringLiteral("amountFen"), 500}}
+    };
+    const ResponseMessage rechargeResponse = dispatcher.dispatch(rechargeRequest);
+    const ResponseMessage duplicateRechargeResponse = dispatcher.dispatch(rechargeRequest);
+    QSqlQuery rechargeCount(database);
+    rechargeCount.exec(QStringLiteral("SELECT COUNT(*), balance_after_fen FROM recharge_record"));
+    rechargeCount.next();
+    check(rechargeResponse.code == ErrorCodes::Success
+              && rechargeResponse.data.value(QStringLiteral("balanceFen")).toInt() == 1500
+              && duplicateRechargeResponse.data.value(QStringLiteral("balanceFen")).toInt() == 1500
+              && rechargeCount.value(0).toInt() == 1 && rechargeCount.value(1).toInt() == 1500,
+          QStringLiteral("recharge updates balance and record atomically without duplicate request"));
+
+    RequestMessage orderListRequest{
+        QStringLiteral("REQ-ORDER-LIST"), MessageTypes::UserOrderList, sessionId,
+        {{QStringLiteral("page"), 1}, {QStringLiteral("pageSize"), 1}}
+    };
+    const ResponseMessage orderListResponse = dispatcher.dispatch(orderListRequest);
+    const QJsonArray items = orderListResponse.data.value(QStringLiteral("items")).toArray();
+    check(orderListResponse.code == ErrorCodes::Success
+              && orderListResponse.data.value(QStringLiteral("total")).toInt() == 2
+              && items.size() == 1
+              && items.first().toObject().value(QStringLiteral("orderNo")).toString()
+                    == QStringLiteral("O-NEW"),
+          QStringLiteral("order list paginates current user orders by newest first"));
+
+    RequestMessage recommendationRequest{
+        QStringLiteral("REQ-RECOMMEND"), MessageTypes::PredictionRecommendation, sessionId,
+        {{QStringLiteral("longitude"), 116.397}, {QStringLiteral("latitude"), 39.908},
+         {QStringLiteral("limit"), 2}, {QStringLiteral("horizon"), QStringLiteral("1h")}}
+    };
+    const ResponseMessage recommendationResponse = dispatcher.dispatch(recommendationRequest);
+    const QJsonArray recommended = recommendationResponse.data.value(
+        QStringLiteral("stations")).toArray();
+    check(recommendationResponse.code == ErrorCodes::Success && recommended.size() == 2
+              && recommended.first().toObject().value(QStringLiteral("stationId")).toInt() == 2
+              && recommended.first().toObject().value(QStringLiteral("recommended")).toBool(),
+          QStringLiteral("recommendations rank latest lower-load station ahead of nearer high-load station"));
+}
+
 void testStationListAndDetailFlow()
 {
     // 独立内存库模拟三个站点，其中一个停用，不应暴露给普通用户。
@@ -326,8 +595,13 @@ void testStationListAndDetailFlow()
     check(listResponse.code == ErrorCodes::Success && stations.size() == 2
               && nearestStation.value(QStringLiteral("stationId")).toInt() == 1
               && nearestStation.value(QStringLiteral("pileCount")).toInt() == 2
-              && nearestStation.value(QStringLiteral("availablePileCount")).toInt() == 1,
-          QStringLiteral("nearby list hides disabled stations and aggregates available piles"));
+              && nearestStation.value(QStringLiteral("availablePileCount")).toInt() == 1
+              && nearestStation.value(QStringLiteral("status")).toString()
+                    == QStringLiteral("NORMAL")
+              && nearestStation.value(QStringLiteral("totalPriceFenPerKwh")).toInt()
+                    == nearestStation.value(QStringLiteral("priceFenPerKwh")).toInt()
+                        + nearestStation.value(QStringLiteral("serviceFeeFenPerKwh")).toInt(),
+          QStringLiteral("nearby list exposes NORMAL status and total price while hiding disabled stations"));
 
     RequestMessage detailRequest{
         QStringLiteral("REQ-STATION-DETAIL"),
@@ -500,9 +774,13 @@ void testOrderCreateAndActiveCheckFlow()
                     == QStringLiteral("PENDING_PAYMENT")
               && stoppedOrder.value(QStringLiteral("energyKwh")).toDouble() > 0.0
               && stoppedOrder.value(QStringLiteral("amountFen")).toInt() > 0
+              && stoppedOrder.value(QStringLiteral("chargeSeconds")).toInt() > 0
+              && stoppedOrder.value(QStringLiteral("totalPriceFenPerKwh")).toInt()
+                    == stoppedOrder.value(QStringLiteral("priceFenPerKwh")).toInt()
+                        + stoppedOrder.value(QStringLiteral("serviceFeeFenPerKwh")).toInt()
               && pileCheck.value(0).toString() == QStringLiteral("AVAILABLE")
               && pileCheck.value(1).isNull(),
-          QStringLiteral("stop order calculates amount and releases charging pile"));
+          QStringLiteral("stop order returns precise duration, total price and releases charging pile"));
 
     RequestMessage settleRequest{
         QStringLiteral("REQ-ORDER-SETTLE"), MessageTypes::OrderSettle, userOneSession,
@@ -714,7 +992,9 @@ int main(int argc, char *argv[])
     testRequestValidationAndResponseShape();
     testSessionAndDispatcherBoundaries();
     testKnownMessageRegistry();
+    testPredictionImportFlow();
     testUserLoginProfileAndNicknameFlow();
+    testUserProfileWalletOrdersAndRecommendations();
     testStationListAndDetailFlow();
     testOrderCreateAndActiveCheckFlow();
     testUserLoginOverTcp();

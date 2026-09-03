@@ -10,7 +10,7 @@ const QSet<QString> &tcpTypes()
 {
     // Dispatcher使用集合快速拒绝未登记的消息类型。
     static const QSet<QString> types = {
-        UserLogin, UserProfileGet, UserProfileUpdate, UserAvatarUpload,
+        UserLogin, UserProfileGet, UserProfileUpdate, UserAvatarUpload, UserAvatarGet,
         UserRecharge, UserOrderList, StationListNearby, StationDetailGet,
         MapGeocode, OrderActiveCheck, OrderCreate, OrderCancel, OrderStart,
         OrderStop, OrderSettle, AdminLogin, AdminRevenueSummary,

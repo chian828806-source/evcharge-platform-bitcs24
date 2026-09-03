@@ -15,6 +15,8 @@ public:
 
     ResponseMessage activeCheck(const RequestMessage &request,
                                 const SessionContext &context);
+    ResponseMessage list(const RequestMessage &request,
+                         const SessionContext &context);
     ResponseMessage create(const RequestMessage &request,
                            const SessionContext &context);
     ResponseMessage start(const RequestMessage &request,

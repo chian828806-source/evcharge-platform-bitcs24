@@ -114,6 +114,95 @@ bool UserRepository::updateNickname(QSqlDatabase &database, qint64 userId,
     return false;
 }
 
+bool UserRepository::updateAvatarPath(QSqlDatabase &database, qint64 userId,
+                                      const QString &avatarPath, const QString &now,
+                                      QString *errorMessage) const
+{
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral(
+        "UPDATE user SET avatar_path = :avatarPath, updated_at = :now "
+        "WHERE id = :userId"));
+    query.bindValue(QStringLiteral(":avatarPath"), avatarPath);
+    query.bindValue(QStringLiteral(":now"), now);
+    query.bindValue(QStringLiteral(":userId"), userId);
+    if (query.exec() && query.numRowsAffected() == 1) {
+        return true;
+    }
+    if (errorMessage) {
+        *errorMessage = query.lastError().text();
+    }
+    return false;
+}
+
+bool UserRepository::increaseBalance(QSqlDatabase &database, qint64 userId,
+                                     qint64 amountFen, const QString &now,
+                                     qint64 *balanceFen,
+                                     QString *errorMessage) const
+{
+    if (!balanceFen) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("balance output is unavailable");
+        }
+        return false;
+    }
+    QSqlQuery update(database);
+    update.prepare(QStringLiteral(
+        "UPDATE user SET balance_fen = balance_fen + :amount, updated_at = :now "
+        "WHERE id = :userId"));
+    update.bindValue(QStringLiteral(":amount"), amountFen);
+    update.bindValue(QStringLiteral(":now"), now);
+    update.bindValue(QStringLiteral(":userId"), userId);
+    if (!update.exec() || update.numRowsAffected() != 1) {
+        if (errorMessage) {
+            *errorMessage = update.lastError().text();
+        }
+        return false;
+    }
+
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral("SELECT balance_fen FROM user WHERE id = :userId"));
+    query.bindValue(QStringLiteral(":userId"), userId);
+    if (!query.exec() || !query.next()) {
+        if (errorMessage) {
+            *errorMessage = query.lastError().text();
+        }
+        return false;
+    }
+    *balanceFen = query.value(0).toLongLong();
+    return true;
+}
+
+bool UserRepository::insertRechargeRecord(QSqlDatabase &database, qint64 userId,
+                                          const RechargeInfo &recharge,
+                                          qint64 *rechargeId,
+                                          QString *errorMessage) const
+{
+    if (!rechargeId) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("recharge ID output is unavailable");
+        }
+        return false;
+    }
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral(
+        "INSERT INTO recharge_record "
+        "(record_no, user_id, amount_fen, balance_after_fen, status, created_at) "
+        "VALUES (:recordNo, :userId, :amount, :balance, 'SUCCESS', :createdAt)"));
+    query.bindValue(QStringLiteral(":recordNo"), recharge.recordNo);
+    query.bindValue(QStringLiteral(":userId"), userId);
+    query.bindValue(QStringLiteral(":amount"), recharge.amountFen);
+    query.bindValue(QStringLiteral(":balance"), recharge.balanceFen);
+    query.bindValue(QStringLiteral(":createdAt"), recharge.createdAt);
+    if (!query.exec()) {
+        if (errorMessage) {
+            *errorMessage = query.lastError().text();
+        }
+        return false;
+    }
+    *rechargeId = query.lastInsertId().toLongLong();
+    return *rechargeId > 0;
+}
+
 bool UserRepository::decreaseBalance(QSqlDatabase &database, qint64 userId,
                                      qint64 amountFen, const QString &now,
                                      bool *deducted,

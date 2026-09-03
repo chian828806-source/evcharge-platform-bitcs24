@@ -1,11 +1,38 @@
 #include "predictionhandler.h"
 #include "services/prediction/predictionservice.h"
 #include "shared/protocol/errorcodes.h"
+#include <QDateTime>
 #include <QRegularExpression>
+#include <cmath>
+#include <limits>
 
 namespace {
 ResponseMessage invalid(const RequestMessage &r, const QString &m) { return ResponseMessage::error(r.requestId, ErrorCodes::InvalidSocketMessage, m); }
 bool horizonOk(const QString &h) { return h.isEmpty() || h == QStringLiteral("1h") || h == QStringLiteral("6h") || h == QStringLiteral("24h"); }
+bool positiveInteger(const QJsonValue &value, qint64 *result = nullptr)
+{
+    if (!value.isDouble()) return false;
+    const double number = value.toDouble();
+    if (!std::isfinite(number) || number <= 0 || number != std::floor(number)
+        || number > static_cast<double>(std::numeric_limits<qint64>::max())) return false;
+    if (result) *result = static_cast<qint64>(number);
+    return true;
+}
+bool nonNegativeInteger(const QJsonValue &value)
+{
+    if (!value.isDouble()) return false;
+    const double number = value.toDouble();
+    return std::isfinite(number) && number >= 0 && number == std::floor(number)
+        && number <= static_cast<double>(std::numeric_limits<int>::max());
+}
+bool isoTime(const QJsonValue &value, bool requireTimezone)
+{
+    if (!value.isString()) return false;
+    const QString text = value.toString();
+    if (text.isEmpty() || (requireTimezone && !QRegularExpression(
+            QStringLiteral("(Z|[+-]\\d{2}:\\d{2})$")).match(text).hasMatch())) return false;
+    return QDateTime::fromString(text, Qt::ISODate).isValid();
+}
 bool importDocumentOk(const QJsonObject &d, QString *error)
 {
     if (d.value(QStringLiteral("schemaVersion")).toString() != QStringLiteral("1.0") || d.value(QStringLiteral("batchId")).toString().trimmed().isEmpty()) { if (error) *error = QStringLiteral("schemaVersion and batchId are required"); return false; }
@@ -17,7 +44,24 @@ bool importDocumentOk(const QJsonObject &d, QString *error)
         const auto station = item.value(QStringLiteral("stationId"));
         const auto available = item.value(QStringLiteral("predictedAvailableCount"));
         const auto horizonValue = item.value(QStringLiteral("horizon")).toString();
-        if (!station.isDouble() || station.toDouble() != station.toInteger() || station.toInteger() <= 0 || item.value(QStringLiteral("predictionTime")).toString().isEmpty() || !(horizonValue == QStringLiteral("1h") || horizonValue == QStringLiteral("6h") || horizonValue == QStringLiteral("24h")) || !load.isDouble() || load.toDouble() < 0 || load.toDouble() > 1 || !available.isDouble() || available.toDouble() != available.toInteger() || available.toInteger() < 0 || !item.value(QStringLiteral("peakLevel")).toString().contains(QRegularExpression(QStringLiteral("^(LOW|MEDIUM|HIGH)$"))) || item.value(QStringLiteral("modelName")).toString().trimmed().isEmpty()) { if (error) *error = QStringLiteral("invalid prediction record"); return false; }
+        const double predictedLoad = load.toDouble();
+        const auto validMetric = [](const QJsonValue &metric) {
+            return metric.isUndefined() || (metric.isDouble()
+                && std::isfinite(metric.toDouble()) && metric.toDouble() >= 0);
+        };
+        if (!positiveInteger(station)
+            || !isoTime(item.value(QStringLiteral("predictionTime")), false)
+            || !isoTime(item.value(QStringLiteral("generatedAt")), true)
+            || !(horizonValue == QStringLiteral("1h") || horizonValue == QStringLiteral("6h") || horizonValue == QStringLiteral("24h"))
+            || !load.isDouble() || !std::isfinite(predictedLoad) || predictedLoad < 0 || predictedLoad > 1
+            || !nonNegativeInteger(available)
+            || !item.value(QStringLiteral("peakLevel")).toString().contains(QRegularExpression(QStringLiteral("^(LOW|MEDIUM|HIGH)$")))
+            || item.value(QStringLiteral("modelName")).toString().trimmed().isEmpty()
+            || !validMetric(item.value(QStringLiteral("mae")))
+            || !validMetric(item.value(QStringLiteral("rmse")))) {
+            if (error) *error = QStringLiteral("invalid prediction record");
+            return false;
+        }
     }
     return true;
 }
@@ -31,13 +75,9 @@ ResponseMessage PredictionHandler::list(const RequestMessage &r, const SessionCo
     auto station = r.payload.value(QStringLiteral("stationId"));
     if (!station.isUndefined() && (!station.isDouble() || station.toInt() <= 0 || station.toDouble() != station.toInt())) return invalid(r, QStringLiteral("stationId must be a positive integer"));
     if (!limitOk(r.payload.value(QStringLiteral("limit"))) || !horizonOk(horizon(r.payload))) return invalid(r, QStringLiteral("invalid prediction filter"));
-    auto result = m_service->list(station.isUndefined() ? 0 : station.toInteger(), horizon(r.payload), limit(r.payload));
-    return result.ok ? ResponseMessage::success(r.requestId, {{QStringLiteral("predictions"), result.value}}) : ResponseMessage::error(r.requestId, result.code, result.message);
-}
-ResponseMessage PredictionHandler::recommendation(const RequestMessage &r, const SessionContext &)
-{
-    if (!limitOk(r.payload.value(QStringLiteral("limit"))) || !horizonOk(horizon(r.payload))) return invalid(r, QStringLiteral("invalid prediction filter"));
-    auto result = m_service->recommendation(horizon(r.payload), limit(r.payload));
+    const qint64 stationId = station.isUndefined()
+        ? 0 : static_cast<qint64>(station.toDouble());
+    auto result = m_service->list(stationId, horizon(r.payload), limit(r.payload));
     return result.ok ? ResponseMessage::success(r.requestId, {{QStringLiteral("predictions"), result.value}}) : ResponseMessage::error(r.requestId, result.code, result.message);
 }
 ResponseMessage PredictionHandler::warning(const RequestMessage &r, const SessionContext &)

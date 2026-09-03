@@ -13,6 +13,7 @@ inline const QString UserLogin = QStringLiteral("USER_LOGIN");
 inline const QString UserProfileGet = QStringLiteral("USER_PROFILE_GET");
 inline const QString UserProfileUpdate = QStringLiteral("USER_PROFILE_UPDATE");
 inline const QString UserAvatarUpload = QStringLiteral("USER_AVATAR_UPLOAD");
+inline const QString UserAvatarGet = QStringLiteral("USER_AVATAR_GET");
 inline const QString UserRecharge = QStringLiteral("USER_RECHARGE");
 inline const QString UserOrderList = QStringLiteral("USER_ORDER_LIST");
 
@@ -47,7 +48,7 @@ inline const QString PredictionImport = QStringLiteral("PREDICTION_IMPORT");
 inline const QString DashboardSubscribe = QStringLiteral("DASHBOARD_SUBSCRIBE");
 inline const QString DashboardUpdate = QStringLiteral("DASHBOARD_UPDATE");
 
-// 返回文档中29种TCP消息的只读集合。
+// 返回文档中30种TCP消息的只读集合。
 const QSet<QString> &tcpTypes();
 // 返回大屏允许订阅的4个主题。
 const QSet<QString> &dashboardTopics();
