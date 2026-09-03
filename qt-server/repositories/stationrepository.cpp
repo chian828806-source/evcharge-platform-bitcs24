@@ -14,14 +14,14 @@ QString stationSummarySql(const QString &whereClause)
     return QStringLiteral(
         "SELECT s.id, s.station_no, s.name, s.address, s.district, "
         "s.longitude, s.latitude, s.price_fen_per_kwh, "
-        "s.service_fee_fen_per_kwh, COUNT(p.id), "
+        "s.service_fee_fen_per_kwh, s.status, COUNT(p.id), "
         "COALESCE(SUM(CASE WHEN p.status = 'AVAILABLE' THEN 1 ELSE 0 END), 0) "
         "FROM charging_station s "
         "LEFT JOIN charging_pile p ON p.station_id = s.id "
         "%1 "
         "GROUP BY s.id, s.station_no, s.name, s.address, s.district, "
         "s.longitude, s.latitude, s.price_fen_per_kwh, "
-        "s.service_fee_fen_per_kwh").arg(whereClause);
+        "s.service_fee_fen_per_kwh, s.status").arg(whereClause);
 }
 
 }
@@ -150,8 +150,9 @@ StationInfo StationRepository::mapStation(const QSqlQuery &query)
     station.latitude = query.value(6).toDouble();
     station.priceFenPerKwh = query.value(7).toLongLong();
     station.serviceFeeFenPerKwh = query.value(8).toLongLong();
-    station.pileCount = query.value(9).toInt();
-    station.availablePileCount = query.value(10).toInt();
+    station.status = query.value(9).toString();
+    station.pileCount = query.value(10).toInt();
+    station.availablePileCount = query.value(11).toInt();
     return station;
 }
 

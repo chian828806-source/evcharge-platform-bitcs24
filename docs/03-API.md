@@ -81,6 +81,7 @@ USER_LOGIN
 USER_PROFILE_GET
 USER_PROFILE_UPDATE
 USER_AVATAR_UPLOAD
+USER_AVATAR_GET
 USER_RECHARGE
 USER_ORDER_LIST
 ```
@@ -235,7 +236,54 @@ Response:
 
 取消仅允许作用于 `CREATED` 状态订单。取消成功后订单进入 `CANCELLED`，对应电桩由 `RESERVED` 恢复为 `AVAILABLE`。
 
-## 12.1 管理端 API 字段
+## 12.1 用户端 API 字段
+
+本节中的接口均要求有效的 User Session。金额字段单位为分；payload 中即使出现
+`userId` 也不作为身份依据，用户身份只由 Session 决定。
+
+| Message Type | Request Payload | Response Data | 主要错误 |
+| --- | --- | --- | --- |
+| `USER_LOGIN` | `phone: string`，去除首尾空白后必须为 11 位手机号。不存在的手机号自动注册。 | `sessionId`、`user`。 | `4001` 手机号格式非法，`4002` 冻结且没有活动订单，`5001` 注册、登录时间更新或查询失败。 |
+| `USER_PROFILE_GET` | 空对象。 | `user`。 | `4003` Session 无效，`5001` 查询失败。 |
+| `USER_PROFILE_UPDATE` | `nickname: string`，去除首尾空白后长度为 2 至 20 个字符。 | `user`。 | `4002` 用户冻结，`4003` Session 无效，`4401` 昵称字段或长度非法，`5001` 更新失败。 |
+| `STATION_LIST_NEARBY` | `longitude: number`、`latitude: number`；可选 `district: string`、`limit: integer`（默认 `20`，范围 `1` 至 `50`）。 | `stations`，每项为站点对象，包含站点基本信息、分项单价、综合单价、总桩数、空闲桩数和 `distanceKm`。只返回 `NORMAL` 站点。 | `4003` Session 无效，`4401` 坐标、区域或数量非法，`5001` 查询失败。 |
+| `STATION_DETAIL_GET` | `stationId: integer`，必须大于 `0`。 | `station`、`piles`。`piles` 中每项包含 `pileId`、`stationId`、`pileNo`、`type`、`powerKw`、`status`。 | `4003` Session 无效，`4201` 站点不存在或已禁用，`4401` 站点 ID 非法，`5001` 查询失败。 |
+| `ORDER_ACTIVE_CHECK` | 空对象。 | `hasActiveOrder`、`balanceFen`、`order`。没有活动订单时 `order` 为 `null`；活动订单包含 `CREATED`、`CHARGING`、`PENDING_PAYMENT` 状态。 | `4003` Session 无效，`5001` 查询失败。 |
+| `ORDER_CREATE` | `pileId: integer`，必须大于 `0`。 | `order`。服务端保存创建订单时的价格快照，并在同一事务中将电桩设为 `RESERVED`。 | `4002` 用户冻结，`4101` 已有活动订单，`4102` 电桩不可用，`4202` 电桩不存在，`4401` 电桩 ID 非法，`5001` 事务失败。 |
+| `ORDER_CANCEL` | `orderId: integer`，必须大于 `0`；可选 `reason: string`。 | `order`。仅允许取消 `CREATED` 订单，成功后释放电桩。 | `4003` Session 无效，`4105` 订单不可取消，`4401` 参数非法，`5001` 事务失败。 |
+| `ORDER_START` | `orderId: integer`，必须大于 `0`。 | `order`。仅允许将本人 `CREATED` 订单启动为 `CHARGING`。 | `4002` 用户冻结，`4003` Session 无效，`4102` 电桩预约状态无效，`4104` 订单状态非法，`4401` 订单 ID 非法，`5001` 事务失败。 |
+| `ORDER_STOP` | `orderId: integer`，必须大于 `0`。 | `order`，包含最终 `chargeSeconds`、`chargeMinutes`、`energyKwh`、`amountFen`。服务端计算金额并释放电桩，订单进入 `PENDING_PAYMENT`。 | `4003` Session 无效，`4102` 电桩释放失败，`4104` 订单状态非法，`4401` 订单 ID 非法，`5001` 事务失败。 |
+| `ORDER_SETTLE` | `orderId: integer`，必须大于 `0`。 | `order`、`balanceFen`。成功时在一个事务中扣减余额、完成订单并更新电桩累计统计；已完成订单重复请求不重复扣款。 | `4003` Session 无效，`4103` 余额不足，`4104` 订单状态非法，`4401` 订单 ID 非法，`5001` 事务失败。 |
+| `USER_AVATAR_UPLOAD` | `fileName: string`、`mimeType: string`、`contentBase64: string`。仅接受扩展名与 MIME 一致的 PNG 或 JPEG，Base64 解码后的原文件最大 512 KiB。 | `avatarPath`、`user`；`avatarPath` 为如 `avatars/user-<id>-<uuid>.png` 的相对路径。 | `4002` 用户冻结，`4003` Session 无效，`4401` 文件名、MIME 或文件内容非法，`5001` 数据库失败，`5002` 文件目录或保存失败。 |
+| `USER_AVATAR_GET` | 空对象。 | `avatarPath`、`mimeType`、`contentBase64`。未设置头像时三个字段均为 `null`；有头像时内容为原始图片的 Base64。 | `4003` Session 无效，`5001` 数据库查询失败，`5002` 已登记头像文件不可读或内容非法。 |
+| `USER_RECHARGE` | `amountFen: integer`，范围为 `1` 至 `100000000`。 | `rechargeId`、`recordNo`、`amountFen`、`balanceFen`、`createdAt`。 | `4002` 用户冻结，`4003` Session 无效，`4401` 金额不是正整数或超出范围，`5001` 余额与充值流水事务失败。 |
+| `USER_ORDER_LIST` | 可选 `page: integer`（默认 `1`）、`pageSize: integer`（默认 `20`，最大 `50`）、`status: string`。`status` 只允许 `CREATED`、`CHARGING`、`PENDING_PAYMENT`、`COMPLETED`、`CANCELLED`。 | `items`、`page`、`pageSize`、`total`。`items` 按 `createdAt DESC, orderId DESC` 排序，每项为订单对象。 | `4003` Session 无效，`4401` 分页或状态筛选非法，`5001` 查询失败。 |
+| `PREDICTION_RECOMMENDATION` | `longitude: number`、`latitude: number`；可选 `limit: integer`（默认 `5`，范围 `1` 至 `20`）、`horizon: string`（默认 `1h`，可选 `1h`、`6h`、`24h`）。 | `stations`。每项为站点对象，并额外含 `recommended: true`、`predictedLoad`、`predictedAvailablePileCount`、`recommendationReason`。结果按预测负荷升序、距离升序、预测空闲桩数降序排列。无合格推荐时返回空数组。 | `4003` Session 无效，`4401` 坐标、数量或预测窗口非法，`5001` 站点或预测数据查询失败，`5002` 推荐模块未装配。 |
+
+以上为 16 个已实现用户端接口。`PREDICTION_LIST` 虽已在消息类型列表中登记，
+但当前没有对应 Handler；它不是 UI V2 的必需页面能力。`MAP_GEOCODE` 的请求/
+响应契约已确认，见下一节；真实腾讯地图调用待配置 Key 并以异步 Adapter 实现，
+不得阻塞 Socket 读取线程。
+
+### 12.1.1 对象字段约定
+
+- `user` 包含 `userId`、`phone`、`nickname`、`avatarPath`、`balanceFen`、`status`、`createdAt`；没有头像时 `avatarPath` 为 `null`。
+- 站点对象包含 `stationId`、`stationNo`、`name`、`address`、`district`、`longitude`、`latitude`、`priceFenPerKwh`、`serviceFeeFenPerKwh`、`totalPriceFenPerKwh`、`status`、`pileCount`、`availablePileCount`。其中 `totalPriceFenPerKwh = priceFenPerKwh + serviceFeeFenPerKwh`，供 UI 首要展示；附近站点和推荐站点还包含 `distanceKm`。
+- `StationStatus = NORMAL | DISABLED`。普通用户站点查询仅返回 `NORMAL`，但仍返回 `status` 以便客户端使用稳定枚举，而非中文文案判断逻辑。
+- `items` 中的订单对象包含 `orderId`、`orderNo`、`userId`、`stationId`、`stationName`、`pileId`、`pileNo`、`powerKw`、`status`、`priceFenPerKwh`、`serviceFeeFenPerKwh`、`totalPriceFenPerKwh`、`startAt`、`endAt`、`chargeMinutes`、`chargeSeconds`、`energyKwh`、`amountFen`、`createdAt`。`chargeSeconds` 是从 `startAt` 到当前时刻（充电中）或 `endAt`（已停止）的精确秒数；`chargeMinutes` 保持兼容的截断分钟。允许为 `null` 的文本字段以 `null` 返回。
+- `USER_RECHARGE` 的重复请求在同一服务进程内以 `userId + requestId` 去重；相同用户以相同 `requestId` 重试时，服务端返回首次成功响应，不会重复增加余额。服务重启后的跨进程幂等尚未实现。
+- `USER_AVATAR_UPLOAD` 保存文件后，数据库只保存相对路径。客户端显示头像时发送 `USER_AVATAR_GET`，通过当前 TCP 连接取得 `mimeType` 和 `contentBase64`；不得将服务端头像目录或绝对路径暴露给客户端。
+
+### 12.1.2 `MAP_GEOCODE` 已确认契约
+
+`MAP_GEOCODE` 由服务端调用腾讯地图地理编码能力，Qt 用户端不直接持有腾讯地图
+Key，也不自行把地址解析为坐标。请求为 `district: string`、`address: string`；成功
+响应为 `formattedAddress: string`、`longitude: number`、`latitude: number`。服务端用
+环境变量或未入库配置读取 Key，并通过异步 `MapAdapter` 完成网络请求；用户端
+`QWebEngineView` 仅使用服务端返回的坐标或导航 URL 展示路线。真实 Adapter 尚待
+Key 配置，不能以同步网络调用占用 Socket 读取回调。
+
+## 12.2 管理端 API 字段
 
 以下请求除 `ADMIN_LOGIN` 外均要求有效的 Admin Session。金额字段单位为分。
 

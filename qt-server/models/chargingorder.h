@@ -23,6 +23,7 @@ struct ChargingOrderInfo
     QString startAt;
     QString endAt;
     int chargeMinutes = 0;
+    qint64 chargeSeconds = 0;
     double energyKwh = 0.0;
     qint64 amountFen = 0;
     QString createdAt;
@@ -39,7 +40,9 @@ struct ChargingOrderInfo
             {QStringLiteral("status"), status},
             {QStringLiteral("priceFenPerKwh"), priceFenPerKwh},
             {QStringLiteral("serviceFeeFenPerKwh"), serviceFeeFenPerKwh},
+            {QStringLiteral("totalPriceFenPerKwh"), priceFenPerKwh + serviceFeeFenPerKwh},
             {QStringLiteral("chargeMinutes"), chargeMinutes},
+            {QStringLiteral("chargeSeconds"), chargeSeconds},
             {QStringLiteral("energyKwh"), energyKwh},
             {QStringLiteral("amountFen"), amountFen},
             {QStringLiteral("createdAt"), createdAt}

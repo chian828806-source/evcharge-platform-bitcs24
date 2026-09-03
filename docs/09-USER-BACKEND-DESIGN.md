@@ -218,6 +218,7 @@ registerAdminHandlers(dispatcher, adminDependencies);
 | U05 | 查询资料 | `USER_PROFILE_GET` | UserHandler | UserService | UserRepository | `user` |
 | U05 | 修改昵称 | `USER_PROFILE_UPDATE` | UserHandler | UserService | UserRepository | `user` |
 | U05 | 上传头像 | `USER_AVATAR_UPLOAD` | UserHandler | UserService | AvatarStorage、UserRepository | `user` + 头像文件 |
+| U05 | 读取头像 | `USER_AVATAR_GET` | UserHandler | UserService | AvatarStorage、UserRepository | `user` + 头像文件 |
 | U05 | 钱包充值 | `USER_RECHARGE` | UserHandler | WalletService | UserRepository、RechargeRepository | `user`, `recharge_record` |
 | U05 | 查询订单列表 | `USER_ORDER_LIST` | OrderHandler | OrderService | OrderRepository、StationRepository、PileRepository | `charging_order`, `charging_station`, `charging_pile` |
 | 可选详情 | 查询预测 | `PREDICTION_LIST` | PredictionHandler | PredictionService | PredictionRepository | `prediction` |
@@ -258,6 +259,7 @@ registerAdminHandlers(dispatcher, adminDependencies);
 - SQLite 使用 `snake_case`；
 - 金额使用整数“分”，字段名以 `Fen` 结尾；
 - 电价使用 `priceFenPerKwh`，服务费使用 `serviceFeeFenPerKwh`；
+- 综合展示单价使用 `totalPriceFenPerKwh = priceFenPerKwh + serviceFeeFenPerKwh`；
 - 电量使用 `energyKwh`，功率使用 `powerKw`；
 - 距离使用 `distanceKm`，保留两位小数；
 - 时间来自 SQLite 时使用 `yyyy-MM-dd HH:mm:ss`；
@@ -267,6 +269,7 @@ registerAdminHandlers(dispatcher, adminDependencies);
 
 ```text
 UserStatus  = NORMAL | FROZEN
+StationStatus = NORMAL | DISABLED
 PileStatus  = AVAILABLE | RESERVED | CHARGING | FAULT | OFFLINE | RESTARTING
 OrderStatus = CREATED | CHARGING | PENDING_PAYMENT | COMPLETED | CANCELLED
 PileType    = FAST | SLOW
@@ -300,6 +303,7 @@ PileType    = FAST | SLOW
   "latitude": 38.900001,
   "priceFenPerKwh": 80,
   "serviceFeeFenPerKwh": 30,
+  "totalPriceFenPerKwh": 110,
   "status": "NORMAL",
   "totalPileCount": 4,
   "availablePileCount": 2,
@@ -323,6 +327,7 @@ PileType    = FAST | SLOW
   "startAt": "2026-09-02 16:00:00",
   "endAt": null,
   "chargeMinutes": 5,
+  "chargeSeconds": 300,
   "energyKwh": 5.0,
   "amountFen": 550,
   "createdAt": "2026-09-02 15:58:00"
@@ -398,6 +403,19 @@ V1 已冻结：仅允许 PNG 或 JPEG，文件名扩展名必须与 MIME 匹配�
 文件最大 512 KiB。服务端以随机文件名保存，数据库只保存 `avatars/<文件名>`
 形式的相对路径；旧头像在成功替换后清理。
 
+### 8.4.1 `USER_AVATAR_GET`
+
+| 项目 | 内容 |
+| --- | --- |
+| 权限 | User |
+| 请求 payload | `{}` |
+| 成功 data | `avatarPath`, `mimeType`, `contentBase64` |
+| 文件操作 | 从配置的头像目录读取由当前用户相对路径指向的文件 |
+
+用户端不拼接服务端磁盘路径。未上传头像时三个返回字段均为 `null`；有头像时，
+Qt 将 `contentBase64` 解码后加载为 `QPixmap`。服务端再次校验文件扩展名、大小与
+图片签名，防止数据库路径被篡改后读取任意文件。
+
 ### 8.5 `USER_RECHARGE`
 
 | 项目 | 内容 |
@@ -435,9 +453,9 @@ Service 必须强制使用 Session 用户 ID，不能查询其他用户的订单
 | 外部依赖 | 腾讯地图 Web API 或 V1 Mock Adapter |
 | 数据操作 | 无 |
 
-地图 Key 必须来自配置或环境变量，不得提交到仓库。外部请求属于耗时操作，
-不得阻塞 Socket 线程。若最终决定由 `QWebEngineView` 前端直接解析地址，
-则应在公共契约中明确 `MAP_GEOCODE` 是否保留，不能两种方案并行产生不同坐标。
+已确认：`MAP_GEOCODE` 由服务端调用腾讯地图，`QWebEngineView` 仅依据服务端
+返回的坐标或导航 URL 展示路线。地图 Key 必须来自配置或环境变量，不得提交到
+仓库；外部请求属于耗时操作，必须经异步 `MapAdapter`，不得阻塞 Socket 线程。
 
 ### 8.8 `STATION_LIST_NEARBY`
 
@@ -476,8 +494,8 @@ Service 必须强制使用 Session 用户 ID，不能查询其他用户的订单
 | 活动状态 | `CREATED`, `CHARGING`, `PENDING_PAYMENT` |
 
 V1 约定：U04 打开时请求一次；充电中每 1 秒轮询本消息；页面离开 U04 或订单
-不再是 `CHARGING` 时停止轮询。服务端在响应中计算当前 `chargeMinutes`、
-`energyKwh` 和预估 `amountFen`，因此不新增未经登记的 TCP 推送消息。
+不再是 `CHARGING` 时停止轮询。服务端在响应中计算当前 `chargeSeconds`、
+`chargeMinutes`、`energyKwh` 和预估 `amountFen`，因此不新增未经登记的 TCP 推送消息。
 
 ### 8.11 `ORDER_CREATE`
 
@@ -766,7 +784,7 @@ V1 最低实现：
 
 - `STATION_LIST_NEARBY`；
 - `STATION_DETAIL_GET`；
-- 地图方案确认后实现 `MAP_GEOCODE`。
+- `MAP_GEOCODE` 契约已确认；待配置腾讯地图 Key 与异步 `MapAdapter` 后实现真实调用。
 
 ### 阶段 4：充电主闭环
 
@@ -782,7 +800,8 @@ V1 最低实现：
 
 - `USER_RECHARGE`；
 - `USER_ORDER_LIST`；
-- `USER_AVATAR_UPLOAD`。
+- `USER_AVATAR_UPLOAD`；
+- `USER_AVATAR_GET`。
 
 ### 阶段 6：智能推荐
 
