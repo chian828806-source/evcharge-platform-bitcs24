@@ -19,4 +19,3 @@ HEADERS += \
 RESOURCES += $$PWD/resources/user-resources.qrc
 
 include($$REPO_ROOT/shared/protocol/protocol.pri)
-

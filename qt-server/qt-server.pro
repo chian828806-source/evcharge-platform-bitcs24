@@ -25,12 +25,10 @@ include($$PWD/map/map.pri)
 include($$PWD/repositories/repositories.pri)
 include($$PWD/services/user/user-services.pri)
 include($$PWD/services/admin/admin-services.pri)
-SOURCES += $$PWD/repositories/predictionrepository.cpp \
-           $$PWD/services/prediction/predictionservice.cpp \
+SOURCES += $$PWD/services/prediction/predictionservice.cpp \
            $$PWD/handlers/prediction/predictionhandler.cpp \
            $$PWD/handlers/prediction/registerpredictionhandlers.cpp
-HEADERS += $$PWD/repositories/predictionrepository.h \
-           $$PWD/services/prediction/predictionservice.h \
+HEADERS += $$PWD/services/prediction/predictionservice.h \
            $$PWD/handlers/prediction/predictionhandler.h \
            $$PWD/handlers/prediction/registerpredictionhandlers.h
 include($$PWD/handlers/user/user-handlers.pri)

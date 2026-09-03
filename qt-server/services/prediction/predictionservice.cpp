@@ -24,7 +24,5 @@ ServiceResult<QJsonArray> run(DatabaseManager *manager, PredictionRepository *re
 
 ServiceResult<QJsonArray> PredictionService::list(qint64 stationId, const QString &horizon, int limit) const
 { return run(m_databaseManager, m_repository, [=](QSqlDatabase &db, QString *e){ return m_repository->list(db, stationId, horizon, limit, e); }); }
-ServiceResult<QJsonArray> PredictionService::recommendation(const QString &horizon, int limit) const
-{ return run(m_databaseManager, m_repository, [=](QSqlDatabase &db, QString *e){ return m_repository->recommendation(db, horizon, limit, e); }); }
 ServiceResult<QJsonArray> PredictionService::warning(const QString &horizon, int limit) const
 { return run(m_databaseManager, m_repository, [=](QSqlDatabase &db, QString *e){ return m_repository->warning(db, horizon, limit, e); }); }

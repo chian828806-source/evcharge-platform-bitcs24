@@ -26,4 +26,7 @@ public:
                               int limit, QString *errorMessage) const;
     QJsonArray warning(QSqlDatabase &database, const QString &horizon,
                        int limit, QString *errorMessage) const;
+    QHash<qint64, PredictionInfo> listLatestByHorizon(
+        QSqlDatabase &database, const QString &horizon,
+        QString *errorMessage) const;
 };
