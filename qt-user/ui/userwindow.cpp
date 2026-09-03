@@ -1,5 +1,6 @@
 #include "userwindow.h"
 
+#include "map/mapnavigationpage.h"
 #include "network/socketclient.h"
 #include "shared/protocol/messagetypes.h"
 
@@ -16,6 +17,7 @@
 #include <QList>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QMetaObject>
 #include <QPair>
 #include <QProgressBar>
 #include <QPushButton>
@@ -243,17 +245,20 @@ QWidget *UserWindow::buildHomePage()
                                        QStringLiteral("软件园路 8 号"),
                                        QStringLiteral("综合价 ¥1.10 / 度"),
                                        QStringLiteral("2 / 4 空闲"),
-                                       QStringLiteral("1.25 km"), true));
+                                       QStringLiteral("1.25 km"), true,
+                                       121.508812, 38.879642));
     layout->addWidget(buildStationCard(QStringLiteral("万达广场充电中心"),
                                        QStringLiteral("虹韵路 6 号 B2 层"),
                                        QStringLiteral("综合价 ¥1.18 / 度"),
                                        QStringLiteral("5 / 12 空闲"),
-                                       QStringLiteral("2.80 km"), false));
+                                       QStringLiteral("2.80 km"), false,
+                                       121.534731, 38.890937));
     layout->addWidget(buildStationCard(QStringLiteral("星海绿色能源站"),
                                        QStringLiteral("中山路 608 号"),
                                        QStringLiteral("综合价 ¥0.98 / 度"),
                                        QStringLiteral("1 / 8 空闲"),
-                                       QStringLiteral("4.36 km"), false));
+                                       QStringLiteral("4.36 km"), false,
+                                       121.565412, 38.866520));
     layout->addStretch();
 
     pageLayout->addWidget(makeScrollArea(content), 1);
@@ -265,7 +270,8 @@ QWidget *UserWindow::buildHomePage()
 
 QWidget *UserWindow::buildStationCard(const QString &name, const QString &address,
                                       const QString &price, const QString &availability,
-                                      const QString &distance, bool recommended)
+                                      const QString &distance, bool recommended,
+                                      double longitude, double latitude)
 {
     auto *stationCard = makeCard();
     auto *layout = new QVBoxLayout(stationCard);
@@ -293,9 +299,9 @@ QWidget *UserWindow::buildStationCard(const QString &name, const QString &addres
     layout->addLayout(actions);
     connect(detailButton, &QPushButton::clicked, this,
             [this]() { showPage(StationDetail); });
-    connect(navigationButton, &QPushButton::clicked, this, [this, name]() {
-        m_navigationDestination->setText(name);
-        showPage(Navigation);
+    connect(navigationButton, &QPushButton::clicked, this,
+            [this, name, address, longitude, latitude]() {
+        openNavigation(name, address, longitude, latitude, Home);
     });
     return stationCard;
 }
@@ -337,8 +343,8 @@ QWidget *UserWindow::buildStationDetailPage()
     pageLayout->addWidget(makeScrollArea(content), 1);
     pageLayout->addWidget(buildBottomNavigation(Home));
     connect(navigationButton, &QPushButton::clicked, this, [this]() {
-        m_navigationDestination->setText(QStringLiteral("软件园智慧充电站"));
-        showPage(Navigation);
+        openNavigation(QStringLiteral("软件园智慧充电站"), QStringLiteral("软件园路 8 号"),
+                       121.508812, 38.879642, StationDetail);
     });
     return page;
 }
@@ -551,52 +557,16 @@ QWidget *UserWindow::buildOrderCard(const QString &station, const QString &descr
 
 QWidget *UserWindow::buildNavigationPage()
 {
-    auto *page = new QWidget;
-    auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(20, 18, 20, 24);
-    layout->setSpacing(14);
-    auto *backButton = makeButton(QStringLiteral("← 返回"), "ghost");
-    backButton->setMaximumWidth(90);
-    layout->addWidget(backButton);
-    layout->addWidget(makeLabel(QStringLiteral("路线导航"), "pageTitle"));
-
-    auto *routeCard = makeCard();
-    auto *routeLayout = new QVBoxLayout(routeCard);
-    routeLayout->setContentsMargins(20, 18, 20, 18);
-    routeLayout->addWidget(makeLabel(QStringLiteral("起点 · 软件园路"), "caption"));
-    m_navigationDestination = makeLabel(QStringLiteral("软件园智慧充电站"), "cardTitle");
-    routeLayout->addWidget(m_navigationDestination);
-    auto *modeRow = new QHBoxLayout;
-    auto *driveButton = makeButton(QStringLiteral("驾车 · 8 分钟"));
-    auto *walkButton = makeButton(QStringLiteral("步行 · 22 分钟"), "secondary");
-    modeRow->addWidget(driveButton);
-    modeRow->addWidget(walkButton);
-    routeLayout->addLayout(modeRow);
-    layout->addWidget(routeCard);
-
-    auto *mapPlaceholder = new QFrame;
-    mapPlaceholder->setObjectName(QStringLiteral("mapPlaceholder"));
-    auto *mapLayout = new QVBoxLayout(mapPlaceholder);
-    mapLayout->setAlignment(Qt::AlignCenter);
-    auto *pin = makeLabel(QStringLiteral("⌖"), "mapPin");
-    pin->setAlignment(Qt::AlignCenter);
-    mapLayout->addWidget(pin, 0, Qt::AlignCenter);
-    auto *mapTitle = makeLabel(QStringLiteral("腾讯地图区域"), "sectionTitle");
-    mapTitle->setAlignment(Qt::AlignCenter);
-    mapLayout->addWidget(mapTitle);
-    auto *mapHint = makeLabel(
-        QStringLiteral("地图方案确定后，在此通过 QWebEngineView\n加载驾车或步行路线。"), "subtitle");
-    mapHint->setAlignment(Qt::AlignCenter);
-    mapLayout->addWidget(mapHint);
-    layout->addWidget(mapPlaceholder, 1);
-
-    connect(backButton, &QPushButton::clicked, this,
-            [this]() { showPage(Home); });
-    connect(driveButton, &QPushButton::clicked, this,
-            [this]() { showNotice(QStringLiteral("已选择驾车路线")); });
-    connect(walkButton, &QPushButton::clicked, this,
-            [this]() { showNotice(QStringLiteral("已选择步行路线")); });
-    return page;
+    m_mapNavigationPage = new MapNavigationPage;
+    connect(m_mapNavigationPage, &MapNavigationPage::backRequested, this,
+            [this]() { showPage(m_navigationSource); });
+    connect(m_mapNavigationPage, &MapNavigationPage::retryRequested, this,
+            [this](const MapRoute &, MapNavigationPage::TravelMode mode) {
+        showNotice(QStringLiteral("已请求%1路线；配置地图服务后将自动加载。")
+            .arg(mode == MapNavigationPage::TravelMode::Driving
+                 ? QStringLiteral("驾车") : QStringLiteral("步行")));
+    });
+    return m_mapNavigationPage;
 }
 
 QWidget *UserWindow::buildBottomNavigation(Page activePage)
@@ -620,6 +590,26 @@ QWidget *UserWindow::buildBottomNavigation(Page activePage)
                 [this, page = item.second]() { showPage(page); });
     }
     return navigation;
+}
+
+void UserWindow::openNavigation(const QString &name, const QString &address,
+                                double longitude, double latitude, Page source)
+{
+    if (!m_mapNavigationPage) {
+        showNotice(QStringLiteral("地图页面尚未初始化"), true);
+        return;
+    }
+    const MapRoute route{
+        QStringLiteral("软件园路"), 121.500001, 38.900001,
+        name, address, longitude, latitude
+    };
+    if (!m_mapNavigationPage->setRoute(route)) {
+        return;
+    }
+    m_navigationSource = source;
+    showPage(Navigation);
+    // 首次进入也经由同一重试信号请求后续 MapAdapter，避免页面自行保存地图 Key。
+    QMetaObject::invokeMethod(m_mapNavigationPage, "retry", Qt::QueuedConnection);
 }
 
 void UserWindow::showPage(Page page)

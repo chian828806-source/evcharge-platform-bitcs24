@@ -1,6 +1,6 @@
 ﻿# qt-user — Qt 用户端
 
-本目录承载车主侧 Qt 界面，并提供可供页面复用的 SocketClient。
+本目录承载车主侧 Qt 界面，并提供可供页面复用的 SocketClient 与地图导航页组件。
 
 用户端是业务客户端，只连接 `qt-server`，不连接 `qt-admin`，不直接访问 SQLite。
 
@@ -13,6 +13,8 @@
 | ui/ | 用户端页面、页面导航和交互状态 |
 | resources/ | 用户端统一 QSS 样式 |
 | qt-user.pro | 可运行的 Qt Widgets 用户端工程 |
+| map/mapnavigationpage.h/.cpp | U06 地图导航组件；接收起终点与服务端提供的导航 URL，使用 QWebEngineView 展示路线 |
+| qt-user-map.pro | 地图导航组件独立静态库工程（供单独编译或复用） |
 
 ## UI V1 页面
 
@@ -40,16 +42,24 @@ make
 
 Windows 使用对应编译套件的 `mingw32-make` 或 `nmake`。
 
-## 待后端接口确认
+## 后端联调状态
 
-- 冻结用户登录和活动订单收尾的响应字段；
-- 头像内容的下载或返回方式；
-- 充电进度的时间精度和刷新方式；
-- 地址解析与腾讯地图 Key 的职责边界。
+冻结登录、头像读取、充电秒数和站点综合单价的 Socket 契约已在
+`docs/03-API.md` 冻结。U06 的路线展示页已接入，但真实路线仍依赖服务端
+`MapAdapter` 调用腾讯地图并返回 HTTPS 导航 URL。
 
+地图 Key 仅由服务端配置；U06 页面不保存 Key。服务端返回 URL 后，页面通过
+`setNavigationUrl()` 加载真实腾讯地图路线。
 
 ## 页面调用原则
 
 页面只调用 `SocketClient::sendRequest`，不直接操作 `QTcpSocket`。页面保存 `sendRequest` 返回的 `requestId`，并在 `responseReceived` 信号中按 `requestId` 匹配响应。
 
 登录成功后，页面所属的Session对象应保存服务端返回的sessionId；之后的受保护请求都传入该值。
+
+## 地图页接入
+
+首页 U02 或站点详情 U03 创建 `MapRoute` 并调用 `MapNavigationPage::setRoute()`；
+页面通过 `retryRequested(route, mode)` 向上层请求地图适配结果，再调用
+`setNavigationUrl()` 加载服务端确认的 HTTPS 路线地址。地图 Key 只放在服务端配置，
+不得放入 Qt 用户端源码或资源文件。

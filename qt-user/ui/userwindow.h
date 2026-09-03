@@ -5,6 +5,7 @@
 
 class QLabel;
 class QLineEdit;
+class MapNavigationPage;
 class QPushButton;
 class QStackedWidget;
 class SocketClient;
@@ -33,7 +34,7 @@ private:
     QLabel *m_orderHintLabel = nullptr;
     QLabel *m_balanceLabel = nullptr;
     QLabel *m_nicknameLabel = nullptr;
-    QLabel *m_navigationDestination = nullptr;
+    MapNavigationPage *m_mapNavigationPage = nullptr;
     QLineEdit *m_phoneEdit = nullptr;
     QPushButton *m_startButton = nullptr;
     QPushButton *m_cancelButton = nullptr;
@@ -43,6 +44,7 @@ private:
     QString m_loginRequestId;
     QString m_orderStatus = QStringLiteral("CREATED");
     int m_balanceFenInFen = 12860;
+    Page m_navigationSource = Home;
 
     QWidget *buildLoginPage();
     QWidget *buildHomePage();
@@ -55,13 +57,16 @@ private:
     QWidget *buildBottomNavigation(Page activePage);
     QWidget *buildStationCard(const QString &name, const QString &address,
                               const QString &price, const QString &availability,
-                              const QString &distance, bool recommended);
+                              const QString &distance, bool recommended,
+                              double longitude, double latitude);
     QWidget *buildPileCard(const QString &number, const QString &type,
                            const QString &power, const QString &status);
     QWidget *buildOrderCard(const QString &station, const QString &description,
                             const QString &amount, const QString &status);
 
     void showPage(Page page);
+    void openNavigation(const QString &name, const QString &address,
+                        double longitude, double latitude, Page source);
     void attemptLogin();
     void setConnected(bool connected);
     void setOrderStatus(const QString &status);
