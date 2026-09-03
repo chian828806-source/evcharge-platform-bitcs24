@@ -2,6 +2,7 @@
 
 #include <QJsonArray>
 #include <QSqlDatabase>
+#include <QJsonObject>
 
 class PredictionRepository
 {
@@ -11,5 +12,7 @@ public:
     QJsonArray recommendation(QSqlDatabase &database, const QString &horizon,
                               int limit, QString *errorMessage) const;
     QJsonArray warning(QSqlDatabase &database, const QString &horizon,
-                       int limit, QString *errorMessage) const;
+                              int limit, QString *errorMessage) const;
+    QJsonObject importBatch(QSqlDatabase &database, const QJsonObject &document,
+                            QString *errorMessage) const;
 };

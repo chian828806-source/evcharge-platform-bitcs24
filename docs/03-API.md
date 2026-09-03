@@ -129,9 +129,10 @@ ML 展示：
 PREDICTION_LIST
 PREDICTION_RECOMMENDATION
 PREDICTION_WARNING
+PREDICTION_IMPORT
 ```
 
-预测接口均返回 `data.predictions` 数组，记录包含站点、目标时间、预测跨度、负荷率、预计空闲桩数、峰值等级、模型名称和生成时间。`PREDICTION_LIST` 允许已认证用户和管理员按 `stationId`、`horizon`、`limit` 查询；`PREDICTION_RECOMMENDATION` 仅用户可调用，返回未来且预计有空闲桩的站点，按空闲桩数降序；`PREDICTION_WARNING` 仅管理员可调用，返回未来负荷率不低于 `0.7` 的预测。
+预测接口均返回 `data.predictions` 数组，记录包含站点、目标时间、预测跨度、负荷率、预计空闲桩数、峰值等级、模型名称和生成时间。`PREDICTION_LIST` 允许已认证用户和管理员按 `stationId`、`horizon`、`limit` 查询；`PREDICTION_RECOMMENDATION` 仅用户可调用，返回未来且预计有空闲桩的站点，按空闲桩数降序；`PREDICTION_WARNING` 仅管理员可调用，返回未来负荷率不低于 `0.7` 的预测。`PREDICTION_IMPORT` 仅管理员/内部 ML 任务调用，用于导入已经通过契约校验的完整预测批次。
 
 ## 7. 认证
 
@@ -350,6 +351,8 @@ ml/output/<batchId>/predictions.json
 ### 14.3 服务端导入
 
 Qt/C++ 服务端读取 ML 输出后，必须校验 `schemaVersion`、`batchId`、必填字段、站点存在性和上述范围约束。一个批次中任一记录不合法时，服务端拒绝整个批次且不得写入 `prediction` 表；全部合法时，以一个数据库事务写入。导入成功后，服务端向用户端、管理端和 WebSocket 大屏提供最新预测结果。
+
+网络导入请求格式为 `{"type":"PREDICTION_IMPORT","payload":{"document":<上述完整 JSON>}}`。成功响应返回 `batchId`、`status`、`inserted` 和 `duplicate`；相同 `batchId` 重复提交不会重复写入。该消息不得开放给普通用户，生产环境应由受控 ML Worker 或管理员维护流程调用。
 
 ## 15. 接口修改流程
 

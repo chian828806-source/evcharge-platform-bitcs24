@@ -42,6 +42,7 @@ inline const QString AdminUserUnfreeze = QStringLiteral("ADMIN_USER_UNFREEZE");
 inline const QString PredictionList = QStringLiteral("PREDICTION_LIST");
 inline const QString PredictionRecommendation = QStringLiteral("PREDICTION_RECOMMENDATION");
 inline const QString PredictionWarning = QStringLiteral("PREDICTION_WARNING");
+inline const QString PredictionImport = QStringLiteral("PREDICTION_IMPORT");
 
 inline const QString DashboardSubscribe = QStringLiteral("DASHBOARD_SUBSCRIBE");
 inline const QString DashboardUpdate = QStringLiteral("DASHBOARD_UPDATE");

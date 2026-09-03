@@ -3,6 +3,7 @@
 #include <QJsonObject>
 #include <QSqlError>
 #include <QSqlQuery>
+#include <QDateTime>
 
 namespace {
 QJsonArray execute(QSqlQuery &query, QString *errorMessage)
@@ -31,7 +32,50 @@ QJsonArray execute(QSqlQuery &query, QString *errorMessage)
     }
     return rows;
 }
+}
 
+QJsonObject PredictionRepository::importBatch(QSqlDatabase &database,
+                                               const QJsonObject &document,
+                                               QString *errorMessage) const
+{
+    const QString batchId = document.value(QStringLiteral("batchId")).toString();
+    const QJsonArray predictions = document.value(QStringLiteral("predictions")).toArray();
+    const QString generatedAt = document.value(QStringLiteral("generatedAt")).toString(
+        QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+    if (!database.transaction()) { if (errorMessage) *errorMessage = database.lastError().text(); return {}; }
+    QSqlQuery batch(database);
+    batch.prepare(QStringLiteral("INSERT OR IGNORE INTO prediction_batch(batch_id,status,generated_at,created_at) VALUES(:id,'IMPORTED',:generated,:created)"));
+    batch.bindValue(QStringLiteral(":id"), batchId);
+    batch.bindValue(QStringLiteral(":generated"), generatedAt);
+    batch.bindValue(QStringLiteral(":created"), QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+    if (!batch.exec()) { database.rollback(); if (errorMessage) *errorMessage = batch.lastError().text(); return {}; }
+    const bool duplicate = batch.numRowsAffected() == 0;
+    if (duplicate) { database.rollback(); return QJsonObject{{QStringLiteral("batchId"), batchId}, {QStringLiteral("status"), QStringLiteral("already_imported")}, {QStringLiteral("inserted"), 0}, {QStringLiteral("duplicate"), true}}; }
+    QSqlQuery insert(database);
+    insert.prepare(QStringLiteral("INSERT INTO prediction(batch_id,station_id,prediction_time,horizon,predicted_load,predicted_available_count,peak_level,model_name,mae,rmse,generated_at,created_at) VALUES(:batch,:station,:time,:horizon,:load,:available,:peak,:model,:mae,:rmse,:generated,:created)"));
+    int inserted = 0;
+    for (const QJsonValue &value : predictions) {
+        const QJsonObject item = value.toObject();
+        insert.bindValue(QStringLiteral(":batch"), batchId);
+        insert.bindValue(QStringLiteral(":station"), item.value(QStringLiteral("stationId")).toInteger());
+        insert.bindValue(QStringLiteral(":time"), item.value(QStringLiteral("predictionTime")).toString());
+        insert.bindValue(QStringLiteral(":horizon"), item.value(QStringLiteral("horizon")).toString());
+        insert.bindValue(QStringLiteral(":load"), item.value(QStringLiteral("predictedLoad")).toDouble());
+        insert.bindValue(QStringLiteral(":available"), item.value(QStringLiteral("predictedAvailableCount")).toInt());
+        insert.bindValue(QStringLiteral(":peak"), item.value(QStringLiteral("peakLevel")).toString());
+        insert.bindValue(QStringLiteral(":model"), item.value(QStringLiteral("modelName")).toString());
+        insert.bindValue(QStringLiteral(":mae"), item.contains(QStringLiteral("mae")) ? item.value(QStringLiteral("mae")).toDouble() : QVariant());
+        insert.bindValue(QStringLiteral(":rmse"), item.contains(QStringLiteral("rmse")) ? item.value(QStringLiteral("rmse")).toDouble() : QVariant());
+        insert.bindValue(QStringLiteral(":generated"), item.value(QStringLiteral("generatedAt")).toString(generatedAt));
+        insert.bindValue(QStringLiteral(":created"), QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+        if (!insert.exec()) { database.rollback(); if (errorMessage) *errorMessage = insert.lastError().text(); return {}; }
+        ++inserted;
+    }
+    if (!database.commit()) { if (errorMessage) *errorMessage = database.lastError().text(); return {}; }
+    return QJsonObject{{QStringLiteral("batchId"), batchId}, {QStringLiteral("status"), QStringLiteral("imported")}, {QStringLiteral("inserted"), inserted}, {QStringLiteral("duplicate"), false}};
+}
+
+namespace {
 void bindCommon(QSqlQuery &query, const QString &horizon, int limit)
 {
     if (!horizon.isEmpty()) query.bindValue(QStringLiteral(":horizon"), horizon);

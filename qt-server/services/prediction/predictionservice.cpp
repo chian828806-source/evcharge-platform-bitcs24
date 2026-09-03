@@ -28,3 +28,13 @@ ServiceResult<QJsonArray> PredictionService::recommendation(const QString &horiz
 { return run(m_databaseManager, m_repository, [=](QSqlDatabase &db, QString *e){ return m_repository->recommendation(db, horizon, limit, e); }); }
 ServiceResult<QJsonArray> PredictionService::warning(const QString &horizon, int limit) const
 { return run(m_databaseManager, m_repository, [=](QSqlDatabase &db, QString *e){ return m_repository->warning(db, horizon, limit, e); }); }
+
+ServiceResult<QJsonObject> PredictionService::importBatch(const QJsonObject &document) const
+{
+    QSqlDatabase database; QString error;
+    if (!m_databaseManager || !m_repository || !m_databaseManager->database(&database, &error))
+        return ServiceResult<QJsonObject>::failure(ErrorCodes::DatabaseError, error);
+    const QJsonObject result = m_repository->importBatch(database, document, &error);
+    return error.isEmpty() ? ServiceResult<QJsonObject>::success(result)
+                           : ServiceResult<QJsonObject>::failure(ErrorCodes::DatabaseError, error);
+}

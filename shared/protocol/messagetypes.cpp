@@ -17,7 +17,7 @@ const QSet<QString> &tcpTypes()
         AdminRevenueTrend, AdminPileStatusSummary, AdminPileList,
         AdminPileRestart, AdminStationList, AdminStationCreate, AdminUserList,
         AdminUserFreeze, AdminUserUnfreeze, PredictionList,
-        PredictionRecommendation, PredictionWarning
+        PredictionRecommendation, PredictionWarning, PredictionImport
     };
     return types;
 }

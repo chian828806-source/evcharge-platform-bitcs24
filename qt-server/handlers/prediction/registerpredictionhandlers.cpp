@@ -10,4 +10,5 @@ PredictionHandlerRegistry::PredictionHandlerRegistry(DatabaseManager *databaseMa
     dispatcher->registerHandler(MessageTypes::PredictionList, MessageDispatcher::Access::AnyAuthenticated, [this](const RequestMessage &r, const SessionContext &c){ return m_handler->list(r,c); });
     dispatcher->registerHandler(MessageTypes::PredictionRecommendation, MessageDispatcher::Access::User, [this](const RequestMessage &r, const SessionContext &c){ return m_handler->recommendation(r,c); });
     dispatcher->registerHandler(MessageTypes::PredictionWarning, MessageDispatcher::Access::Admin, [this](const RequestMessage &r, const SessionContext &c){ return m_handler->warning(r,c); });
+    dispatcher->registerHandler(MessageTypes::PredictionImport, MessageDispatcher::Access::Admin, [this](const RequestMessage &r, const SessionContext &c){ return m_handler->importBatch(r,c); });
 }
