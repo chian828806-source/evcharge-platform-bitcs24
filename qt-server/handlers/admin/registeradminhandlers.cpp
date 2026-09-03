@@ -87,7 +87,9 @@ AdminHandlerRegistry::AdminHandlerRegistry(QSqlDatabase database,
                 || !payload.value(QStringLiteral("address")).isString()
                 || !payload.value(QStringLiteral("longitude")).isDouble()
                 || !payload.value(QStringLiteral("latitude")).isDouble()
-                || !isPositiveInteger(payload, QStringLiteral("pileCount"))) {
+                || !isPositiveInteger(payload, QStringLiteral("pileCount"))
+                || (!payload.value(QStringLiteral("priceFenPerKwh")).isUndefined()
+                    && !isPositiveInteger(payload, QStringLiteral("priceFenPerKwh")))) {
                 return invalidPayload(request, QStringLiteral("invalid station payload"));
             }
             return m_management.createStation(request, session.principalId);

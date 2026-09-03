@@ -79,8 +79,10 @@ ResponseMessage AdminManagementService::createStation(const RequestMessage &requ
     const double longitude = payload.value(QStringLiteral("longitude")).toDouble(999.0);
     const double latitude = payload.value(QStringLiteral("latitude")).toDouble(999.0);
     const int count = payload.value(QStringLiteral("pileCount")).toInt();
+    const int price = payload.value(QStringLiteral("priceFenPerKwh")).toInt(120);
     if (name.isEmpty() || address.isEmpty() || longitude < -180 || longitude > 180
-        || latitude < -90 || latitude > 90 || count < 1 || count > 100)
+        || latitude < -90 || latitude > 90 || count < 1 || count > 100
+        || price < 1 || price > 10000)
         return ResponseMessage::error(request.requestId, ErrorCodes::InvalidSocketMessage, QStringLiteral("invalid station fields"));
     const QString now = nowText(); const QString stationNo = QStringLiteral("ST%1").arg(QDateTime::currentMSecsSinceEpoch());
     if (!m_database.transaction()) return databaseError(request, m_database.lastError().text());

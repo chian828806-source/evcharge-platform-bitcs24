@@ -5,6 +5,7 @@
 
 class QLabel;
 class QLineEdit;
+class QPushButton;
 class QTableWidget;
 class QVBoxLayout;
 
@@ -16,9 +17,11 @@ public:
     void setRevenueSummary(const QJsonObject &data);
     void setRevenueTrend(const QJsonObject &data);
     void setPileStatusSummary(const QJsonObject &data);
+    void setPredictionWarnings(const QJsonObject &data);
 signals:
     void refreshRequested();
     void trendRequested(int days);
+    void warningRequested(const QString &horizon);
 private:
     QLabel *m_today = nullptr;
     QLabel *m_month = nullptr;
@@ -26,6 +29,8 @@ private:
     QVBoxLayout *m_chartLayout = nullptr;
     QWidget *m_trendView = nullptr;
     QWidget *m_statusView = nullptr;
+    QTableWidget *m_trendDetails = nullptr;
+    QTableWidget *m_warnings = nullptr;
 };
 
 class PilePage : public QWidget
@@ -34,11 +39,13 @@ class PilePage : public QWidget
 public:
     explicit PilePage(QWidget *parent = nullptr);
     void setPiles(const QJsonObject &data);
+    void setActionBusy(bool busy);
 signals:
     void refreshRequested();
     void restartRequested(qint64 pileId);
 private:
     QTableWidget *m_table = nullptr;
+    bool m_actionBusy = false;
 };
 
 class StationPage : public QWidget
@@ -47,6 +54,8 @@ class StationPage : public QWidget
 public:
     explicit StationPage(QWidget *parent = nullptr);
     void setStations(const QJsonObject &data);
+    void setStationPiles(qint64 stationId, const QJsonObject &data);
+    void setCreateBusy(bool busy);
 signals:
     void refreshRequested();
     void stationPilesRequested(qint64 stationId);
@@ -54,6 +63,9 @@ signals:
 private:
     void openCreateDialog();
     QTableWidget *m_table = nullptr;
+    QTableWidget *m_detailTable = nullptr;
+    QLabel *m_detailTitle = nullptr;
+    QPushButton *m_create = nullptr;
 };
 
 class UserPage : public QWidget
@@ -63,6 +75,7 @@ public:
     explicit UserPage(QWidget *parent = nullptr);
     void setUsers(const QJsonObject &data);
     QString phoneKeyword() const;
+    void setActionBusy(bool busy);
 signals:
     void refreshRequested();
     void searchRequested(const QString &phoneKeyword);
@@ -70,4 +83,5 @@ signals:
 private:
     QLineEdit *m_search = nullptr;
     QTableWidget *m_table = nullptr;
+    bool m_actionBusy = false;
 };

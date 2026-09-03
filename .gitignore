@@ -29,3 +29,6 @@ __pycache__/
 /ml/reports/*.json
 !/ml/reports/data_quality.json
 !/ml/reports/training_report.json
+
+.DS_Store
+**/.DS_Store
