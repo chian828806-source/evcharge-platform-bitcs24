@@ -14,4 +14,6 @@ SOURCES += $$PWD/main.cpp \
            $$PWD/network/adminsocketclient.cpp
 SOURCES += $$PWD/ui/adminpages.cpp
 
+RESOURCES += $$PWD/resources/admin-resources.qrc
+
 include($$REPO_ROOT/shared/protocol/protocol.pri)
