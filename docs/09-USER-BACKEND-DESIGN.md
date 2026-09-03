@@ -206,6 +206,7 @@ registerAdminHandlers(dispatcher, adminDependencies);
 | --- | --- | --- | --- | --- | --- | --- |
 | U01 | 手机号登录/自动注册 | `USER_LOGIN` | UserHandler | UserService | UserRepository、SessionManager | `user` |
 | U02 | 地址转坐标 | `MAP_GEOCODE` | StationHandler | StationService | MapAdapter | 无 |
+| U06 | 驾车/步行路线规划 | `MAP_ROUTE_PLAN` | StationHandler | StationService | MapAdapter | 无 |
 | U02 | 附近站点 | `STATION_LIST_NEARBY` | StationHandler | StationService | StationRepository、PileRepository | `charging_station`, `charging_pile` |
 | U02 | 推荐站点 | `PREDICTION_RECOMMENDATION` | PredictionHandler | PredictionService | PredictionRepository、StationRepository | `prediction`, `charging_station` |
 | U03 | 站点和电桩详情 | `STATION_DETAIL_GET` | StationHandler | StationService | StationRepository、PileRepository | `charging_station`, `charging_pile` |
@@ -450,14 +451,30 @@ Service 必须强制使用 Session 用户 ID，不能查询其他用户的订单
 | 权限 | User |
 | 请求 payload 草案 | `district`, `address` |
 | 成功 data | `formattedAddress`, `longitude`, `latitude` |
-| 外部依赖 | 腾讯地图 Web API 或 V1 Mock Adapter |
+| 外部依赖 | 腾讯地图 Web API（`MapAdapter` 异步适配） |
 | 数据操作 | 无 |
 
 已确认：`MAP_GEOCODE` 由服务端调用腾讯地图，`QWebEngineView` 仅依据服务端
 返回的坐标或导航 URL 展示路线。地图 Key 必须来自配置或环境变量，不得提交到
 仓库；外部请求属于耗时操作，必须经异步 `MapAdapter`，不得阻塞 Socket 线程。
+当前实现从 `TENCENT_MAP_KEY` 或 `--tencent-map-key` 获取 Key；未配置 Key、超时或
+服务拒绝地址时统一返回 `5002`。路线规划已由 `MAP_ROUTE_PLAN` 提供，当前客户端以
+服务端返回的路线折线绘制预览。
 
-### 8.8 `STATION_LIST_NEARBY`
+### 8.8 `MAP_ROUTE_PLAN`
+
+| 项目 | 内容 |
+| --- | --- |
+| 权限 | User |
+| 请求 payload | `originLongitude`, `originLatitude`, `destinationLongitude`, `destinationLatitude`, `mode = DRIVING | WALKING` |
+| 成功 data | `mode`, `distanceMeters`, `durationMinutes`, `polyline [{ longitude, latitude }]` |
+| 外部依赖 | 腾讯 Direction API（驾车或步行） |
+| 数据操作 | 无 |
+
+路线请求经异步 `MapAdapter` 执行；服务端将第三方压缩折线解压后再发送给 Qt 用户端。
+用户端在 `QWebEngineView` 中绘制路线预览，地图 Key 仍只存在服务端。
+
+### 8.9 `STATION_LIST_NEARBY`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -471,7 +488,7 @@ Service 必须强制使用 Session 用户 ID，不能查询其他用户的订单
 统计 `AVAILABLE`。距离使用统一的 Haversine 或平面近似算法，单位 km，
 展示值保留两位小数。`DISABLED` 站点默认不向普通用户展示。
 
-### 8.9 `STATION_DETAIL_GET`
+### 8.10 `STATION_DETAIL_GET`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -484,7 +501,7 @@ Service 必须强制使用 Session 用户 ID，不能查询其他用户的订单
 `AVAILABLE` 状态在 UI 中允许点击“选择”，但服务端仍必须再次检查状态，
 不能依赖按钮禁用保证安全。
 
-### 8.10 `ORDER_ACTIVE_CHECK`
+### 8.11 `ORDER_ACTIVE_CHECK`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -497,7 +514,7 @@ V1 约定：U04 打开时请求一次；充电中每 1 秒轮询本消息；页�
 不再是 `CHARGING` 时停止轮询。服务端在响应中计算当前 `chargeSeconds`、
 `chargeMinutes`、`energyKwh` 和预估 `amountFen`，因此不新增未经登记的 TCP 推送消息。
 
-### 8.11 `ORDER_CREATE`
+### 8.12 `ORDER_CREATE`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -515,7 +532,7 @@ V1 约定：U04 打开时请求一次；充电中每 1 秒轮询本消息；页�
 5. 将电桩改为 `RESERVED` 并写入 `current_order_id`；
 6. 任一步失败全部回滚。
 
-### 8.12 `ORDER_CANCEL`
+### 8.13 `ORDER_CANCEL`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -528,7 +545,7 @@ V1 约定：U04 打开时请求一次；充电中每 1 秒轮询本消息；页�
 订单改为 `CANCELLED`、记录取消时间，并将匹配的电桩恢复为 `AVAILABLE`、
 清空 `current_order_id`。
 
-### 8.13 `ORDER_START`
+### 8.14 `ORDER_START`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -541,7 +558,7 @@ V1 约定：U04 打开时请求一次；充电中每 1 秒轮询本消息；页�
 `current_order_id` 与订单匹配。同一事务内写入 `start_at`，将订单和电桩
 都改为 `CHARGING`。
 
-### 8.14 `ORDER_STOP`
+### 8.15 `ORDER_STOP`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -563,7 +580,7 @@ amountFen = round(energyKwh *
 
 客户端可以展示服务端返回的金额，但不得用另一套公式形成最终账单。
 
-### 8.15 `ORDER_SETTLE`
+### 8.16 `ORDER_SETTLE`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -577,7 +594,7 @@ amountFen = round(energyKwh *
 写操作必须在同一个事务中完成。`COMPLETED` 订单重复结算直接返回已完成结果，
 不得再次扣款。冻结用户已有待支付订单时仍允许结算。
 
-### 8.16 `PREDICTION_LIST`
+### 8.17 `PREDICTION_LIST`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -589,7 +606,7 @@ amountFen = round(energyKwh *
 无预测结果时使用公共错误码 4501。V1 用户端若不展示独立预测详情，可暂不在
 第一阶段实现，但消息登记保持不变。
 
-### 8.17 `PREDICTION_RECOMMENDATION`
+### 8.18 `PREDICTION_RECOMMENDATION`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -784,7 +801,7 @@ V1 最低实现：
 
 - `STATION_LIST_NEARBY`；
 - `STATION_DETAIL_GET`；
-- `MAP_GEOCODE` 契约已确认；待配置腾讯地图 Key 与异步 `MapAdapter` 后实现真实调用。
+- `MAP_GEOCODE` 契约已确认并已实现异步 `MapAdapter`；部署时仍需配置腾讯地图 Key。
 
 ### 阶段 4：充电主闭环
 

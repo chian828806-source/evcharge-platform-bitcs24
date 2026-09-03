@@ -13,6 +13,7 @@
 #include <QFrame>
 #include <QGraphicsDropShadowEffect>
 #include <QHBoxLayout>
+#include <QJsonArray>
 #include <QLabel>
 #include <QList>
 #include <QLineEdit>
@@ -135,6 +136,13 @@ UserWindow::UserWindow(QWidget *parent)
             [this](const QString &requestId, const QString &) {
                 if (requestId == m_loginRequestId) {
                     m_loginRequestId.clear();
+                }
+                if (requestId == m_routePlanRequestId) {
+                    m_routePlanRequestId.clear();
+                    if (m_mapNavigationPage) {
+                        m_mapNavigationPage->setLoadError(
+                            QStringLiteral("路线规划超时，请检查网络后重试。"));
+                    }
                 }
                 showNotice(QStringLiteral("请求超时，请检查服务后重试"), true);
             });
@@ -561,10 +569,8 @@ QWidget *UserWindow::buildNavigationPage()
     connect(m_mapNavigationPage, &MapNavigationPage::backRequested, this,
             [this]() { showPage(m_navigationSource); });
     connect(m_mapNavigationPage, &MapNavigationPage::retryRequested, this,
-            [this](const MapRoute &, MapNavigationPage::TravelMode mode) {
-        showNotice(QStringLiteral("已请求%1路线；配置地图服务后将自动加载。")
-            .arg(mode == MapNavigationPage::TravelMode::Driving
-                 ? QStringLiteral("驾车") : QStringLiteral("步行")));
+            [this](const MapRoute &route, MapNavigationPage::TravelMode mode) {
+        requestRoutePlan(route, mode == MapNavigationPage::TravelMode::Driving);
     });
     return m_mapNavigationPage;
 }
@@ -615,6 +621,33 @@ void UserWindow::openNavigation(const QString &name, const QString &address,
 void UserWindow::showPage(Page page)
 {
     m_pages->setCurrentIndex(static_cast<int>(page));
+}
+
+void UserWindow::requestRoutePlan(const MapRoute &route, bool driving)
+{
+    if (!m_mapNavigationPage) {
+        return;
+    }
+    if (!m_socketClient->isConnected() || m_sessionId.isEmpty()
+        || m_sessionId == QStringLiteral("DEMO-SESSION")) {
+        m_mapNavigationPage->setLoadError(
+            QStringLiteral("请先连接服务端并完成登录，再获取真实路线。"));
+        return;
+    }
+    const QJsonObject payload{
+        {QStringLiteral("originLongitude"), route.originLongitude},
+        {QStringLiteral("originLatitude"), route.originLatitude},
+        {QStringLiteral("destinationLongitude"), route.destinationLongitude},
+        {QStringLiteral("destinationLatitude"), route.destinationLatitude},
+        {QStringLiteral("mode"), driving ? QStringLiteral("DRIVING") : QStringLiteral("WALKING")}
+    };
+    m_routePlanRequestId = m_socketClient->sendRequest(
+        MessageTypes::MapRoutePlan, m_sessionId, payload, {}, 10000);
+    if (m_routePlanRequestId.isEmpty()) {
+        m_mapNavigationPage->setLoadError(QStringLiteral("路线请求发送失败，请检查服务连接。"));
+        return;
+    }
+    m_mapNavigationPage->setLoadError(QStringLiteral("正在由服务端规划路线…"));
 }
 
 void UserWindow::attemptLogin()
@@ -752,6 +785,13 @@ void UserWindow::handleResponse(const QJsonObject &response)
         if (requestId == m_loginRequestId) {
             m_loginRequestId.clear();
         }
+        if (requestId == m_routePlanRequestId) {
+            m_routePlanRequestId.clear();
+            if (m_mapNavigationPage) {
+                m_mapNavigationPage->setLoadError(
+                    response.value(QStringLiteral("message")).toString());
+            }
+        }
         showNotice(response.value(QStringLiteral("message")).toString(), true);
         return;
     }
@@ -762,5 +802,24 @@ void UserWindow::handleResponse(const QJsonObject &response)
         m_loginRequestId.clear();
         showPage(Home);
         showNotice(QStringLiteral("登录成功"));
+        return;
+    }
+    if (requestId == m_routePlanRequestId && m_mapNavigationPage) {
+        m_routePlanRequestId.clear();
+        const QJsonArray points = data.value(QStringLiteral("polyline")).toArray();
+        MapRoutePlanPreview plan;
+        plan.distanceMeters = data.value(QStringLiteral("distanceMeters")).toInt();
+        plan.durationMinutes = data.value(QStringLiteral("durationMinutes")).toDouble();
+        for (const QJsonValue &value : points) {
+            const QJsonObject point = value.toObject();
+            const QJsonValue longitude = point.value(QStringLiteral("longitude"));
+            const QJsonValue latitude = point.value(QStringLiteral("latitude"));
+            if (!longitude.isDouble() || !latitude.isDouble()) {
+                m_mapNavigationPage->setLoadError(QStringLiteral("服务端返回的路线坐标格式错误。"));
+                return;
+            }
+            plan.polyline.append(QPointF(longitude.toDouble(), latitude.toDouble()));
+        }
+        m_mapNavigationPage->setRoutePlan(plan);
     }
 }

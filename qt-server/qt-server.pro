@@ -7,6 +7,9 @@ CONFIG -= app_bundle
 TEMPLATE = app
 TARGET = evcharge-qt-server
 
+# 源码含中文注释；Windows 下统一以 UTF-8 交给 MSVC，避免解析到非预期代码页。
+msvc: QMAKE_CXXFLAGS += /utf-8
+
 # REPO_ROOT 供公共协议和各模块 .pri 定位仓库源码。
 REPO_ROOT = $$clean_path($$PWD/..)
 INCLUDEPATH += $$REPO_ROOT/qt-server
@@ -18,6 +21,7 @@ include($$PWD/models/models.pri)
 include($$PWD/network/network.pri)
 include($$PWD/database/database.pri)
 include($$PWD/common/common.pri)
+include($$PWD/map/map.pri)
 include($$PWD/repositories/repositories.pri)
 include($$PWD/services/user/user-services.pri)
 include($$PWD/services/admin/admin-services.pri)

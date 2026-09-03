@@ -9,6 +9,7 @@ class MapNavigationPage;
 class QPushButton;
 class QStackedWidget;
 class SocketClient;
+struct MapRoute;
 
 class UserWindow final : public QMainWindow
 {
@@ -42,6 +43,7 @@ private:
     QPushButton *m_settleButton = nullptr;
     QString m_sessionId;
     QString m_loginRequestId;
+    QString m_routePlanRequestId;
     QString m_orderStatus = QStringLiteral("CREATED");
     int m_balanceFenInFen = 12860;
     Page m_navigationSource = Home;
@@ -67,6 +69,7 @@ private:
     void showPage(Page page);
     void openNavigation(const QString &name, const QString &address,
                         double longitude, double latitude, Page source);
+    void requestRoutePlan(const MapRoute &route, bool driving);
     void attemptLogin();
     void setConnected(bool connected);
     void setOrderStatus(const QString &status);

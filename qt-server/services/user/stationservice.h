@@ -5,6 +5,7 @@
 #pragma once
 
 #include "common/serviceresult.h"
+#include "map/mapadapter.h"
 #include "models/stationinfo.h"
 
 #include <QList>
@@ -20,13 +21,19 @@ class StationService
 public:
     StationService(DatabaseManager *databaseManager,
                    StationRepository *stationRepository,
-                   PredictionRepository *predictionRepository = nullptr);
+                   PredictionRepository *predictionRepository = nullptr,
+                   MapAdapter *mapAdapter = nullptr);
 
     ServiceResult<QList<StationInfo>> listNearby(double longitude, double latitude,
                                                  const QString &district, int limit);
     ServiceResult<StationDetail> detail(qint64 stationId);
     ServiceResult<QList<StationInfo>> recommendations(double longitude, double latitude,
                                                       int limit, const QString &horizon);
+    void geocode(const QString &district, const QString &address,
+                 MapAdapter::Callback callback);
+    void planRoute(double originLongitude, double originLatitude,
+                   double destinationLongitude, double destinationLatitude,
+                   const QString &mode, MapAdapter::RoutePlanCallback callback);
 
 private:
     bool openDatabase(QSqlDatabase *database, QString *errorMessage) const;
@@ -37,4 +44,5 @@ private:
     DatabaseManager *m_databaseManager = nullptr;
     StationRepository *m_stationRepository = nullptr;
     PredictionRepository *m_predictionRepository = nullptr;
+    MapAdapter *m_mapAdapter = nullptr;
 };

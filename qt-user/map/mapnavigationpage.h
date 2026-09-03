@@ -6,6 +6,8 @@
 
 #include <QUrl>
 #include <QWidget>
+#include <QPointF>
+#include <QVector>
 
 class QButtonGroup;
 class QLabel;
@@ -21,6 +23,14 @@ struct MapRoute
     QString destinationAddress;
     double destinationLongitude = 0.0;
     double destinationLatitude = 0.0;
+};
+
+// 仅用于页面展示；路线由服务端解压第三方折线后再发送给客户端。
+struct MapRoutePlanPreview
+{
+    int distanceMeters = 0;
+    double durationMinutes = 0.0;
+    QVector<QPointF> polyline; // x=longitude, y=latitude
 };
 
 class MapNavigationPage final : public QWidget
@@ -40,6 +50,7 @@ public:
     bool setRoute(const MapRoute &route);
     // 由后续地图适配层提供已经验证的腾讯路线 URL；页面只负责加载和展示。
     void setNavigationUrl(const QUrl &url);
+    void setRoutePlan(const MapRoutePlanPreview &plan);
     void setLoadError(const QString &message);
     MapRoute route() const;
     TravelMode travelMode() const;

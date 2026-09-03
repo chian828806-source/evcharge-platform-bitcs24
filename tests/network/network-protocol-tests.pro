@@ -25,6 +25,7 @@ SOURCES += \
     $$REPO_ROOT/qt-server/handlers/user/orderhandler.cpp \
     $$REPO_ROOT/qt-server/handlers/user/stationhandler.cpp \
     $$REPO_ROOT/qt-server/handlers/user/userhandler.cpp \
+    $$REPO_ROOT/qt-server/map/mapadapter.cpp \
     $$REPO_ROOT/qt-server/network/clientsession.cpp \
     $$REPO_ROOT/qt-server/network/messagedispatcher.cpp \
     $$REPO_ROOT/qt-server/network/sessionmanager.cpp \
@@ -48,6 +49,7 @@ HEADERS += \
     $$REPO_ROOT/qt-server/handlers/user/orderhandler.h \
     $$REPO_ROOT/qt-server/handlers/user/stationhandler.h \
     $$REPO_ROOT/qt-server/handlers/user/userhandler.h \
+    $$REPO_ROOT/qt-server/map/mapadapter.h \
     $$REPO_ROOT/qt-server/network/clientsession.h \
     $$REPO_ROOT/qt-server/network/messagedispatcher.h \
     $$REPO_ROOT/qt-server/network/sessionmanager.h \

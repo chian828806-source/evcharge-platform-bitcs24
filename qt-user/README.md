@@ -45,11 +45,11 @@ Windows 使用对应编译套件的 `mingw32-make` 或 `nmake`。
 ## 后端联调状态
 
 冻结登录、头像读取、充电秒数和站点综合单价的 Socket 契约已在
-`docs/03-API.md` 冻结。U06 的路线展示页已接入，但真实路线仍依赖服务端
-`MapAdapter` 调用腾讯地图并返回 HTTPS 导航 URL。
+`docs/03-API.md` 冻结。U06 的路线展示页已接入：页面发送 `MAP_ROUTE_PLAN`，服务端
+`MapAdapter` 调用腾讯路线规划后返回距离、时长和解压后的路线折线。
 
-地图 Key 仅由服务端配置；U06 页面不保存 Key。服务端返回 URL 后，页面通过
-`setNavigationUrl()` 加载真实腾讯地图路线。
+地图 Key 仅由服务端配置；U06 页面不保存 Key。页面通过 `setRoutePlan()` 在
+`QWebEngineView` 中展示服务端返回的路线预览。
 
 ## 页面调用原则
 
@@ -60,6 +60,6 @@ Windows 使用对应编译套件的 `mingw32-make` 或 `nmake`。
 ## 地图页接入
 
 首页 U02 或站点详情 U03 创建 `MapRoute` 并调用 `MapNavigationPage::setRoute()`；
-页面通过 `retryRequested(route, mode)` 向上层请求地图适配结果，再调用
-`setNavigationUrl()` 加载服务端确认的 HTTPS 路线地址。地图 Key 只放在服务端配置，
-不得放入 Qt 用户端源码或资源文件。
+页面通过 `retryRequested(route, mode)` 向上层发送 `MAP_ROUTE_PLAN`，再调用
+`setRoutePlan()` 显示服务端确认的路线数据。地图 Key 只放在服务端配置，不得放入
+Qt 用户端源码或资源文件。

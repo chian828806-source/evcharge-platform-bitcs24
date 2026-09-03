@@ -11,6 +11,7 @@
 #include "qt-server/handlers/user/registerstationhandlers.h"
 #include "qt-server/handlers/user/stationhandler.h"
 #include "qt-server/handlers/user/userhandler.h"
+#include "qt-server/map/mapadapter.h"
 #include "qt-server/repositories/stationrepository.h"
 #include "qt-server/repositories/orderrepository.h"
 #include "qt-server/repositories/predictionrepository.h"
@@ -156,13 +157,43 @@ void testSessionAndDispatcherBoundaries()
     request.sessionId = sessions.createSession(1, SessionRole::Admin);
     check(dispatcher.dispatch(request).code == ErrorCodes::InvalidSession,
           QStringLiteral("role mismatch is rejected"));
+
+    // 地图等外部服务会在事件循环稍后完成；Dispatcher 必须保持同一套鉴权和响应契约。
+    dispatcher.registerAsyncHandler(
+        MessageTypes::MapGeocode, MessageDispatcher::Access::User,
+        [](const RequestMessage &asyncRequest, const SessionContext &,
+           MessageDispatcher::ResponseCallback callback) {
+            QTimer::singleShot(0, [asyncRequest, callback]() {
+                callback(ResponseMessage::success(asyncRequest.requestId, {
+                    {QStringLiteral("longitude"), 116.397},
+                    {QStringLiteral("latitude"), 39.908}
+                }));
+            });
+        });
+    request.requestId = QStringLiteral("REQ-ASYNC-003");
+    request.type = MessageTypes::MapGeocode;
+    request.sessionId = sessions.createSession(8, SessionRole::User);
+    check(dispatcher.dispatch(request).code == ErrorCodes::InternalError,
+          QStringLiteral("sync dispatch rejects async-only handler safely"));
+
+    bool asyncResponseReceived = false;
+    QEventLoop loop;
+    QTimer::singleShot(1000, &loop, &QEventLoop::quit);
+    dispatcher.dispatchAsync(request, [&asyncResponseReceived, &loop](const ResponseMessage &response) {
+        asyncResponseReceived = response.code == ErrorCodes::Success
+            && response.data.value(QStringLiteral("longitude")).toDouble() == 116.397;
+        loop.quit();
+    });
+    loop.exec();
+    check(asyncResponseReceived,
+          QStringLiteral("async handler returns a response after the event loop resumes"));
 }
 
 void testKnownMessageRegistry()
 {
     // 数量变化意味着公共文档与代码可能发生漏登或私自扩展。
-    check(MessageTypes::tcpTypes().size() == 30,
-          QStringLiteral("all 30 documented TCP message types are registered"));
+    check(MessageTypes::tcpTypes().size() == 31,
+          QStringLiteral("all 31 documented TCP message types are registered"));
     check(MessageTypes::dashboardTopics().size() == 4,
           QStringLiteral("all four dashboard topics are registered"));
 }
@@ -474,7 +505,9 @@ void testStationListAndDetailFlow()
     SessionManager sessions;
     MessageDispatcher dispatcher(&sessions);
     StationRepository stationRepository;
-    StationService stationService(&databaseManager, &stationRepository);
+    MapAdapter unconfiguredMapAdapter;
+    StationService stationService(&databaseManager, &stationRepository, nullptr,
+                                  &unconfiguredMapAdapter);
     StationHandler stationHandler(&stationService);
     registerStationHandlers(&dispatcher, &stationHandler);
     const QString userSession = sessions.createSession(7, SessionRole::User);
@@ -521,6 +554,40 @@ void testStationListAndDetailFlow()
     detailRequest.payload.insert(QStringLiteral("stationId"), 3);
     check(dispatcher.dispatch(detailRequest).code == ErrorCodes::StationNotFound,
           QStringLiteral("disabled station is hidden from normal users"));
+
+    // 未注入真实 Key 时也必须经完整 Handler 链路迅速失败，不能占住 Socket 读取线程。
+    RequestMessage geocodeRequest{
+        QStringLiteral("REQ-MAP-GEOCODE"),
+        MessageTypes::MapGeocode,
+        userSession,
+        {{QStringLiteral("district"), QStringLiteral("东城区")},
+         {QStringLiteral("address"), QStringLiteral("北京市东城区")}}
+    };
+    bool geocodeFailedAsExpected = false;
+    dispatcher.dispatchAsync(geocodeRequest,
+        [&geocodeFailedAsExpected](const ResponseMessage &response) {
+            geocodeFailedAsExpected = response.code == ErrorCodes::InternalError;
+        });
+    check(geocodeFailedAsExpected,
+          QStringLiteral("MAP_GEOCODE returns a clear error when no map key is configured"));
+
+    RequestMessage routeRequest{
+        QStringLiteral("REQ-MAP-ROUTE"),
+        MessageTypes::MapRoutePlan,
+        userSession,
+        {{QStringLiteral("originLongitude"), 116.397},
+         {QStringLiteral("originLatitude"), 39.908},
+         {QStringLiteral("destinationLongitude"), 116.407},
+         {QStringLiteral("destinationLatitude"), 39.918},
+         {QStringLiteral("mode"), QStringLiteral("DRIVING")}}
+    };
+    bool routeFailedAsExpected = false;
+    dispatcher.dispatchAsync(routeRequest,
+        [&routeFailedAsExpected](const ResponseMessage &response) {
+            routeFailedAsExpected = response.code == ErrorCodes::InternalError;
+        });
+    check(routeFailedAsExpected,
+          QStringLiteral("MAP_ROUTE_PLAN returns a clear error when no map key is configured"));
 }
 
 void testOrderCreateAndActiveCheckFlow()

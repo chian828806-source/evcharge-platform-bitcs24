@@ -13,13 +13,45 @@
 #include <QtMath>
 
 #include <algorithm>
+#include <utility>
 
 StationService::StationService(DatabaseManager *databaseManager,
                                StationRepository *stationRepository,
-                               PredictionRepository *predictionRepository)
+                               PredictionRepository *predictionRepository,
+                               MapAdapter *mapAdapter)
     : m_databaseManager(databaseManager), m_stationRepository(stationRepository),
-      m_predictionRepository(predictionRepository)
+      m_predictionRepository(predictionRepository), m_mapAdapter(mapAdapter)
 {
+}
+
+void StationService::geocode(const QString &district, const QString &address,
+                             MapAdapter::Callback callback)
+{
+    if (address.trimmed().isEmpty()) {
+        callback(ServiceResult<MapGeocodeResult>::failure(
+            ErrorCodes::InvalidSocketMessage, QStringLiteral("address is required")));
+        return;
+    }
+    if (!m_mapAdapter) {
+        callback(ServiceResult<MapGeocodeResult>::failure(
+            ErrorCodes::InternalError, QStringLiteral("map module is unavailable")));
+        return;
+    }
+    m_mapAdapter->geocode(district, address, std::move(callback));
+}
+
+void StationService::planRoute(double originLongitude, double originLatitude,
+                               double destinationLongitude, double destinationLatitude,
+                               const QString &mode, MapAdapter::RoutePlanCallback callback)
+{
+    if (!m_mapAdapter) {
+        callback(ServiceResult<MapRoutePlanResult>::failure(
+            ErrorCodes::InternalError, QStringLiteral("map module is unavailable")));
+        return;
+    }
+    m_mapAdapter->planRoute(originLongitude, originLatitude,
+                            destinationLongitude, destinationLatitude,
+                            mode, std::move(callback));
 }
 
 ServiceResult<QList<StationInfo>> StationService::listNearby(

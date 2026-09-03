@@ -17,34 +17,69 @@ void MessageDispatcher::registerHandler(const QString &messageType,
                                         Access access, Handler handler)
 {
     // 同一type再次注册时覆盖旧路由，便于测试或模块替换。
-    m_routes.insert(messageType, {access, std::move(handler)});
+    m_routes.insert(messageType, {access, std::move(handler), {}});
+}
+
+void MessageDispatcher::registerAsyncHandler(const QString &messageType,
+                                             Access access, AsyncHandler handler)
+{
+    // 同步和异步实现互斥，避免同一消息被两个处理器重复响应。
+    m_routes.insert(messageType, {access, {}, std::move(handler)});
 }
 
 ResponseMessage MessageDispatcher::dispatch(const RequestMessage &request) const
 {
-    // 第一层只允许公共文档登记的30种TCP消息进入系统。
-    if (!MessageTypes::tcpTypes().contains(request.type)) {
-        return ResponseMessage::error(
-            request.requestId, ErrorCodes::InvalidSocketMessage,
-            QStringLiteral("unknown message type"));
+    Route route;
+    SessionContext context;
+    const ResponseMessage error = preflight(request, &route, &context);
+    if (error.code != ErrorCodes::Success) {
+        return error;
     }
-
-    // 消息合法但业务模块尚未接入时，明确返回内部处理未就绪。
-    const auto route = m_routes.constFind(request.type);
-    if (route == m_routes.cend() || !route->handler) {
+    if (!route.handler) {
         return ResponseMessage::error(
             request.requestId, ErrorCodes::InternalError,
-            QStringLiteral("business handler is not registered"));
+            QStringLiteral("async handler requires an active client session"));
     }
+    return route.handler(request, context);
+}
 
-    // 鉴权成功后context中的principalId可以被Handler信任。
+void MessageDispatcher::dispatchAsync(const RequestMessage &request,
+                                      ResponseCallback callback) const
+{
+    Route route;
     SessionContext context;
-    if (!authorize(request, route->access, &context)) {
-        return ResponseMessage::error(
-            request.requestId, ErrorCodes::InvalidSession,
-            QStringLiteral("invalid session or role"));
+    const ResponseMessage error = preflight(request, &route, &context);
+    if (error.code != ErrorCodes::Success) {
+        callback(error);
+        return;
     }
-    return route->handler(request, context);
+    if (route.asyncHandler) {
+        route.asyncHandler(request, context, std::move(callback));
+        return;
+    }
+    callback(route.handler(request, context));
+}
+
+ResponseMessage MessageDispatcher::preflight(const RequestMessage &request, Route *route,
+                                             SessionContext *context) const
+{
+    // 第一层只允许公共文档登记的31种TCP消息进入系统。
+    if (!MessageTypes::tcpTypes().contains(request.type)) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::InvalidSocketMessage,
+                                      QStringLiteral("unknown message type"));
+    }
+    const auto foundRoute = m_routes.constFind(request.type);
+    if (foundRoute == m_routes.cend()
+        || (!foundRoute->handler && !foundRoute->asyncHandler)) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::InternalError,
+                                      QStringLiteral("business handler is not registered"));
+    }
+    if (!authorize(request, foundRoute->access, context)) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::InvalidSession,
+                                      QStringLiteral("invalid session or role"));
+    }
+    *route = *foundRoute;
+    return ResponseMessage::success(request.requestId, {});
 }
 
 bool MessageDispatcher::authorize(const RequestMessage &request, Access access,

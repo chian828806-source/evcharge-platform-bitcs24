@@ -6,6 +6,7 @@
 #include "orderhandler.h"
 #include "stationhandler.h"
 #include "userhandler.h"
+#include "map/mapadapter.h"
 #include "repositories/orderrepository.h"
 #include "repositories/predictionrepository.h"
 #include "repositories/stationrepository.h"
@@ -18,10 +19,12 @@ class UserBackendRegistry::Impl
 {
 public:
     Impl(DatabaseManager *databaseManager, SessionManager *sessions,
-         MessageDispatcher *dispatcher, const QString &avatarDirectory)
-        : userService(databaseManager, &userRepository, avatarDirectory),
+         MessageDispatcher *dispatcher, const QString &avatarDirectory,
+         const QString &mapApiKey)
+        : mapAdapter(mapApiKey),
+          userService(databaseManager, &userRepository, avatarDirectory),
           userHandler(&userService, sessions),
-          stationService(databaseManager, &stationRepository, &predictionRepository),
+          stationService(databaseManager, &stationRepository, &predictionRepository, &mapAdapter),
           stationHandler(&stationService),
           orderService(databaseManager, &userRepository, &orderRepository), orderHandler(&orderService)
     {
@@ -33,6 +36,7 @@ public:
     StationRepository stationRepository;
     OrderRepository orderRepository;
     PredictionRepository predictionRepository;
+    MapAdapter mapAdapter;
     UserService userService;
     UserHandler userHandler;
     StationService stationService;
@@ -43,7 +47,8 @@ public:
 
 UserBackendRegistry::UserBackendRegistry(DatabaseManager *databaseManager, SessionManager *sessions,
                                          MessageDispatcher *dispatcher,
-                                         const QString &avatarDirectory)
-    : m_impl(new Impl(databaseManager, sessions, dispatcher, avatarDirectory))
+                                         const QString &avatarDirectory,
+                                         const QString &mapApiKey)
+    : m_impl(new Impl(databaseManager, sessions, dispatcher, avatarDirectory, mapApiKey))
 {
 }

@@ -10,6 +10,7 @@
 
 #include <QJsonDocument>
 #include <QJsonParseError>
+#include <QPointer>
 #include <QTcpSocket>
 
 ClientSession::ClientSession(QTcpSocket *socket,
@@ -71,12 +72,22 @@ void ClientSession::processFrame(const QByteArray &frame)
     }
 
     // 只有公共解析成功的请求才进入权限与业务分发。
-    const ResponseMessage response = m_dispatcher
-        ? m_dispatcher->dispatch(request)
-        : ResponseMessage::error(request.requestId, ErrorCodes::InternalError,
-                                 QStringLiteral("dispatcher is unavailable"));
-    // 响应重新编码为一行JSON，客户端可用同一Codec处理。
-    m_socket->write(JsonLineCodec::encode(response.toJson()));
+    if (!m_dispatcher) {
+        const ResponseMessage response = ResponseMessage::error(
+            request.requestId, ErrorCodes::InternalError,
+            QStringLiteral("dispatcher is unavailable"));
+        m_socket->write(JsonLineCodec::encode(response.toJson()));
+        return;
+    }
+    // 异步 Handler 完成时会回到这个会话；若连接已断开，QPointer 会阻止写入悬空 Socket。
+    const QPointer<ClientSession> session(this);
+    m_dispatcher->dispatchAsync(request, [session](const ResponseMessage &response) {
+        if (!session || !session->m_socket
+            || session->m_socket->state() == QAbstractSocket::UnconnectedState) {
+            return;
+        }
+        session->m_socket->write(JsonLineCodec::encode(response.toJson()));
+    });
 }
 
 void ClientSession::sendProtocolError(const QString &requestId,

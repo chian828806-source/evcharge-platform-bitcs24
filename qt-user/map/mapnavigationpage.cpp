@@ -6,6 +6,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QStringList>
 #include <QVBoxLayout>
 #include <QWebEngineView>
 
@@ -100,6 +101,65 @@ void MapNavigationPage::setNavigationUrl(const QUrl &url)
     m_retryButton->setVisible(false);
     m_loadingNavigation = true;
     m_mapView->load(url);
+}
+
+void MapNavigationPage::setRoutePlan(const MapRoutePlanPreview &plan)
+{
+    if (plan.distanceMeters < 0 || plan.durationMinutes < 0.0 || plan.polyline.size() < 2) {
+        setLoadError(QStringLiteral("地图服务返回的路线数据不完整。"));
+        return;
+    }
+
+    double minLongitude = plan.polyline.first().x();
+    double maxLongitude = minLongitude;
+    double minLatitude = plan.polyline.first().y();
+    double maxLatitude = minLatitude;
+    for (const QPointF &point : plan.polyline) {
+        minLongitude = qMin(minLongitude, point.x());
+        maxLongitude = qMax(maxLongitude, point.x());
+        minLatitude = qMin(minLatitude, point.y());
+        maxLatitude = qMax(maxLatitude, point.y());
+    }
+    const double longitudeRange = qMax(maxLongitude - minLongitude, 0.000001);
+    const double latitudeRange = qMax(maxLatitude - minLatitude, 0.000001);
+    QStringList svgPoints;
+    for (const QPointF &point : plan.polyline) {
+        const double x = 48.0 + (point.x() - minLongitude) / longitudeRange * 704.0;
+        const double y = 372.0 - (point.y() - minLatitude) / latitudeRange * 324.0;
+        svgPoints.append(QStringLiteral("%1,%2").arg(x, 0, 'f', 1).arg(y, 0, 'f', 1));
+    }
+    const QString firstPoint = svgPoints.first();
+    const QString lastPoint = svgPoints.last();
+    const QString mode = modeName(m_travelMode);
+    const QString html = QStringLiteral(
+        "<html><body style='margin:0;padding:18px;background:#f7fafc;"
+        "font-family:Microsoft YaHei,sans-serif;color:#102a43;'>"
+        "<h2 style='margin:0 0 8px;'>腾讯路线规划结果</h2>"
+        "<p style='margin:0 0 14px;color:#486581;'>%1 · 约 %2 公里 · 约 %3 分钟</p>"
+        "<svg viewBox='0 0 800 420' style='width:100%;height:auto;background:#e7f2ff;"
+        "border-radius:14px;'>"
+        "<path d='M 40 42 H 760 M 40 126 H 760 M 40 210 H 760 M 40 294 H 760 M 40 378 H 760'"
+        " stroke='#c9dff4' stroke-width='2'/>"
+        "<polyline points='%4' fill='none' stroke='#1677ff' stroke-width='8'"
+        " stroke-linecap='round' stroke-linejoin='round'/>"
+        "<circle cx='%5' cy='%6' r='12' fill='#23a55a' stroke='white' stroke-width='5'/>"
+        "<circle cx='%7' cy='%8' r='12' fill='#e5484d' stroke='white' stroke-width='5'/>"
+        "</svg><p style='color:#627d98;'>路线由服务端调用腾讯地图规划；此页面只展示路线，"
+        "不会保存 WebService Key。</p></body></html>")
+        .arg(mode)
+        .arg(plan.distanceMeters / 1000.0, 0, 'f', 1)
+        .arg(plan.durationMinutes, 0, 'f', 0)
+        .arg(svgPoints.join(QLatin1Char(' ')))
+        .arg(firstPoint.section(QLatin1Char(','), 0, 0))
+        .arg(firstPoint.section(QLatin1Char(','), 1, 1))
+        .arg(lastPoint.section(QLatin1Char(','), 0, 0))
+        .arg(lastPoint.section(QLatin1Char(','), 1, 1));
+
+    m_loadingNavigation = false;
+    m_mapView->setHtml(html);
+    m_statusLabel->setText(QStringLiteral("已获取%1路线：%2 米，约 %3 分钟。")
+        .arg(mode).arg(plan.distanceMeters).arg(plan.durationMinutes, 0, 'f', 0));
+    m_retryButton->setVisible(false);
 }
 
 void MapNavigationPage::setLoadError(const QString &message)

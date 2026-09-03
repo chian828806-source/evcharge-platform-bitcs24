@@ -92,6 +92,7 @@ USER_ORDER_LIST
 STATION_LIST_NEARBY
 STATION_DETAIL_GET
 MAP_GEOCODE
+MAP_ROUTE_PLAN
 ```
 
 充电订单：
@@ -260,10 +261,10 @@ Response:
 | `USER_ORDER_LIST` | 可选 `page: integer`（默认 `1`）、`pageSize: integer`（默认 `20`，最大 `50`）、`status: string`。`status` 只允许 `CREATED`、`CHARGING`、`PENDING_PAYMENT`、`COMPLETED`、`CANCELLED`。 | `items`、`page`、`pageSize`、`total`。`items` 按 `createdAt DESC, orderId DESC` 排序，每项为订单对象。 | `4003` Session 无效，`4401` 分页或状态筛选非法，`5001` 查询失败。 |
 | `PREDICTION_RECOMMENDATION` | `longitude: number`、`latitude: number`；可选 `limit: integer`（默认 `5`，范围 `1` 至 `20`）、`horizon: string`（默认 `1h`，可选 `1h`、`6h`、`24h`）。 | `stations`。每项为站点对象，并额外含 `recommended: true`、`predictedLoad`、`predictedAvailablePileCount`、`recommendationReason`。结果按预测负荷升序、距离升序、预测空闲桩数降序排列。无合格推荐时返回空数组。 | `4003` Session 无效，`4401` 坐标、数量或预测窗口非法，`5001` 站点或预测数据查询失败，`5002` 推荐模块未装配。 |
 
-以上为 16 个已实现用户端接口。`PREDICTION_LIST` 虽已在消息类型列表中登记，
-但当前没有对应 Handler；它不是 UI V2 的必需页面能力。`MAP_GEOCODE` 的请求/
-响应契约已确认，见下一节；真实腾讯地图调用待配置 Key 并以异步 Adapter 实现，
-不得阻塞 Socket 读取线程。
+以上为 18 个已实现用户端接口。`PREDICTION_LIST` 虽已在消息类型列表中登记，
+但当前没有对应 Handler；它不是 UI V2 的必需页面能力。`MAP_GEOCODE` 已注册为
+异步 Handler：未配置地图 Key、网络超时或地图服务拒绝地址时返回 `5002`，不会阻塞
+Socket 读取线程。
 
 ### 12.1.1 对象字段约定
 
@@ -279,9 +280,23 @@ Response:
 `MAP_GEOCODE` 由服务端调用腾讯地图地理编码能力，Qt 用户端不直接持有腾讯地图
 Key，也不自行把地址解析为坐标。请求为 `district: string`、`address: string`；成功
 响应为 `formattedAddress: string`、`longitude: number`、`latitude: number`。服务端用
-环境变量或未入库配置读取 Key，并通过异步 `MapAdapter` 完成网络请求；用户端
-`QWebEngineView` 仅使用服务端返回的坐标或导航 URL 展示路线。真实 Adapter 尚待
-Key 配置，不能以同步网络调用占用 Socket 读取回调。
+环境变量 `TENCENT_MAP_KEY`（推荐）或服务端启动参数 `--tencent-map-key` 读取 Key，
+并通过异步 `MapAdapter` 完成网络请求；用户端 `QWebEngineView` 仅使用服务端返回的
+坐标或导航 URL 展示路线。Key 不写入仓库、不记录到日志；不能以同步网络调用占用
+Socket 读取回调。
+
+### 12.1.3 `MAP_ROUTE_PLAN` 契约
+
+`MAP_ROUTE_PLAN` 由已登录用户发送。请求 payload 为
+`originLongitude: number`、`originLatitude: number`、`destinationLongitude: number`、
+`destinationLatitude: number` 与 `mode: "DRIVING" | "WALKING"`。服务端使用同一
+`MapAdapter` 调用腾讯 Direction API；坐标请求腾讯接口时遵守 `latitude,longitude`
+顺序，但对 Qt 客户端仍统一返回 `longitude`、`latitude` 字段。
+
+成功 data 包含 `mode`、`distanceMeters`、`durationMinutes` 与
+`polyline: [{ longitude, latitude }]`。`polyline` 已由服务端解压，客户端不接触腾讯的
+压缩路线格式，也不接触地图 Key。坐标或模式非法返回 `4401`；未配置 Key、超时、
+网络失败或无可用路线返回 `5002`。
 
 ## 12.2 管理端 API 字段
 

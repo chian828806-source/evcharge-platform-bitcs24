@@ -19,6 +19,10 @@ public:
                               const SessionContext &context);
     ResponseMessage recommendation(const RequestMessage &request,
                                    const SessionContext &context);
+    void geocode(const RequestMessage &request, const SessionContext &context,
+                 MessageDispatcher::ResponseCallback callback);
+    void routePlan(const RequestMessage &request, const SessionContext &context,
+                   MessageDispatcher::ResponseCallback callback);
 
 private:
     StationService *m_stationService = nullptr;
