@@ -32,6 +32,7 @@ SOURCES += \
     $$REPO_ROOT/qt-server/repositories/userrepository.cpp \
     $$REPO_ROOT/qt-server/repositories/stationrepository.cpp \
     $$REPO_ROOT/qt-server/repositories/orderrepository.cpp \
+    $$REPO_ROOT/qt-server/repositories/predictionrepository.cpp \
     $$REPO_ROOT/qt-server/services/user/orderservice.cpp \
     $$REPO_ROOT/qt-server/services/user/stationservice.cpp \
     $$REPO_ROOT/qt-server/services/user/userservice.cpp
@@ -54,7 +55,10 @@ HEADERS += \
     $$REPO_ROOT/qt-server/models/userprofile.h \
     $$REPO_ROOT/qt-server/models/stationinfo.h \
     $$REPO_ROOT/qt-server/models/chargingorder.h \
+    $$REPO_ROOT/qt-server/models/predictioninfo.h \
+    $$REPO_ROOT/qt-server/models/rechargeinfo.h \
     $$REPO_ROOT/qt-server/repositories/orderrepository.h \
+    $$REPO_ROOT/qt-server/repositories/predictionrepository.h \
     $$REPO_ROOT/qt-server/repositories/stationrepository.h \
     $$REPO_ROOT/qt-server/repositories/userrepository.h \
     $$REPO_ROOT/qt-server/services/user/stationservice.h \

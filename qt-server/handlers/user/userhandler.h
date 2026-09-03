@@ -6,6 +6,8 @@
 
 #include "network/messagedispatcher.h"
 
+#include <QHash>
+
 class SessionManager;
 class UserService;
 
@@ -20,8 +22,16 @@ public:
                                const SessionContext &context);
     ResponseMessage profileUpdate(const RequestMessage &request,
                                   const SessionContext &context);
+    ResponseMessage avatarUpload(const RequestMessage &request,
+                                 const SessionContext &context);
+    ResponseMessage avatarGet(const RequestMessage &request,
+                              const SessionContext &context);
+    ResponseMessage recharge(const RequestMessage &request,
+                             const SessionContext &context);
 
 private:
     UserService *m_userService = nullptr;
     SessionManager *m_sessionManager = nullptr;
+    // V1以进程内缓存保证同一用户重复提交同一requestId时不会重复充值。
+    QHash<QString, ResponseMessage> m_rechargeResponses;
 };

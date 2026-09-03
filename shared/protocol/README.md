@@ -7,7 +7,7 @@
 | 文件 | 功能 |
 | --- | --- |
 | errorcodes.h | 集中定义文档中的错误码，避免代码中出现无含义数字 |
-| messagetypes.h/.cpp | 集中定义29种TCP消息、WebSocket消息和4个大屏主题 |
+| messagetypes.h/.cpp | 集中定义30种TCP消息、WebSocket消息和4个大屏主题 |
 | protocolmessage.h/.cpp | RequestMessage与ResponseMessage的JSON转换和基础校验 |
 | jsonlinecodec.h/.cpp | 处理TCP半包、粘包、换行分帧和紧凑JSON编码 |
 | protocol.pri | 供多个qmake工程复用本目录源码 |

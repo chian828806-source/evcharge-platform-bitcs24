@@ -7,6 +7,7 @@
 #include "stationhandler.h"
 #include "userhandler.h"
 #include "repositories/orderrepository.h"
+#include "repositories/predictionrepository.h"
 #include "repositories/stationrepository.h"
 #include "repositories/userrepository.h"
 #include "services/user/orderservice.h"
@@ -17,9 +18,11 @@ class UserBackendRegistry::Impl
 {
 public:
     Impl(DatabaseManager *databaseManager, SessionManager *sessions,
-         MessageDispatcher *dispatcher)
-        : userService(databaseManager, &userRepository), userHandler(&userService, sessions),
-          stationService(databaseManager, &stationRepository), stationHandler(&stationService),
+         MessageDispatcher *dispatcher, const QString &avatarDirectory)
+        : userService(databaseManager, &userRepository, avatarDirectory),
+          userHandler(&userService, sessions),
+          stationService(databaseManager, &stationRepository, &predictionRepository),
+          stationHandler(&stationService),
           orderService(databaseManager, &userRepository, &orderRepository), orderHandler(&orderService)
     {
         registerUserHandlers(dispatcher, &userHandler);
@@ -29,6 +32,7 @@ public:
     UserRepository userRepository;
     StationRepository stationRepository;
     OrderRepository orderRepository;
+    PredictionRepository predictionRepository;
     UserService userService;
     UserHandler userHandler;
     StationService stationService;
@@ -38,7 +42,8 @@ public:
 };
 
 UserBackendRegistry::UserBackendRegistry(DatabaseManager *databaseManager, SessionManager *sessions,
-                                         MessageDispatcher *dispatcher)
-    : m_impl(new Impl(databaseManager, sessions, dispatcher))
+                                         MessageDispatcher *dispatcher,
+                                         const QString &avatarDirectory)
+    : m_impl(new Impl(databaseManager, sessions, dispatcher, avatarDirectory))
 {
 }

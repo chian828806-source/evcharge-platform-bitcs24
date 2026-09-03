@@ -16,6 +16,11 @@ void registerOrderHandlers(MessageDispatcher *dispatcher, OrderHandler *orderHan
             return orderHandler->activeCheck(request, context);
         });
     dispatcher->registerHandler(
+        MessageTypes::UserOrderList, MessageDispatcher::Access::User,
+        [orderHandler](const RequestMessage &request, const SessionContext &context) {
+            return orderHandler->list(request, context);
+        });
+    dispatcher->registerHandler(
         MessageTypes::OrderCreate, MessageDispatcher::Access::User,
         [orderHandler](const RequestMessage &request, const SessionContext &context) {
             return orderHandler->create(request, context);

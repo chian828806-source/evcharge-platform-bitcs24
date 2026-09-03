@@ -25,6 +25,11 @@ public:
     std::optional<ChargingOrderInfo> findByIdForUser(QSqlDatabase &database,
                                                       qint64 orderId, qint64 userId,
                                                       QString *errorMessage) const;
+    QList<ChargingOrderInfo> listByUser(QSqlDatabase &database, qint64 userId,
+                                        const QString &status, int limit, int offset,
+                                        QString *errorMessage) const;
+    qint64 countByUser(QSqlDatabase &database, qint64 userId, const QString &status,
+                       QString *errorMessage) const;
     std::optional<OrderCreateTarget> findCreateTarget(QSqlDatabase &database,
                                                       qint64 pileId,
                                                       QString *errorMessage) const;

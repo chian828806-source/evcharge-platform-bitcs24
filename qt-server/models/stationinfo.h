@@ -41,10 +41,16 @@ struct StationInfo
     double latitude = 0.0;
     qint64 priceFenPerKwh = 0;
     qint64 serviceFeeFenPerKwh = 0;
+    QString status;
     int pileCount = 0;
     int availablePileCount = 0;
     // 小于0表示当前场景没有用户坐标，例如站点详情请求。
     double distanceKm = -1.0;
+    // 仅推荐接口填充；普通站点列表不返回这些字段。
+    bool recommended = false;
+    double predictedLoad = -1.0;
+    int predictedAvailablePileCount = -1;
+    QString recommendationReason;
 
     QJsonObject toJson() const
     {
@@ -57,6 +63,8 @@ struct StationInfo
             {QStringLiteral("latitude"), latitude},
             {QStringLiteral("priceFenPerKwh"), priceFenPerKwh},
             {QStringLiteral("serviceFeeFenPerKwh"), serviceFeeFenPerKwh},
+            {QStringLiteral("totalPriceFenPerKwh"), priceFenPerKwh + serviceFeeFenPerKwh},
+            {QStringLiteral("status"), status},
             {QStringLiteral("pileCount"), pileCount},
             {QStringLiteral("availablePileCount"), availablePileCount}
         };
@@ -64,6 +72,13 @@ struct StationInfo
             ? QJsonValue(QJsonValue::Null) : QJsonValue(district));
         if (distanceKm >= 0.0) {
             json.insert(QStringLiteral("distanceKm"), distanceKm);
+        }
+        if (recommended) {
+            json.insert(QStringLiteral("recommended"), true);
+            json.insert(QStringLiteral("predictedLoad"), predictedLoad);
+            json.insert(QStringLiteral("predictedAvailablePileCount"),
+                        predictedAvailablePileCount);
+            json.insert(QStringLiteral("recommendationReason"), recommendationReason);
         }
         return json;
     }

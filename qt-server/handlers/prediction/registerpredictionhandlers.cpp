@@ -8,6 +8,5 @@ PredictionHandlerRegistry::PredictionHandlerRegistry(DatabaseManager *databaseMa
     : m_repository(new PredictionRepository), m_service(new PredictionService(databaseManager, m_repository)), m_handler(new PredictionHandler(m_service))
 {
     dispatcher->registerHandler(MessageTypes::PredictionList, MessageDispatcher::Access::AnyAuthenticated, [this](const RequestMessage &r, const SessionContext &c){ return m_handler->list(r,c); });
-    dispatcher->registerHandler(MessageTypes::PredictionRecommendation, MessageDispatcher::Access::User, [this](const RequestMessage &r, const SessionContext &c){ return m_handler->recommendation(r,c); });
     dispatcher->registerHandler(MessageTypes::PredictionWarning, MessageDispatcher::Access::Admin, [this](const RequestMessage &r, const SessionContext &c){ return m_handler->warning(r,c); });
 }
