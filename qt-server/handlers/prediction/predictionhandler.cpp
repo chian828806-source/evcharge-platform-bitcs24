@@ -15,7 +15,9 @@ ResponseMessage PredictionHandler::list(const RequestMessage &r, const SessionCo
     auto station = r.payload.value(QStringLiteral("stationId"));
     if (!station.isUndefined() && (!station.isDouble() || station.toInt() <= 0 || station.toDouble() != station.toInt())) return invalid(r, QStringLiteral("stationId must be a positive integer"));
     if (!limitOk(r.payload.value(QStringLiteral("limit"))) || !horizonOk(horizon(r.payload))) return invalid(r, QStringLiteral("invalid prediction filter"));
-    auto result = m_service->list(station.isUndefined() ? 0 : station.toInteger(), horizon(r.payload), limit(r.payload));
+    const qint64 stationId = station.isUndefined()
+        ? 0 : static_cast<qint64>(station.toDouble());
+    auto result = m_service->list(stationId, horizon(r.payload), limit(r.payload));
     return result.ok ? ResponseMessage::success(r.requestId, {{QStringLiteral("predictions"), result.value}}) : ResponseMessage::error(r.requestId, result.code, result.message);
 }
 ResponseMessage PredictionHandler::warning(const RequestMessage &r, const SessionContext &)
