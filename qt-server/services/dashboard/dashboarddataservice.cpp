@@ -54,18 +54,19 @@ ServiceResult<QJsonObject> DashboardDataService::summary() const
     const auto databaseResult = databaseFor(m_databaseManager);
     if (!databaseResult.ok) return ServiceResult<QJsonObject>::failure(databaseResult.code,
                                                                          databaseResult.message);
+    QSqlDatabase database = databaseResult.value;
     QString error;
     OrderRepository orders;
-    const QJsonObject revenue = orders.revenueSummary(databaseResult.value,
+    const QJsonObject revenue = orders.revenueSummary(database,
                                                        QDate::currentDate(), &error);
     if (!error.isEmpty()) return ServiceResult<QJsonObject>::failure(ErrorCodes::DatabaseError, error);
-    const double energy = orders.todayCompletedEnergyKwh(databaseResult.value,
+    const double energy = orders.todayCompletedEnergyKwh(database,
                                                          QDate::currentDate(), &error);
     if (!error.isEmpty()) return ServiceResult<QJsonObject>::failure(ErrorCodes::DatabaseError, error);
-    const qint64 orderCount = orders.completedOrderCount(databaseResult.value, &error);
+    const qint64 orderCount = orders.completedOrderCount(database, &error);
     if (!error.isEmpty()) return ServiceResult<QJsonObject>::failure(ErrorCodes::DatabaseError, error);
 
-    PileRepository piles(databaseResult.value);
+    PileRepository piles(database);
     int total = 0;
     const QJsonArray statuses = piles.statusSummary(&total);
     if (!piles.lastError().isEmpty()) return ServiceResult<QJsonObject>::failure(
@@ -91,7 +92,8 @@ ServiceResult<QJsonObject> DashboardDataService::pileStatus() const
     const auto databaseResult = databaseFor(m_databaseManager);
     if (!databaseResult.ok) return ServiceResult<QJsonObject>::failure(databaseResult.code,
                                                                          databaseResult.message);
-    PileRepository piles(databaseResult.value);
+    QSqlDatabase database = databaseResult.value;
+    PileRepository piles(database);
     int total = 0;
     const QJsonArray statuses = piles.statusSummary(&total);
     if (!piles.lastError().isEmpty()) return ServiceResult<QJsonObject>::failure(
@@ -110,12 +112,13 @@ ServiceResult<QJsonObject> DashboardDataService::revenueTrend() const
     const auto databaseResult = databaseFor(m_databaseManager);
     if (!databaseResult.ok) return ServiceResult<QJsonObject>::failure(databaseResult.code,
                                                                          databaseResult.message);
+    QSqlDatabase database = databaseResult.value;
     OrderRepository orders;
     QString error;
     const QDate today = QDate::currentDate();
-    const QJsonArray week = orders.revenueTrend(databaseResult.value, today.addDays(-6), 7, &error);
+    const QJsonArray week = orders.revenueTrend(database, today.addDays(-6), 7, &error);
     if (!error.isEmpty()) return ServiceResult<QJsonObject>::failure(ErrorCodes::DatabaseError, error);
-    const QJsonArray month = orders.revenueTrend(databaseResult.value, today.addDays(-29), 30, &error);
+    const QJsonArray month = orders.revenueTrend(database, today.addDays(-29), 30, &error);
     if (!error.isEmpty()) return ServiceResult<QJsonObject>::failure(ErrorCodes::DatabaseError, error);
     return ServiceResult<QJsonObject>::success({
         {QStringLiteral("ranges"), QJsonObject{
