@@ -218,7 +218,6 @@ registerAdminHandlers(dispatcher, adminDependencies);
 | U05 | 查询资料 | `USER_PROFILE_GET` | UserHandler | UserService | UserRepository | `user` |
 | U05 | 修改昵称 | `USER_PROFILE_UPDATE` | UserHandler | UserService | UserRepository | `user` |
 | U05 | 上传头像 | `USER_AVATAR_UPLOAD` | UserHandler | UserService | AvatarStorage、UserRepository | `user` + 头像文件 |
-| U05 | 读取头像 | `USER_AVATAR_GET` | UserHandler | UserService | AvatarStorage、UserRepository | `user` + 头像文件 |
 | U05 | 钱包充值 | `USER_RECHARGE` | UserHandler | WalletService | UserRepository、RechargeRepository | `user`, `recharge_record` |
 | U05 | 查询订单列表 | `USER_ORDER_LIST` | OrderHandler | OrderService | OrderRepository、StationRepository、PileRepository | `charging_order`, `charging_station`, `charging_pile` |
 | 可选详情 | 查询预测 | `PREDICTION_LIST` | PredictionHandler | PredictionService | PredictionRepository | `prediction` |
@@ -403,18 +402,8 @@ V1 已冻结：仅允许 PNG 或 JPEG，文件名扩展名必须与 MIME 匹配�
 文件最大 512 KiB。服务端以随机文件名保存，数据库只保存 `avatars/<文件名>`
 形式的相对路径；旧头像在成功替换后清理。
 
-### 8.4.1 `USER_AVATAR_GET`
-
-| 项目 | 内容 |
-| --- | --- |
-| 权限 | User |
-| 请求 payload | `{}` |
-| 成功 data | `avatarPath`, `mimeType`, `contentBase64` |
-| 文件操作 | 从配置的头像目录读取由当前用户相对路径指向的文件 |
-
-用户端不拼接服务端磁盘路径。未上传头像时三个返回字段均为 `null`；有头像时，
-Qt 将 `contentBase64` 解码后加载为 `QPixmap`。服务端再次校验文件扩展名、大小与
-图片签名，防止数据库路径被篡改后读取任意文件。
+用户端不拼接服务端磁盘路径，也不通过当前协议读取头像文件。服务端在上传时校验
+文件扩展名、大小与图片签名，防止非法文件写入头像目录。
 
 ### 8.5 `USER_RECHARGE`
 
@@ -807,7 +796,6 @@ V1 最低实现：
 - `USER_RECHARGE`；
 - `USER_ORDER_LIST`；
 - `USER_AVATAR_UPLOAD`；
-- `USER_AVATAR_GET`。
 
 ### 阶段 6：智能推荐
 
