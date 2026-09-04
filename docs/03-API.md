@@ -94,6 +94,9 @@ MAP_GEOCODE
 MAP_ROUTE_PLAN
 ```
 
+`PREDICTION_RECOMMENDATION` 是用户/站点业务接口：由 `StationService` 结合预测数据、
+站点信息、距离及当前/预测可用桩生成推荐结果，不属于纯预测数据查询接口。
+
 充电订单：
 
 ```text
@@ -133,7 +136,7 @@ PREDICTION_WARNING
 PREDICTION_IMPORT
 ```
 
-`PREDICTION_LIST` 允许已认证用户和管理员按 `stationId`、`horizon`、`limit` 查询；`PREDICTION_RECOMMENDATION` 仅用户可调用，返回未来且预计有空闲桩的站点；`PREDICTION_WARNING` 仅管理员可调用，返回未来负荷率不低于 `0.7` 的预测。`PREDICTION_IMPORT` 属于管理员/受控 ML 维护流程，用于导入完整预测批次；它不属于用户端推荐接口。
+Prediction 模块只负责纯预测数据查询与受保护的导入：`PREDICTION_LIST` 允许已认证用户和管理员按 `stationId`、`horizon`、`limit` 查询，`PREDICTION_WARNING` 仅管理员可调用并返回未来负荷率不低于 `0.7` 的预测。`PREDICTION_IMPORT` 属于 Prediction / ML integration，仅 Admin / internal maintenance 可调用，用于导入完整预测批次。`PREDICTION_RECOMMENDATION` 属于 User Backend，由用户侧站点推荐调用链处理；它不是 ML 导入或 Admin 接口。
 
 ## 7. 认证
 
