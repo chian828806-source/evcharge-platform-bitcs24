@@ -116,7 +116,7 @@ int main(int argc, char *argv[])
     MessageDispatcher dispatcher(&sessions);
     UserBackendRegistry userHandlers(&databaseManager, &sessions, &dispatcher,
                                      parser.value(QStringLiteral("avatar-dir")));
-    AdminHandlerRegistry adminHandlers(database, &sessions, &dispatcher);
+    AdminHandlerRegistry adminHandlers(&databaseManager, &sessions, &dispatcher);
     PredictionHandlerRegistry predictionHandlers(&databaseManager, &dispatcher);
     SocketServer socketServer(&dispatcher);
     if (!socketServer.listen(QHostAddress::Any, tcpPort)) {

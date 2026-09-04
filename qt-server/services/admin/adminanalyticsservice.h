@@ -2,20 +2,18 @@
 
 #include "shared/protocol/protocolmessage.h"
 
-#include <QSqlDatabase>
 #include "repositories/orderrepository.h"
-#include "repositories/pilerepository.h"
+class DatabaseManager;
 
 class AdminAnalyticsService
 {
 public:
-    explicit AdminAnalyticsService(QSqlDatabase database);
+    explicit AdminAnalyticsService(DatabaseManager *databaseManager);
     ResponseMessage revenueSummary(const RequestMessage &request) const;
     ResponseMessage revenueTrend(const RequestMessage &request) const;
     ResponseMessage pileStatusSummary(const RequestMessage &request) const;
 
 private:
-    mutable QSqlDatabase m_database;
+    DatabaseManager *m_databaseManager = nullptr;
     OrderRepository m_orderRepository;
-    PileRepository m_pileRepository;
 };

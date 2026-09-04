@@ -6,6 +6,8 @@
 
 class QLabel;
 class QLineEdit;
+class QComboBox;
+class QPushButton;
 class QTableWidget;
 class QVBoxLayout;
 
@@ -21,6 +23,7 @@ public:
 signals:
     void refreshRequested();
     void trendRequested(int days);
+    void warningRequested(const QString &horizon);
 private:
     QLabel *m_today = nullptr;
     QLabel *m_month = nullptr;
@@ -38,12 +41,18 @@ class PilePage : public QWidget
 public:
     explicit PilePage(QWidget *parent = nullptr);
     void setPiles(const QJsonObject &data);
+    void setActionBusy(bool busy);
+    void setStationFilterLabel(const QString &stationName);
 signals:
     void refreshRequested();
     void restartRequested(qint64 pileId);
 private:
     QTableWidget *m_table = nullptr;
     QLabel *m_filterHint = nullptr;
+    QComboBox *m_statusFilter = nullptr;
+    QJsonArray m_piles;
+    bool m_actionBusy = false;
+    void applyFilter();
 };
 
 class StationPage : public QWidget
@@ -53,6 +62,7 @@ public:
     explicit StationPage(QWidget *parent = nullptr);
     void setStations(const QJsonObject &data);
     void setPileDetails(const QJsonArray &piles);
+    void setCreateBusy(bool busy);
 signals:
     void refreshRequested();
     void stationPilesRequested(qint64 stationId);
@@ -61,6 +71,8 @@ private:
     void openCreateDialog();
     QTableWidget *m_table = nullptr;
     QTableWidget *m_pileDetail = nullptr;
+    QLabel *m_pileDetailTitle = nullptr;
+    QPushButton *m_create = nullptr;
 };
 
 class UserPage : public QWidget
@@ -70,6 +82,7 @@ public:
     explicit UserPage(QWidget *parent = nullptr);
     void setUsers(const QJsonObject &data);
     QString phoneKeyword() const;
+    void setActionBusy(bool busy);
 signals:
     void refreshRequested();
     void searchRequested(const QString &phoneKeyword);
@@ -77,4 +90,5 @@ signals:
 private:
     QLineEdit *m_search = nullptr;
     QTableWidget *m_table = nullptr;
+    bool m_actionBusy = false;
 };
