@@ -7,7 +7,9 @@
 - TCP 服务端默认地址：`127.0.0.1:18080`
 - 本次没有增加或删除消息类型；现有协议可以直接对接。
 - `ADMIN_STATION_CREATE.priceFenPerKwh` 增加服务端范围校验：1～10000 分/度。
-- Admin 服务内部已改为通过 `DatabaseManager` 获取数据库连接。此项不改变前端字段。
+- User、Admin 与 Prediction Registry 共用一个 `MessageDispatcher`、一个 `SocketServer` 和一个
+  `DatabaseManager`；Admin 服务内部通过 `DatabaseManager` 获取连接，不建立独立 Admin 数据库体系。
+  此项不改变前端字段或公共协议。
 
 本分支同时修改了以下 UI 文件，前端同学继续开发或合并时需要留意冲突：
 
@@ -129,6 +131,9 @@ UI 使用约定：
 
 消息：`PREDICTION_WARNING`，仅管理员可调用。
 
+`PREDICTION_RECOMMENDATION` 仍是 User/Station 路由的推荐能力，管理端不得调用或注册它；
+Admin 预警只使用 `PREDICTION_WARNING`。
+
 请求：
 
 ```json
@@ -216,7 +221,8 @@ stationId, stationNo, name, address, longitude, latitude, pileCount, onlineRate
 - 空数组显示“该站暂无电桩”；
 - 保存当前选中的 `stationId`。连续点击不同站点时，响应中的请求对应站点只有等于当前
   `stationId` 才能更新右侧详情，旧站点迟到的响应直接丢弃；`requestId` 仍用于区分站点
-  详情请求和全部电桩列表请求。
+  详情请求和全部电桩列表请求。当前详情请求失败或超时时，仅当其站点仍为当前选中站点
+  才显示“加载失败，请重试”或“加载超时，请重试”；旧请求不得覆盖当前详情。
 
 省略 `stationId` 调用相同接口时表示获取全部电桩，用于独立的电桩管理页。
 

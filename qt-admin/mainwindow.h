@@ -31,8 +31,10 @@ private:
     UserPage *m_users = nullptr; QTimer *m_dashboardTimer = nullptr;
     QString m_sessionId; QHash<QString, QString> m_requestTypes;
     QHash<QString, qint64> m_stationDetailRequests;
-    qint64 m_currentStationDetailId = 0;
+    qint64 m_activeDetailStationId = 0;
+    QString m_adminDisplayName;
     QStackedWidget *m_rootStack = nullptr; QWidget *m_loginPage = nullptr;
     int m_trendDays = 7; QString m_warningHorizon = QStringLiteral("1h");
     bool m_mockPreview = false;
+    bool m_logoutInProgress = false;
 };

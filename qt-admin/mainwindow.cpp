@@ -58,6 +58,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
     connect(preview, &QPushButton::clicked, this, [this]() {
         m_mockPreview = true;
+        m_adminDisplayName = QStringLiteral("演示管理员");
         buildManagementPages();
         m_dashboard->setRevenueSummary({{QStringLiteral("todayRevenueFen"), 128600},
                                         {QStringLiteral("monthRevenueFen"), 2864200},
@@ -122,33 +123,39 @@ MainWindow::MainWindow(QWidget *parent)
             });
     connect(m_client, &AdminSocketClient::requestTimedOut, this,
             [this](const QString &requestId, const QString &type) {
+                const qint64 stationId = m_stationDetailRequests.take(requestId);
                 m_requestTypes.remove(requestId);
-                const qint64 detailStationId = m_stationDetailRequests.take(requestId);
-                if (detailStationId > 0 && detailStationId == m_currentStationDetailId && m_stations)
-                    m_stations->setPileDetailsError(QStringLiteral("加载超时，请重试"));
                 finishAction(type);
+                if (stationId > 0 && stationId == m_activeDetailStationId && m_stations)
+                    m_stations->setPileDetailStatus(QStringLiteral("加载超时，请重试"));
                 QMessageBox::warning(this, QStringLiteral("请求超时"),
                                      QStringLiteral("%1 请求未及时响应").arg(type));
             });
     connect(m_client, &AdminSocketClient::requestFailed, this,
             [this](const QString &requestId, const QString &type,
                    const QString &message) {
+                const qint64 stationId = m_stationDetailRequests.take(requestId);
                 m_requestTypes.remove(requestId);
-                const qint64 detailStationId = m_stationDetailRequests.take(requestId);
-                if (detailStationId > 0 && detailStationId == m_currentStationDetailId && m_stations)
-                    m_stations->setPileDetailsError(QStringLiteral("加载失败，请重试"));
                 finishAction(type);
+                if (stationId > 0 && stationId == m_activeDetailStationId && m_stations)
+                    m_stations->setPileDetailStatus(QStringLiteral("加载失败，请重试"));
                 QMessageBox::warning(this, QStringLiteral("请求失败"),
                     QStringLiteral("%1：%2").arg(type, message));
             });
     connect(m_client, &AdminSocketClient::disconnected, this, [this]() {
-        if (!m_sessionId.isEmpty()) {
-            m_sessionId.clear();
-            if (m_dashboardTimer) m_dashboardTimer->stop();
-            QMessageBox::warning(this, QStringLiteral("连接已断开"),
-                                 QStringLiteral("与服务端的连接已断开，请重新登录。"));
-            showLoginPage(QStringLiteral("连接已断开，请重新登录"));
+        const bool loggedOut = m_logoutInProgress;
+        m_logoutInProgress = false;
+        if (m_sessionId.isEmpty() && !loggedOut) return;
+
+        m_sessionId.clear();
+        if (m_dashboardTimer) m_dashboardTimer->stop();
+        if (loggedOut) {
+            showLoginPage(QStringLiteral("已退出登录"));
+            return;
         }
+        QMessageBox::warning(this, QStringLiteral("连接已断开"),
+                             QStringLiteral("与服务端的连接已断开，请重新登录。"));
+        showLoginPage(QStringLiteral("连接已断开，请重新登录"));
     });
 }
 
@@ -187,28 +194,29 @@ void MainWindow::handleResponse(const QJsonObject &response)
     const qint64 detailStationId = m_stationDetailRequests.take(requestId);
     finishAction(type);
     if (response.value(QStringLiteral("code")).toInt() != ErrorCodes::Success) {
-        if (detailStationId > 0 && detailStationId == m_currentStationDetailId && m_stations)
-            m_stations->setPileDetailsError(QStringLiteral("加载失败，请重试"));
-        handleFailure(response);
-        return;
+        if (detailStationId > 0 && detailStationId == m_activeDetailStationId && m_stations)
+            m_stations->setPileDetailStatus(QStringLiteral("加载失败，请重试"));
+        handleFailure(response); return;
     }
     const QJsonObject data = response.value(QStringLiteral("data")).toObject();
     if (type == MessageTypes::AdminLogin) {
         m_mockPreview = false;
-        m_sessionId = data.value(QStringLiteral("sessionId")).toString(); buildManagementPages();
+        m_sessionId = data.value(QStringLiteral("sessionId")).toString();
+        const QJsonObject admin = data.value(QStringLiteral("admin")).toObject();
+        m_adminDisplayName = admin.value(QStringLiteral("displayName")).toString().trimmed();
+        if (m_adminDisplayName.isEmpty())
+            m_adminDisplayName = admin.value(QStringLiteral("username")).toString();
+        buildManagementPages();
         refreshDashboard(); requestPileList(); requestStationList(); requestUserList();
     } else if (type == MessageTypes::AdminRevenueSummary) m_dashboard->setRevenueSummary(data);
     else if (type == MessageTypes::AdminRevenueTrend) m_dashboard->setRevenueTrend(data);
     else if (type == MessageTypes::AdminPileStatusSummary) m_dashboard->setPileStatusSummary(data);
     else if (type == MessageTypes::PredictionWarning) m_dashboard->setWarnings(data);
-    else if (type == MessageTypes::AdminPileList) {
-        if (detailStationId > 0) {
-            if (detailStationId == m_currentStationDetailId)
-                m_stations->setPileDetails(data.value(QStringLiteral("piles")).toArray());
-        } else {
-            m_piles->setPiles(data);
-        }
+    else if (type == MessageTypes::AdminPileList && detailStationId > 0) {
+        if (detailStationId == m_activeDetailStationId)
+            m_stations->setPileDetails(data.value(QStringLiteral("piles")).toArray());
     }
+    else if (type == MessageTypes::AdminPileList) m_piles->setPiles(data);
     else if (type == MessageTypes::AdminStationList) m_stations->setStations(data);
     else if (type == MessageTypes::AdminUserList) m_users->setUsers(data);
     else if (type == MessageTypes::AdminPileRestart) {
@@ -226,18 +234,22 @@ void MainWindow::handleResponse(const QJsonObject &response)
 
 void MainWindow::buildManagementPages()
 {
-    m_currentStationDetailId = 0;
-    m_stationDetailRequests.clear();
     if (m_dashboardTimer) { m_dashboardTimer->stop(); m_dashboardTimer->deleteLater(); m_dashboardTimer = nullptr; }
     if (m_tabs) { m_rootStack->removeWidget(m_tabs); m_tabs->deleteLater(); }
     m_tabs = new QTabWidget(m_rootStack); m_dashboard = new DashboardPage(m_tabs);
     m_stations = new StationPage(m_tabs); m_piles = new PilePage(m_tabs); m_users = new UserPage(m_tabs);
     m_tabs->addTab(m_dashboard, QStringLiteral("运营概览")); m_tabs->addTab(m_stations, QStringLiteral("站点管理"));
     m_tabs->addTab(m_piles, QStringLiteral("电桩管理")); m_tabs->addTab(m_users, QStringLiteral("用户管理"));
-    auto *logout = new QPushButton(QStringLiteral("退出登录"), m_tabs);
-    m_tabs->setCornerWidget(logout, Qt::TopRightCorner);
+    auto *account = new QWidget(m_tabs); auto *accountLayout = new QHBoxLayout(account);
+    accountLayout->setContentsMargins(8, 0, 8, 0);
+    accountLayout->addWidget(new QLabel(m_adminDisplayName.isEmpty()
+        ? QStringLiteral("管理员") : m_adminDisplayName, account));
+    auto *logout = new QPushButton(QStringLiteral("退出登录"), account);
+    accountLayout->addWidget(logout);
+    m_tabs->setCornerWidget(account, Qt::TopRightCorner);
     m_rootStack->addWidget(m_tabs); m_rootStack->setCurrentWidget(m_tabs);
     connect(logout, &QPushButton::clicked, this, [this]() {
+        m_logoutInProgress = true;
         m_sessionId.clear(); m_mockPreview = false;
         if (m_dashboardTimer) m_dashboardTimer->stop();
         m_client->disconnectFromServer(); showLoginPage(QStringLiteral("已退出登录"));
@@ -289,12 +301,12 @@ void MainWindow::refreshDashboard()
 void MainWindow::requestPileList(const QJsonObject &payload) { send(MessageTypes::AdminPileList, payload); }
 void MainWindow::requestStationPileDetails(qint64 stationId)
 {
-    m_currentStationDetailId = stationId;
-    m_stations->setPileDetailsLoading();
+    m_activeDetailStationId = stationId;
+    if (m_stations) m_stations->setPileDetailStatus(QStringLiteral("正在加载…"));
     const QString requestId = send(MessageTypes::AdminPileList,
                                    {{QStringLiteral("stationId"), stationId}});
     if (!requestId.isEmpty()) m_stationDetailRequests.insert(requestId, stationId);
-    else m_stations->setPileDetailsError(QStringLiteral("加载失败，请重试"));
+    else if (m_stations) m_stations->setPileDetailStatus(QStringLiteral("无法发起请求"));
 }
 void MainWindow::requestStationList() { send(MessageTypes::AdminStationList); }
 void MainWindow::requestUserList() { send(MessageTypes::AdminUserList, {{QStringLiteral("phoneKeyword"), m_users ? m_users->phoneKeyword() : QString()}}); }
@@ -321,6 +333,7 @@ void MainWindow::finishAction(const QString &type)
 
 void MainWindow::showLoginPage(const QString &message)
 {
+    m_activeDetailStationId = 0; m_stationDetailRequests.clear();
     setEnabled(true); m_rootStack->setCurrentWidget(m_loginPage);
     if (m_password) m_password->clear();
     if (m_login) m_login->setEnabled(true);

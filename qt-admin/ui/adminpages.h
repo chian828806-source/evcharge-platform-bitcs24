@@ -62,8 +62,7 @@ public:
     explicit StationPage(QWidget *parent = nullptr);
     void setStations(const QJsonObject &data);
     void setPileDetails(const QJsonArray &piles);
-    void setPileDetailsLoading();
-    void setPileDetailsError(const QString &message);
+    void setPileDetailStatus(const QString &message);
     void setCreateBusy(bool busy);
 signals:
     void refreshRequested();
