@@ -13,6 +13,7 @@
 #include <QJsonArray>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QPainter>
 #include <QPushButton>
 #include <QSpinBox>
@@ -81,6 +82,17 @@ void replaceWidget(QVBoxLayout *layout, QWidget **current, QWidget *replacement)
     *current = replacement;
     layout->addWidget(replacement, 1);
 }
+
+void showEmptyState(QTableWidget *table, int columns, const QString &message)
+{
+    table->clearContents();
+    table->clearSpans();
+    table->setRowCount(1);
+    auto *item = new QTableWidgetItem(message);
+    item->setTextAlignment(Qt::AlignCenter);
+    table->setItem(0, 0, item);
+    if (columns > 1) table->setSpan(0, 0, 1, columns);
+}
 }
 
 DashboardPage::DashboardPage(QWidget *parent) : QWidget(parent)
@@ -138,6 +150,11 @@ void DashboardPage::setRevenueTrend(const QJsonObject &data)
     energySeries->setName(QStringLiteral("充电量（kWh）"));
     orderSeries->setName(QStringLiteral("订单数"));
     const QJsonArray points = data.value(QStringLiteral("points")).toArray();
+    if (points.isEmpty()) {
+        replaceWidget(m_chartLayout, &m_trendView,
+                      label(QStringLiteral("暂无趋势数据"), "caption"));
+        return;
+    }
     auto *axisX = new QCategoryAxis;
     axisX->setLabelsAngle(-45);
     for (int i = 0; i < points.size(); ++i) {
@@ -151,9 +168,13 @@ void DashboardPage::setRevenueTrend(const QJsonObject &data)
     chart->addSeries(revenueSeries); chart->addSeries(energySeries); chart->addSeries(orderSeries);
     chart->addAxis(axisX, Qt::AlignBottom);
     auto *axisY = new QValueAxis; axisY->setMin(0); chart->addAxis(axisY, Qt::AlignLeft);
-    for (QLineSeries *series : {revenueSeries, energySeries, orderSeries}) {
+    for (QLineSeries *series : {revenueSeries, energySeries}) {
         series->attachAxis(axisX); series->attachAxis(axisY);
     }
+    auto *orderAxis = new QValueAxis; orderAxis->setMin(0);
+    orderAxis->setTitleText(QStringLiteral("订单数"));
+    chart->addAxis(orderAxis, Qt::AlignRight);
+    orderSeries->attachAxis(axisX); orderSeries->attachAxis(orderAxis);
     chart->setTitle(QStringLiteral("近 %1 日营收趋势").arg(data.value(QStringLiteral("days")).toInt()));
     auto *view = new QChartView(chart, this);
     view->setRenderHint(QPainter::Antialiasing);
@@ -181,6 +202,12 @@ void DashboardPage::setPileStatusSummary(const QJsonObject &data)
 void DashboardPage::setWarnings(const QJsonObject &data)
 {
     const QJsonArray items = data.value(QStringLiteral("predictions")).toArray();
+    m_warningTable->clearContents();
+    m_warningTable->clearSpans();
+    if (items.isEmpty()) {
+        showEmptyState(m_warningTable, 6, QStringLiteral("暂无负荷预警"));
+        return;
+    }
     m_warningTable->setRowCount(items.size());
     for (int row = 0; row < items.size(); ++row) {
         const QJsonObject item = items.at(row).toObject();
@@ -230,8 +257,13 @@ void PilePage::applyFilter()
         if (wanted.isEmpty() || value.toObject().value(QStringLiteral("status")).toString() == wanted)
             piles.append(value);
     }
-    m_table->clear(); m_table->setRowCount(piles.size()); m_table->setColumnCount(8);
+    m_table->clear(); m_table->clearSpans(); m_table->setRowCount(piles.size()); m_table->setColumnCount(8);
     m_table->setHorizontalHeaderLabels({QStringLiteral("桩号"), QStringLiteral("站点"), QStringLiteral("类型"), QStringLiteral("功率"), QStringLiteral("状态"), QStringLiteral("次数"), QStringLiteral("分钟"), QStringLiteral("操作")});
+    if (piles.isEmpty()) {
+        showEmptyState(m_table, 8, wanted.isEmpty() ? QStringLiteral("暂无电桩")
+                                                   : QStringLiteral("当前筛选条件下暂无电桩"));
+        return;
+    }
     for (int row = 0; row < piles.size(); ++row) {
         const QJsonObject pile = piles.at(row).toObject();
         const QStringList values = {pile.value(QStringLiteral("pileNo")).toString(), pile.value(QStringLiteral("stationName")).toString(), pile.value(QStringLiteral("type")).toString() == QStringLiteral("FAST") ? QStringLiteral("快充") : QStringLiteral("慢充"), QString::number(pile.value(QStringLiteral("powerKw")).toDouble()) + QStringLiteral(" kW"), statusText(pile.value(QStringLiteral("status")).toString()), QString::number(pile.value(QStringLiteral("totalChargeCount")).toInt()), QString::number(pile.value(QStringLiteral("totalChargeMinutes")).toInt()) + QStringLiteral(" 分钟")};
@@ -274,8 +306,12 @@ StationPage::StationPage(QWidget *parent) : QWidget(parent), m_table(new QTableW
 void StationPage::setStations(const QJsonObject &data)
 {
     const QJsonArray stations = data.value(QStringLiteral("stations")).toArray();
-    m_table->clear(); m_table->setRowCount(stations.size()); m_table->setColumnCount(8);
+    m_table->clear(); m_table->clearSpans(); m_table->setRowCount(stations.size()); m_table->setColumnCount(8);
     m_table->setHorizontalHeaderLabels({QStringLiteral("编号"), QStringLiteral("名称"), QStringLiteral("地址"), QStringLiteral("经度"), QStringLiteral("纬度"), QStringLiteral("电桩"), QStringLiteral("在线率"), QStringLiteral("操作")});
+    if (stations.isEmpty()) {
+        showEmptyState(m_table, 8, QStringLiteral("暂无站点"));
+        return;
+    }
     for (int row = 0; row < stations.size(); ++row) {
         const QJsonObject station = stations.at(row).toObject();
         const QStringList values = {station.value(QStringLiteral("stationNo")).toString(), station.value(QStringLiteral("name")).toString(), station.value(QStringLiteral("address")).toString(), QString::number(station.value(QStringLiteral("longitude")).toDouble(), 'f', 6), QString::number(station.value(QStringLiteral("latitude")).toDouble(), 'f', 6), QString::number(station.value(QStringLiteral("pileCount")).toInt()), QString::number(station.value(QStringLiteral("onlineRate")).toDouble() * 100, 'f', 1) + '%'};
@@ -297,7 +333,13 @@ void StationPage::openCreateDialog()
     form.addRow(QStringLiteral("站名"), &name); form.addRow(QStringLiteral("地址"), &address); form.addRow(QStringLiteral("经度"), &longitude); form.addRow(QStringLiteral("纬度"), &latitude); form.addRow(QStringLiteral("电桩数"), &count); form.addRow(QStringLiteral("充电单价"), &price);
     QDialogButtonBox buttons(QDialogButtonBox::Ok | QDialogButtonBox::Cancel); form.addRow(&buttons);
     connect(&buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept); connect(&buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    if (dialog.exec() == QDialog::Accepted) emit createRequested({{QStringLiteral("name"), name.text().trimmed()}, {QStringLiteral("address"), address.text().trimmed()}, {QStringLiteral("longitude"), longitude.value()}, {QStringLiteral("latitude"), latitude.value()}, {QStringLiteral("pileCount"), count.value()}, {QStringLiteral("priceFenPerKwh"), qRound64(price.value() * 100.0)}});
+    if (dialog.exec() != QDialog::Accepted) return;
+    if (name.text().trimmed().isEmpty() || address.text().trimmed().isEmpty()) {
+        QMessageBox::warning(this, QStringLiteral("信息不完整"),
+                             QStringLiteral("请填写站名和地址。"));
+        return;
+    }
+    emit createRequested({{QStringLiteral("name"), name.text().trimmed()}, {QStringLiteral("address"), address.text().trimmed()}, {QStringLiteral("longitude"), longitude.value()}, {QStringLiteral("latitude"), latitude.value()}, {QStringLiteral("pileCount"), count.value()}, {QStringLiteral("priceFenPerKwh"), qRound64(price.value() * 100.0)}});
 }
 
 UserPage::UserPage(QWidget *parent) : QWidget(parent), m_search(new QLineEdit(this)), m_table(new QTableWidget(this))
@@ -346,8 +388,13 @@ QString UserPage::phoneKeyword() const { return m_search->text().trimmed(); }
 void UserPage::setUsers(const QJsonObject &data)
 {
     const QJsonArray users = data.value(QStringLiteral("users")).toArray();
-    m_table->clear(); m_table->setRowCount(users.size()); m_table->setColumnCount(7);
+    m_table->clear(); m_table->clearSpans(); m_table->setRowCount(users.size()); m_table->setColumnCount(7);
     m_table->setHorizontalHeaderLabels({QStringLiteral("ID"), QStringLiteral("手机号"), QStringLiteral("昵称"), QStringLiteral("余额"), QStringLiteral("注册时间"), QStringLiteral("状态"), QStringLiteral("操作")});
+    if (users.isEmpty()) {
+        showEmptyState(m_table, 7, m_search->text().trimmed().isEmpty()
+            ? QStringLiteral("暂无用户") : QStringLiteral("未找到匹配用户"));
+        return;
+    }
     for (int row = 0; row < users.size(); ++row) {
         const QJsonObject user = users.at(row).toObject();
         const QStringList values = {QString::number(user.value(QStringLiteral("userId")).toInteger()), user.value(QStringLiteral("phone")).toString(), user.value(QStringLiteral("nickname")).toString(), QStringLiteral("¥") + QString::number(user.value(QStringLiteral("balanceFen")).toInteger() / 100.0, 'f', 2), user.value(QStringLiteral("createdAt")).toString(), statusText(user.value(QStringLiteral("status")).toString())};
