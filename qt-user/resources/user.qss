@@ -117,6 +117,16 @@ QPushButton[kind="nav"], QPushButton[kind="navActive"] {
 }
 QPushButton[kind="navActive"] { color: #13866a; background: #e8f7f2; }
 
+/* 导航页驾车/步行切换按钮：未选中普通描边，选中深绿高亮 */
+QPushButton#modeToggle {
+    color: #14765f; background: #ffffff; border: 2px solid #c4e8dd;
+}
+QPushButton#modeToggle:hover { border-color: #18a67e; }
+QPushButton#modeToggle:checked {
+    color: white; background: #159873; border-color: #0f7a5c;
+    font-weight: 800;
+}
+
 QProgressBar {
     min-height: 9px; max-height: 9px; border: none;
     border-radius: 4px; background: #e3ece9;

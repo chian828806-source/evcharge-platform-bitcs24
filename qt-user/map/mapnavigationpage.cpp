@@ -48,8 +48,13 @@ MapNavigationPage::MapNavigationPage(QWidget *parent)
     layout->addWidget(m_routeSummary);
 
     auto *toolbar = new QHBoxLayout();
+    // 出行方式用可选中按钮：选中态高亮（:checked），未选中态普通描边。
     m_drivingButton = new QPushButton(QStringLiteral("驾车"), this);
     m_walkingButton = new QPushButton(QStringLiteral("步行"), this);
+    m_drivingButton->setObjectName(QStringLiteral("modeToggle"));
+    m_walkingButton->setObjectName(QStringLiteral("modeToggle"));
+    m_drivingButton->setCheckable(true);
+    m_walkingButton->setCheckable(true);
     auto *backButton = new QPushButton(QStringLiteral("返回"), this);
     toolbar->addWidget(m_drivingButton);
     toolbar->addWidget(m_walkingButton);
@@ -212,12 +217,21 @@ MapNavigationPage::TravelMode MapNavigationPage::travelMode() const
 
 void MapNavigationPage::selectDriving()
 {
+    // 已处于驾车模式时忽略重复点击，避免无意义的重新请求。
+    if (m_travelMode == TravelMode::Driving) {
+        m_drivingButton->setChecked(true);
+        return;
+    }
     setTravelMode(TravelMode::Driving);
     retry();
 }
 
 void MapNavigationPage::selectWalking()
 {
+    if (m_travelMode == TravelMode::Walking) {
+        m_walkingButton->setChecked(true);
+        return;
+    }
     setTravelMode(TravelMode::Walking);
     retry();
 }
@@ -287,11 +301,12 @@ void MapNavigationPage::updateRouteSummary()
 
 void MapNavigationPage::setTravelMode(TravelMode mode)
 {
-    if (m_travelMode == mode && m_drivingButton->isEnabled() == (mode != TravelMode::Driving)) {
+    if (m_travelMode == mode && m_drivingButton->isChecked() == (mode == TravelMode::Driving)) {
         return;
     }
     m_travelMode = mode;
-    m_drivingButton->setEnabled(mode != TravelMode::Driving);
-    m_walkingButton->setEnabled(mode != TravelMode::Walking);
+    // 选中项保持可点击并显示高亮，不再用禁用（灰色）表达当前模式。
+    m_drivingButton->setChecked(mode == TravelMode::Driving);
+    m_walkingButton->setChecked(mode == TravelMode::Walking);
     emit travelModeChanged(mode);
 }

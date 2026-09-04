@@ -224,10 +224,19 @@ void MapAdapter::planRoute(double originLongitude, double originLatitude,
                 return;
             }
 
-            // 腾讯路线从第3个数开始使用相邻坐标差值（单位 1e-6）压缩。
+            // 腾讯路线折线形如 [lat0, lng0, Δlat1, Δlng1, ...]：
+            // 前两个数是起点纬度、经度，其后为前向差分（单位 1e-6），
+            // 纬度增量与经度增量成对出现，必须凑齐一对才能生成完整坐标点；
+            // 逐个分量追加会插入（新纬度，旧经度）的中间点，导致折线呈直角阶梯、不贴合道路。
+            if (encodedPolyline.size() % 2 != 0) {
+                complete(ServiceResult<MapRoutePlanResult>::failure(
+                    ErrorCodes::InternalError, QStringLiteral("map service returned malformed route points")));
+                return;
+            }
             double latitude = encodedPolyline.at(0).toDouble();
             double longitude = encodedPolyline.at(1).toDouble();
-            if (!validCoordinate(longitude, latitude)) {
+            if (!encodedPolyline.at(0).isDouble() || !encodedPolyline.at(1).isDouble()
+                || !validCoordinate(longitude, latitude)) {
                 complete(ServiceResult<MapRoutePlanResult>::failure(
                     ErrorCodes::InternalError, QStringLiteral("map service returned invalid route coordinates")));
                 return;
@@ -237,18 +246,15 @@ void MapAdapter::planRoute(double originLongitude, double originLatitude,
             plan.distanceMeters = qRound(firstRoute.value(QStringLiteral("distance")).toDouble());
             plan.durationMinutes = firstRoute.value(QStringLiteral("duration")).toDouble();
             plan.polyline.append({longitude, latitude});
-            for (int index = 2; index < encodedPolyline.size(); ++index) {
-                if (!encodedPolyline.at(index).isDouble()) {
+            for (int index = 2; index + 1 < encodedPolyline.size(); index += 2) {
+                if (!encodedPolyline.at(index).isDouble()
+                    || !encodedPolyline.at(index + 1).isDouble()) {
                     complete(ServiceResult<MapRoutePlanResult>::failure(
                         ErrorCodes::InternalError, QStringLiteral("map service returned malformed route points")));
                     return;
                 }
-                const double delta = encodedPolyline.at(index).toDouble() / 1000000.0;
-                if (index % 2 == 0) {
-                    latitude += delta;
-                } else {
-                    longitude += delta;
-                }
+                latitude += encodedPolyline.at(index).toDouble() / 1000000.0;
+                longitude += encodedPolyline.at(index + 1).toDouble() / 1000000.0;
                 if (!validCoordinate(longitude, latitude) || plan.polyline.size() >= 4096) {
                     complete(ServiceResult<MapRoutePlanResult>::failure(
                         ErrorCodes::InternalError, QStringLiteral("map service returned too many or invalid route points")));
