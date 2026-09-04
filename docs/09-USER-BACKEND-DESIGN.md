@@ -1,6 +1,6 @@
 # Qt 用户端后端设计 V1.0
 
-状态：已实现并纳入统一 Qt Server 的 User Backend V1 设计与实现说明
+状态：Draft（编码前对齐稿）
 适用范围：`qt-server` 中面向 Qt 用户端的业务后端  
 最后更新：2026-09-02
 
@@ -206,8 +206,9 @@ registerAdminHandlers(dispatcher, adminDependencies);
 | --- | --- | --- | --- | --- | --- | --- |
 | U01 | 手机号登录/自动注册 | `USER_LOGIN` | UserHandler | UserService | UserRepository、SessionManager | `user` |
 | U02 | 地址转坐标 | `MAP_GEOCODE` | StationHandler | StationService | MapAdapter | 无 |
+| U06 | 驾车/步行路线规划 | `MAP_ROUTE_PLAN` | StationHandler | StationService | MapAdapter | 无 |
 | U02 | 附近站点 | `STATION_LIST_NEARBY` | StationHandler | StationService | StationRepository、PileRepository | `charging_station`, `charging_pile` |
-| U02 | 推荐站点 | `PREDICTION_RECOMMENDATION` | StationHandler | StationService | PredictionRepository、StationRepository、PileRepository | `prediction`, `charging_station`, `charging_pile` |
+| U02 | 推荐站点 | `PREDICTION_RECOMMENDATION` | StationHandler | StationService | PredictionRepository、StationRepository | `prediction`, `charging_station` |
 | U03 | 站点和电桩详情 | `STATION_DETAIL_GET` | StationHandler | StationService | StationRepository、PileRepository | `charging_station`, `charging_pile` |
 | U03/U04 | 创建订单 | `ORDER_CREATE` | OrderHandler | OrderService | User/Order/Pile/Station Repository | `user`, `charging_order`, `charging_pile`, `charging_station` |
 | U04 | 查询活动订单/刷新进度 | `ORDER_ACTIVE_CHECK` | OrderHandler | ChargingService | OrderRepository、StationRepository、PileRepository | `charging_order`, `charging_station`, `charging_pile`, `user` |
@@ -439,14 +440,33 @@ Service 必须强制使用 Session 用户 ID，不能查询其他用户的订单
 | 权限 | User |
 | 请求 payload 草案 | `district`, `address` |
 | 成功 data | `formattedAddress`, `longitude`, `latitude` |
-| 外部依赖 | 腾讯地图 Web API 或 V1 Mock Adapter |
+| 外部依赖 | 腾讯地图 Web API（`MapAdapter` 异步适配） |
 | 数据操作 | 无 |
 
-已确认的接口边界：`MAP_GEOCODE` 完成后由服务端调用腾讯地图，`QWebEngineView` 仅依据服务端
-返回的坐标或导航 URL 展示路线。真实 `MapAdapter` 仍为已知 TODO，不阻塞本轮合并。地图 Key 必须来自配置或环境变量，不得提交到
+已确认：`MAP_GEOCODE` 由服务端调用腾讯地图，`QWebEngineView` 仅依据服务端
+返回的坐标或导航 URL 展示路线。地图 Key 必须来自配置或环境变量，不得提交到
 仓库；外部请求属于耗时操作，必须经异步 `MapAdapter`，不得阻塞 Socket 线程。
+服务端从 `TENCENT_MAP_KEY` 或 `--tencent-map-key` 获取 WebService Key；若腾讯控制台
+启用签名校验，还必须通过 `TENCENT_MAP_SK` 或 `--tencent-map-sk` 提供 SK。未配置 Key、
+超时或服务拒绝地址时统一返回 `5002`。路线规划已由 `MAP_ROUTE_PLAN` 提供。Qt 用户端
+以独立的 `TENCENT_MAP_JS_KEY` 加载腾讯 JavaScript API GL，将服务端返回的路线折线叠加
+到可拖动、可缩放的真实地图。JS Key 不得复用服务端 SK，且必须通过域名白名单限制。
 
-### 8.8 `STATION_LIST_NEARBY`
+### 8.8 `MAP_ROUTE_PLAN`
+
+| 项目 | 内容 |
+| --- | --- |
+| 权限 | User |
+| 请求 payload | `originLongitude`, `originLatitude`, `destinationLongitude`, `destinationLatitude`, `mode = DRIVING | WALKING` |
+| 成功 data | `mode`, `distanceMeters`, `durationMinutes`, `polyline [{ longitude, latitude }]` |
+| 外部依赖 | 腾讯 Direction API（驾车或步行） |
+| 数据操作 | 无 |
+
+路线请求经异步 `MapAdapter` 执行；服务端将第三方压缩折线解压后再发送给 Qt 用户端。
+用户端在 `QWebEngineView` 的腾讯 JavaScript API GL 真实底图中绘制路线，地图交互只在
+客户端进行。WebService Key/SK 仍只存在服务端；客户端仅使用受域名白名单约束的 JS Key。
+
+### 8.9 `STATION_LIST_NEARBY`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -460,7 +480,7 @@ Service 必须强制使用 Session 用户 ID，不能查询其他用户的订单
 统计 `AVAILABLE`。距离使用统一的 Haversine 或平面近似算法，单位 km，
 展示值保留两位小数。`DISABLED` 站点默认不向普通用户展示。
 
-### 8.9 `STATION_DETAIL_GET`
+### 8.10 `STATION_DETAIL_GET`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -473,7 +493,7 @@ Service 必须强制使用 Session 用户 ID，不能查询其他用户的订单
 `AVAILABLE` 状态在 UI 中允许点击“选择”，但服务端仍必须再次检查状态，
 不能依赖按钮禁用保证安全。
 
-### 8.10 `ORDER_ACTIVE_CHECK`
+### 8.11 `ORDER_ACTIVE_CHECK`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -486,7 +506,7 @@ V1 约定：U04 打开时请求一次；充电中每 1 秒轮询本消息；页�
 不再是 `CHARGING` 时停止轮询。服务端在响应中计算当前 `chargeSeconds`、
 `chargeMinutes`、`energyKwh` 和预估 `amountFen`，因此不新增未经登记的 TCP 推送消息。
 
-### 8.11 `ORDER_CREATE`
+### 8.12 `ORDER_CREATE`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -504,7 +524,7 @@ V1 约定：U04 打开时请求一次；充电中每 1 秒轮询本消息；页�
 5. 将电桩改为 `RESERVED` 并写入 `current_order_id`；
 6. 任一步失败全部回滚。
 
-### 8.12 `ORDER_CANCEL`
+### 8.13 `ORDER_CANCEL`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -517,7 +537,7 @@ V1 约定：U04 打开时请求一次；充电中每 1 秒轮询本消息；页�
 订单改为 `CANCELLED`、记录取消时间，并将匹配的电桩恢复为 `AVAILABLE`、
 清空 `current_order_id`。
 
-### 8.13 `ORDER_START`
+### 8.14 `ORDER_START`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -530,7 +550,7 @@ V1 约定：U04 打开时请求一次；充电中每 1 秒轮询本消息；页�
 `current_order_id` 与订单匹配。同一事务内写入 `start_at`，将订单和电桩
 都改为 `CHARGING`。
 
-### 8.14 `ORDER_STOP`
+### 8.15 `ORDER_STOP`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -552,7 +572,7 @@ amountFen = round(energyKwh *
 
 客户端可以展示服务端返回的金额，但不得用另一套公式形成最终账单。
 
-### 8.15 `ORDER_SETTLE`
+### 8.16 `ORDER_SETTLE`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -566,7 +586,7 @@ amountFen = round(energyKwh *
 写操作必须在同一个事务中完成。`COMPLETED` 订单重复结算直接返回已完成结果，
 不得再次扣款。冻结用户已有待支付订单时仍允许结算。
 
-### 8.16 `PREDICTION_LIST`
+### 8.17 `PREDICTION_LIST`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -578,7 +598,7 @@ amountFen = round(energyKwh *
 无预测结果时使用公共错误码 4501。V1 用户端若不展示独立预测详情，可暂不在
 第一阶段实现，但消息登记保持不变。
 
-### 8.17 `PREDICTION_RECOMMENDATION`
+### 8.18 `PREDICTION_RECOMMENDATION`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -591,12 +611,6 @@ V1 已冻结：默认查询 `1h` 预测窗口，仅返回当前可用且预测�
 站点；按“预测负荷升序 → 距离升序 → 预测可用桩数降序”排序。默认 `limit=5`，
 最大 20。每项返回 `recommended`、`predictedLoad`、
 `predictedAvailablePileCount` 和 `recommendationReason`。
-
-该消息归 User/Station 业务侧：`StationService` 组合预测数据、站点信息、距离以及
-实时/预测可用桩形成用户推荐，因此不是纯预测数据查询。它只能由
-UserBackendRegistry 的 StationHandler 注册；PredictionHandlerRegistry 仅负责
-`PREDICTION_LIST` 和 `PREDICTION_WARNING`，两个 Registry 禁止同时注册
-`PREDICTION_RECOMMENDATION`。
 
 ## 9. 业务状态机
 
@@ -779,7 +793,7 @@ V1 最低实现：
 
 - `STATION_LIST_NEARBY`；
 - `STATION_DETAIL_GET`；
-- `MAP_GEOCODE` 契约已确认；待配置腾讯地图 Key 与异步 `MapAdapter` 后实现真实调用。
+- `MAP_GEOCODE` 契约已确认并已实现异步 `MapAdapter`；部署时仍需配置腾讯地图 Key。
 
 ### 阶段 4：充电主闭环
 

@@ -7,6 +7,8 @@
 #include "shared/protocol/messagetypes.h"
 #include "stationhandler.h"
 
+#include <utility>
+
 void registerStationHandlers(MessageDispatcher *dispatcher, StationHandler *stationHandler)
 {
     if (!dispatcher || !stationHandler) {
@@ -27,5 +29,17 @@ void registerStationHandlers(MessageDispatcher *dispatcher, StationHandler *stat
         MessageTypes::PredictionRecommendation, MessageDispatcher::Access::User,
         [stationHandler](const RequestMessage &request, const SessionContext &context) {
             return stationHandler->recommendation(request, context);
+        });
+    dispatcher->registerAsyncHandler(
+        MessageTypes::MapGeocode, MessageDispatcher::Access::User,
+        [stationHandler](const RequestMessage &request, const SessionContext &context,
+                         MessageDispatcher::ResponseCallback callback) {
+            stationHandler->geocode(request, context, std::move(callback));
+        });
+    dispatcher->registerAsyncHandler(
+        MessageTypes::MapRoutePlan, MessageDispatcher::Access::User,
+        [stationHandler](const RequestMessage &request, const SessionContext &context,
+                         MessageDispatcher::ResponseCallback callback) {
+            stationHandler->routePlan(request, context, std::move(callback));
         });
 }

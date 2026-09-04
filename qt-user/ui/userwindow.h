@@ -7,11 +7,13 @@
 
 class QLabel;
 class QLineEdit;
+class MapNavigationPage;
 class QPushButton;
 class QStackedWidget;
 class QVBoxLayout;
 class QTimer;
 class SocketClient;
+struct MapRoute;
 
 class UserWindow final : public QMainWindow
 {
@@ -43,7 +45,7 @@ private:
     QLabel *m_orderHintLabel = nullptr;
     QLabel *m_balanceLabel = nullptr;
     QLabel *m_nicknameLabel = nullptr;
-    QLabel *m_navigationDestination = nullptr;
+    MapNavigationPage *m_mapNavigationPage = nullptr;
     QLabel *m_profilePhoneLabel = nullptr;
     QLabel *m_orderSummaryLabel = nullptr;
     QLabel *m_chargeStatisticsLabel = nullptr;
@@ -58,6 +60,7 @@ private:
     QString m_sessionId;
     SessionMode m_sessionMode = SessionMode::None;
     QString m_loginRequestId;
+    QString m_routePlanRequestId;
     QHash<QString, QString> m_requestTypes;
     QString m_orderStatus = QStringLiteral("CREATED");
     QJsonObject m_activeOrder;
@@ -69,6 +72,7 @@ private:
     QVBoxLayout *m_orderListLayout = nullptr;
     QTimer *m_orderPollTimer = nullptr;
     int m_balanceFenInFen = 12860;
+    Page m_navigationSource = Home;
 
     QWidget *buildLoginPage();
     QWidget *buildHomePage();
@@ -85,6 +89,8 @@ private:
                             const QString &amount, const QString &status);
 
     void showPage(Page page);
+    void openNavigation(const QJsonObject &station, Page source);
+    void requestRoutePlan(const MapRoute &route, bool driving);
     void attemptLogin();
     bool isDemoMode() const;
     void setConnected(bool connected);

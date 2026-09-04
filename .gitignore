@@ -1,6 +1,9 @@
 linshi/
 GIT-AGENT-HANDOFF.md
 
+# Qt Creator personal kit/run settings can contain local API keys.
+*.pro.user
+
 # SQLite runtime databases generated from the V1 schema and seed data.
 *.db
 *.sqlite
