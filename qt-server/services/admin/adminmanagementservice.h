@@ -2,17 +2,15 @@
 
 #include "shared/protocol/protocolmessage.h"
 
-#include <QSqlDatabase>
 #include <QObject>
-#include "repositories/operationlogrepository.h"
-#include "repositories/pilerepository.h"
 #include "repositories/stationrepository.h"
 #include "repositories/userrepository.h"
+class DatabaseManager;
 
 class AdminManagementService : public QObject
 {
 public:
-    explicit AdminManagementService(QSqlDatabase database,
+    explicit AdminManagementService(DatabaseManager *databaseManager,
                                     QObject *parent = nullptr);
     ResponseMessage pileList(const RequestMessage &request) const;
     ResponseMessage restartPile(const RequestMessage &request, qint64 adminId) const;
@@ -23,9 +21,7 @@ public:
                                   bool frozen) const;
 
 private:
-    mutable QSqlDatabase m_database;
-    PileRepository m_pileRepository;
+    DatabaseManager *m_databaseManager = nullptr;
     StationRepository m_stationRepository;
     UserRepository m_userRepository;
-    OperationLogRepository m_logRepository;
 };

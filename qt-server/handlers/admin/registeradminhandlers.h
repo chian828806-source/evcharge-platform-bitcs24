@@ -6,11 +6,12 @@
 
 class MessageDispatcher;
 class SessionManager;
+class DatabaseManager;
 
 class AdminHandlerRegistry
 {
 public:
-    AdminHandlerRegistry(QSqlDatabase database, SessionManager *sessions,
+    AdminHandlerRegistry(DatabaseManager *databaseManager, SessionManager *sessions,
                          MessageDispatcher *dispatcher);
 
 private:
