@@ -4,7 +4,7 @@
 #include <QMainWindow>
 class AdminSocketClient; class DashboardPage; class QLabel; class QLineEdit;
 class PilePage; class QPushButton; class QTabWidget; class QTimer;
-class StationPage; class UserPage;
+class QStackedWidget; class StationPage; class UserPage; class QWidget;
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -15,10 +15,13 @@ private:
     void buildManagementPages();
     void refreshDashboard();
     void requestPileList(const QJsonObject &payload = {});
+    void requestStationPileDetails(qint64 stationId);
     void requestStationList();
     void requestUserList();
     QString send(const QString &type, const QJsonObject &payload = {});
     void handleFailure(const QJsonObject &response);
+    void finishAction(const QString &type);
+    void showLoginPage(const QString &message = {});
     AdminSocketClient *m_client = nullptr;
     QLineEdit *m_host = nullptr; QLineEdit *m_port = nullptr;
     QLineEdit *m_username = nullptr; QLineEdit *m_password = nullptr;
@@ -27,5 +30,11 @@ private:
     PilePage *m_piles = nullptr; StationPage *m_stations = nullptr;
     UserPage *m_users = nullptr; QTimer *m_dashboardTimer = nullptr;
     QString m_sessionId; QHash<QString, QString> m_requestTypes;
+    QHash<QString, qint64> m_stationDetailRequests;
+    qint64 m_activeDetailStationId = 0;
+    QString m_adminDisplayName;
+    QStackedWidget *m_rootStack = nullptr; QWidget *m_loginPage = nullptr;
+    int m_trendDays = 7; QString m_warningHorizon = QStringLiteral("1h");
     bool m_mockPreview = false;
+    bool m_logoutInProgress = false;
 };
