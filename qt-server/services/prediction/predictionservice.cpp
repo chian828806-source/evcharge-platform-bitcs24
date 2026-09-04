@@ -26,3 +26,16 @@ ServiceResult<QJsonArray> PredictionService::list(qint64 stationId, const QStrin
 { return run(m_databaseManager, m_repository, [=](QSqlDatabase &db, QString *e){ return m_repository->list(db, stationId, horizon, limit, e); }); }
 ServiceResult<QJsonArray> PredictionService::warning(const QString &horizon, int limit) const
 { return run(m_databaseManager, m_repository, [=](QSqlDatabase &db, QString *e){ return m_repository->warning(db, horizon, limit, e); }); }
+
+ServiceResult<QJsonObject> PredictionService::importBatch(const QJsonObject &document) const
+{
+    QSqlDatabase database; QString error;
+    if (!m_databaseManager || !m_repository || !m_databaseManager->database(&database, &error))
+        return ServiceResult<QJsonObject>::failure(ErrorCodes::DatabaseError, error);
+    const QJsonObject result = m_repository->importBatch(database, document, &error);
+    if (error.isEmpty()) return ServiceResult<QJsonObject>::success(result);
+    const bool validationError = error.startsWith(QStringLiteral("validation:"));
+    return ServiceResult<QJsonObject>::failure(validationError ? ErrorCodes::InvalidSocketMessage
+                                                                : ErrorCodes::DatabaseError,
+                                               error);
+}

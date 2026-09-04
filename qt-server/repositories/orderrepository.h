@@ -61,6 +61,9 @@ public:
                                QString *errorMessage) const;
     QJsonArray revenueTrend(QSqlDatabase &database, const QDate &firstDate,
                             int days, QString *errorMessage) const;
+    double todayCompletedEnergyKwh(QSqlDatabase &database, const QDate &today,
+                                   QString *errorMessage) const;
+    qint64 completedOrderCount(QSqlDatabase &database, QString *errorMessage) const;
 
 private:
     static ChargingOrderInfo mapOrder(const QSqlQuery &query);

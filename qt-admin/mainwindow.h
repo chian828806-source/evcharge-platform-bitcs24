@@ -27,4 +27,5 @@ private:
     PilePage *m_piles = nullptr; StationPage *m_stations = nullptr;
     UserPage *m_users = nullptr; QTimer *m_dashboardTimer = nullptr;
     QString m_sessionId; QHash<QString, QString> m_requestTypes;
+    bool m_mockPreview = false;
 };

@@ -89,7 +89,7 @@ python -m ml.predict \
   --output ml/output/20260902T120000Z-cary-v1/predictions.json
 ```
 
-输出严格匹配 `docs/03-API.md` 第 14 节。服务端还必须验证站点存在性，并保证整批成功或整批回滚；Python 端无法代替这两项数据库责任。
+输出严格匹配 `docs/03-API.md` 第 14 节。服务端通过受保护的 `PREDICTION_IMPORT` 导入入口读取该文件；服务端还必须验证站点存在性，并保证整批成功或整批回滚，Python 端无法代替这两项数据库责任。
 
 ## 4. 自动化测试
 

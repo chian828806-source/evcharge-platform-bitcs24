@@ -9,6 +9,8 @@
 #include <QObject>
 #include <QSet>
 
+#include <functional>
+
 class QWebSocket;
 class QWebSocketServer;
 
@@ -18,6 +20,7 @@ class DashboardWebSocketServer : public QObject
     Q_OBJECT
 
 public:
+    using SnapshotProvider = std::function<QJsonObject(const QString &, QString *)>;
     // 创建非TLS的QWebSocketServer，尚不开始监听。
     explicit DashboardWebSocketServer(QObject *parent = nullptr);
     // 退出时关闭所有浏览器连接。
@@ -31,6 +34,8 @@ public:
     QString errorString() const;
     // 向订阅指定topic的所有浏览器推送DASHBOARD_UPDATE。
     void publish(const QString &topic, const QJsonObject &data);
+    // 设置由业务Service提供的只读快照回调；通信层不持有数据库依赖。
+    void setSnapshotProvider(SnapshotProvider provider);
 
 private slots:
     // 接收并验证一个新的浏览器连接。
@@ -43,7 +48,9 @@ private slots:
 private:
     // 所有WebSocket响应都使用紧凑JSON文本帧。
     void sendJson(QWebSocket *socket, const QJsonObject &json);
+    void sendUpdate(QWebSocket *socket, const QString &topic, const QJsonObject &data);
 
     QWebSocketServer *m_server = nullptr;
     QHash<QWebSocket *, QSet<QString>> m_subscriptions;
+    SnapshotProvider m_snapshotProvider;
 };

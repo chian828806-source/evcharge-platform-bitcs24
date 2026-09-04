@@ -40,7 +40,8 @@ ResponseMessage AdminAuthService::login(const RequestMessage &request)
                                       QStringLiteral("管理员账号或密码错误"));
     }
 
-    const qint64 adminId = admin.value(QStringLiteral("adminId")).toInteger();
+    const qint64 adminId = static_cast<qint64>(
+        admin.value(QStringLiteral("adminId")).toDouble());
     const QString displayName = admin.value(QStringLiteral("displayName")).toString();
     const QString now = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
     if (!m_database.transaction()) {

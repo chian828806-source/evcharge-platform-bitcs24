@@ -15,8 +15,9 @@ ResponseMessage invalidPayload(const RequestMessage &request,
 bool isPositiveInteger(const QJsonObject &payload, const QString &name)
 {
     const QJsonValue value = payload.value(name);
-    return value.isDouble() && value.toInteger() > 0
-        && double(value.toInteger()) == value.toDouble();
+    const qint64 integerValue = static_cast<qint64>(value.toDouble());
+    return value.isDouble() && integerValue > 0
+        && static_cast<double>(integerValue) == value.toDouble();
 }
 }
 

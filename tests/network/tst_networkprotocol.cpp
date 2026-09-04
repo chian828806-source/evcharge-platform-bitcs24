@@ -12,6 +12,7 @@
 #include "qt-server/handlers/user/stationhandler.h"
 #include "qt-server/handlers/user/userhandler.h"
 #include "qt-server/map/mapadapter.h"
+#include "qt-server/handlers/prediction/registerpredictionhandlers.h"
 #include "qt-server/repositories/stationrepository.h"
 #include "qt-server/repositories/orderrepository.h"
 #include "qt-server/repositories/predictionrepository.h"
@@ -196,6 +197,107 @@ void testKnownMessageRegistry()
           QStringLiteral("all 31 documented TCP message types are registered"));
     check(MessageTypes::dashboardTopics().size() == 4,
           QStringLiteral("all four dashboard topics are registered"));
+}
+
+QJsonObject predictionItem(qint64 stationId, int availableCount,
+                           const QString &generatedAt = QStringLiteral("2026-09-03T12:00:00+08:00"))
+{
+    return {{QStringLiteral("stationId"), stationId},
+            {QStringLiteral("predictionTime"), QStringLiteral("2026-09-03T13:00:00+08:00")},
+            {QStringLiteral("horizon"), QStringLiteral("1h")},
+            {QStringLiteral("predictedLoad"), 0.35},
+            {QStringLiteral("predictedAvailableCount"), availableCount},
+            {QStringLiteral("peakLevel"), QStringLiteral("LOW")},
+            {QStringLiteral("modelName"), QStringLiteral("network-test")},
+            {QStringLiteral("generatedAt"), generatedAt}};
+}
+
+QJsonObject predictionDocument(const QString &batchId, const QJsonArray &predictions)
+{
+    return {{QStringLiteral("schemaVersion"), QStringLiteral("1.0")},
+            {QStringLiteral("batchId"), batchId},
+            {QStringLiteral("predictions"), predictions}};
+}
+
+void testPredictionImportFlow()
+{
+    DatabaseManager databaseManager{QString::fromLatin1(":memory:"),
+                                    QString::fromLatin1("prediction-import-test")};
+    QSqlDatabase database;
+    QString databaseError;
+    check(databaseManager.database(&database, &databaseError),
+          QStringLiteral("prediction import test database opens"));
+    if (!database.isOpen()) return;
+
+    QSqlQuery schema(database);
+    const bool tablesCreated = schema.exec(QStringLiteral(
+        "CREATE TABLE charging_station (id INTEGER PRIMARY KEY)"))
+        && schema.exec(QStringLiteral(
+        "CREATE TABLE charging_pile (id INTEGER PRIMARY KEY, station_id INTEGER NOT NULL)"))
+        && schema.exec(QStringLiteral(
+        "CREATE TABLE prediction_batch (batch_id TEXT PRIMARY KEY, status TEXT NOT NULL, generated_at TEXT NOT NULL, created_at TEXT NOT NULL)"))
+        && schema.exec(QStringLiteral(
+        "CREATE TABLE prediction (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id TEXT NOT NULL, station_id INTEGER NOT NULL, prediction_time TEXT NOT NULL, horizon TEXT NOT NULL, predicted_load REAL NOT NULL, predicted_available_count INTEGER NOT NULL, peak_level TEXT NOT NULL, model_name TEXT NOT NULL, mae REAL, rmse REAL, generated_at TEXT NOT NULL, created_at TEXT NOT NULL)"))
+        && schema.exec(QStringLiteral("INSERT INTO charging_station VALUES (1)"))
+        && schema.exec(QStringLiteral("INSERT INTO charging_pile VALUES (1, 1), (2, 1)"));
+    check(tablesCreated, QStringLiteral("prediction import test schema is created"));
+    if (!tablesCreated) return;
+
+    SessionManager sessions;
+    MessageDispatcher dispatcher(&sessions);
+    PredictionHandlerRegistry predictionRegistry(&databaseManager, &dispatcher);
+    const QString adminSession = sessions.createSession(1, SessionRole::Admin);
+    const QString userSession = sessions.createSession(2, SessionRole::User);
+    const QJsonObject valid = predictionDocument(QStringLiteral("batch-valid"),
+                                                  {predictionItem(1, 2)});
+    RequestMessage importRequest{QStringLiteral("REQ-IMPORT"), MessageTypes::PredictionImport,
+                                 adminSession, {{QStringLiteral("document"), valid}}};
+    const ResponseMessage imported = dispatcher.dispatch(importRequest);
+    const ResponseMessage duplicate = dispatcher.dispatch(importRequest);
+    check(imported.code == ErrorCodes::Success
+              && imported.data.value(QStringLiteral("inserted")).toInt() == 1
+              && !imported.data.value(QStringLiteral("duplicate")).toBool()
+              && duplicate.code == ErrorCodes::Success
+              && duplicate.data.value(QStringLiteral("status")).toString() == QStringLiteral("already_imported")
+              && duplicate.data.value(QStringLiteral("inserted")).toInt() == 0
+              && duplicate.data.value(QStringLiteral("duplicate")).toBool(),
+          QStringLiteral("prediction import is transactional and duplicate batch is idempotent"));
+
+    RequestMessage unauthorized = importRequest;
+    unauthorized.requestId = QStringLiteral("REQ-IMPORT-USER");
+    unauthorized.sessionId = userSession;
+    check(dispatcher.dispatch(unauthorized).code == ErrorCodes::InvalidSession,
+          QStringLiteral("ordinary user cannot call prediction import"));
+
+    const QJsonObject overCapacity = predictionDocument(QStringLiteral("batch-over-capacity"),
+                                                         {predictionItem(1, 3)});
+    RequestMessage invalidRequest{QStringLiteral("REQ-IMPORT-CAPACITY"), MessageTypes::PredictionImport,
+                                   adminSession, {{QStringLiteral("document"), overCapacity}}};
+    const ResponseMessage overCapacityResponse = dispatcher.dispatch(invalidRequest);
+    QSqlQuery count(database);
+    count.exec(QStringLiteral("SELECT COUNT(*) FROM prediction_batch WHERE batch_id='batch-over-capacity'"));
+    count.next();
+    check(overCapacityResponse.code == ErrorCodes::InvalidSocketMessage && count.value(0).toInt() == 0,
+          QStringLiteral("prediction import rejects available count above station pile count"));
+
+    const QJsonObject mixed = predictionDocument(QStringLiteral("batch-rollback"),
+                                                  {predictionItem(1, 1), predictionItem(999, 0)});
+    RequestMessage mixedRequest{QStringLiteral("REQ-IMPORT-ROLLBACK"), MessageTypes::PredictionImport,
+                                  adminSession, {{QStringLiteral("document"), mixed}}};
+    const ResponseMessage mixedResponse = dispatcher.dispatch(mixedRequest);
+    count.exec(QStringLiteral("SELECT COUNT(*) FROM prediction WHERE batch_id='batch-rollback'"));
+    count.next();
+    check(mixedResponse.code == ErrorCodes::InvalidSocketMessage && count.value(0).toInt() == 0,
+          QStringLiteral("invalid prediction station rejects the entire batch without rows"));
+
+    QJsonObject missingTimeItem = predictionItem(1, 1);
+    missingTimeItem.remove(QStringLiteral("generatedAt"));
+    const QJsonObject missingTime = predictionDocument(QStringLiteral("batch-missing-time"),
+                                                        {missingTimeItem});
+    RequestMessage missingTimeRequest{QStringLiteral("REQ-IMPORT-TIME"), MessageTypes::PredictionImport,
+                                        adminSession, {{QStringLiteral("document"), missingTime}}};
+    check(dispatcher.dispatch(missingTimeRequest).code == ErrorCodes::InvalidSocketMessage,
+          QStringLiteral("prediction import rejects missing generated time"));
 }
 
 void testUserLoginProfileAndNicknameFlow()
@@ -394,18 +496,6 @@ void testUserProfileWalletOrdersAndRecommendations()
               && avatarPath.startsWith(QStringLiteral("avatars/"))
               && QFileInfo::exists(avatarDirectory.filePath(QFileInfo(avatarPath).fileName())),
           QStringLiteral("avatar upload validates content, stores file and returns relative path"));
-
-    RequestMessage avatarGetRequest{
-        QStringLiteral("REQ-AVATAR-GET"), MessageTypes::UserAvatarGet, sessionId, {}};
-    const ResponseMessage avatarGetResponse = dispatcher.dispatch(avatarGetRequest);
-    check(avatarGetResponse.code == ErrorCodes::Success
-              && avatarGetResponse.data.value(QStringLiteral("avatarPath")).toString()
-                    == avatarPath
-              && avatarGetResponse.data.value(QStringLiteral("mimeType")).toString()
-                    == QStringLiteral("image/png")
-              && avatarGetResponse.data.value(QStringLiteral("contentBase64")).toString()
-                    == QString::fromLatin1(png.toBase64()),
-          QStringLiteral("avatar content can be retrieved through the user TCP protocol"));
 
     RequestMessage rechargeRequest{
         QStringLiteral("REQ-RECHARGE"), MessageTypes::UserRecharge, sessionId,
@@ -957,6 +1047,7 @@ int main(int argc, char *argv[])
     testRequestValidationAndResponseShape();
     testSessionAndDispatcherBoundaries();
     testKnownMessageRegistry();
+    testPredictionImportFlow();
     testUserLoginProfileAndNicknameFlow();
     testUserProfileWalletOrdersAndRecommendations();
     testStationListAndDetailFlow();

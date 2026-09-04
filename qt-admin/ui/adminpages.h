@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QWidget>
 
@@ -16,6 +17,7 @@ public:
     void setRevenueSummary(const QJsonObject &data);
     void setRevenueTrend(const QJsonObject &data);
     void setPileStatusSummary(const QJsonObject &data);
+    void setWarnings(const QJsonObject &data);
 signals:
     void refreshRequested();
     void trendRequested(int days);
@@ -24,8 +26,10 @@ private:
     QLabel *m_month = nullptr;
     QLabel *m_total = nullptr;
     QVBoxLayout *m_chartLayout = nullptr;
+    QVBoxLayout *m_statusLayout = nullptr;
     QWidget *m_trendView = nullptr;
     QWidget *m_statusView = nullptr;
+    QTableWidget *m_warningTable = nullptr;
 };
 
 class PilePage : public QWidget
@@ -39,6 +43,7 @@ signals:
     void restartRequested(qint64 pileId);
 private:
     QTableWidget *m_table = nullptr;
+    QLabel *m_filterHint = nullptr;
 };
 
 class StationPage : public QWidget
@@ -47,6 +52,7 @@ class StationPage : public QWidget
 public:
     explicit StationPage(QWidget *parent = nullptr);
     void setStations(const QJsonObject &data);
+    void setPileDetails(const QJsonArray &piles);
 signals:
     void refreshRequested();
     void stationPilesRequested(qint64 stationId);
@@ -54,6 +60,7 @@ signals:
 private:
     void openCreateDialog();
     QTableWidget *m_table = nullptr;
+    QTableWidget *m_pileDetail = nullptr;
 };
 
 class UserPage : public QWidget

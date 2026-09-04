@@ -13,7 +13,6 @@ inline const QString UserLogin = QStringLiteral("USER_LOGIN");
 inline const QString UserProfileGet = QStringLiteral("USER_PROFILE_GET");
 inline const QString UserProfileUpdate = QStringLiteral("USER_PROFILE_UPDATE");
 inline const QString UserAvatarUpload = QStringLiteral("USER_AVATAR_UPLOAD");
-inline const QString UserAvatarGet = QStringLiteral("USER_AVATAR_GET");
 inline const QString UserRecharge = QStringLiteral("USER_RECHARGE");
 inline const QString UserOrderList = QStringLiteral("USER_ORDER_LIST");
 
@@ -44,6 +43,7 @@ inline const QString AdminUserUnfreeze = QStringLiteral("ADMIN_USER_UNFREEZE");
 inline const QString PredictionList = QStringLiteral("PREDICTION_LIST");
 inline const QString PredictionRecommendation = QStringLiteral("PREDICTION_RECOMMENDATION");
 inline const QString PredictionWarning = QStringLiteral("PREDICTION_WARNING");
+inline const QString PredictionImport = QStringLiteral("PREDICTION_IMPORT");
 
 inline const QString DashboardSubscribe = QStringLiteral("DASHBOARD_SUBSCRIBE");
 inline const QString DashboardUpdate = QStringLiteral("DASHBOARD_UPDATE");

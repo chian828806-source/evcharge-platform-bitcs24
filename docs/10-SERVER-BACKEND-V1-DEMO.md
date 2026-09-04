@@ -101,7 +101,7 @@ and pile restart state changes. A failure rolls back the active transaction.
 
 ## 8. Known Limitations / TODO
 
-- ML batch prediction files are queryable through `PREDICTION_LIST`, `PREDICTION_RECOMMENDATION`, and `PREDICTION_WARNING`; automatic ML process invocation and JSON batch import remain a follow-up.
+- ML batch JSON is imported through Admin/internal-only `PREDICTION_IMPORT`; automatic ML process invocation remains a follow-up. `PREDICTION_RECOMMENDATION` remains a User Backend station recommendation interface.
 - Full Web dashboard data publishing
 - Charging simulation and a background-worker abstraction
 - Advanced authorization, concurrency, and connection-pool work

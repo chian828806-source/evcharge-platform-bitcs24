@@ -4,6 +4,9 @@
 #include "shared/protocol/messagetypes.h"
 #include "ui/adminpages.h"
 #include <QFormLayout>
+#include <QFrame>
+#include <QHBoxLayout>
+#include <QJsonArray>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -15,26 +18,96 @@
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), m_client(new AdminSocketClient(this))
 {
-    setWindowTitle(QStringLiteral("EVCharge 运营管理端")); resize(1100, 760);
-    auto *central = new QWidget(this); auto *layout = new QVBoxLayout(central);
-    auto *form = new QFormLayout;
+    setWindowTitle(QStringLiteral("EVCharge 运营管理端"));
+    setMinimumSize(980, 680); resize(1180, 780);
+    auto *central = new QWidget(this); central->setObjectName(QStringLiteral("loginRoot"));
+    auto *outer = new QHBoxLayout(central); outer->setContentsMargins(80, 50, 80, 50);
+    auto *card = new QFrame(central); card->setObjectName(QStringLiteral("loginCard")); card->setMaximumWidth(520);
+    auto *layout = new QVBoxLayout(card); layout->setContentsMargins(42, 38, 42, 38); layout->setSpacing(14);
+    auto *brand = new QLabel(QStringLiteral("EVCHARGE · OPERATIONS"), card); brand->setProperty("role", "brand");
+    auto *title = new QLabel(QStringLiteral("运营管理平台"), card); title->setProperty("role", "hero");
+    auto *subtitle = new QLabel(QStringLiteral("登录后查看充电网络运营状态与设备信息"), card); subtitle->setProperty("role", "subtitle");
+    layout->addWidget(brand); layout->addWidget(title); layout->addWidget(subtitle); layout->addSpacing(12);
+    auto *form = new QFormLayout; form->setSpacing(12);
     m_host = new QLineEdit(QStringLiteral("127.0.0.1"), central);
     m_port = new QLineEdit(QStringLiteral("18080"), central);
     m_username = new QLineEdit(QStringLiteral("admin"), central);
     m_password = new QLineEdit(central); m_password->setEchoMode(QLineEdit::Password);
-    form->addRow(QStringLiteral("服务端"), m_host); form->addRow(QStringLiteral("端口"), m_port);
     form->addRow(QStringLiteral("账号"), m_username); form->addRow(QStringLiteral("密码"), m_password);
-    layout->addLayout(form); m_login = new QPushButton(QStringLiteral("登录"), central);
+    layout->addLayout(form);
+    auto *settingsButton = new QPushButton(QStringLiteral("连接设置 ▾"), card);
+    settingsButton->setProperty("kind", "secondary");
+    auto *settings = new QWidget(card); auto *settingsForm = new QFormLayout(settings);
+    settingsForm->setContentsMargins(0, 0, 0, 0);
+    settingsForm->addRow(QStringLiteral("服务端"), m_host); settingsForm->addRow(QStringLiteral("端口"), m_port);
+    settings->setVisible(false); layout->addWidget(settingsButton); layout->addWidget(settings);
+    m_login = new QPushButton(QStringLiteral("登录管理端"), central); m_login->setMinimumHeight(44);
+    auto *preview = new QPushButton(QStringLiteral("预览管理界面（Mock）"), card);
+    preview->setProperty("kind", "secondary");
     m_status = new QLabel(QStringLiteral("请输入管理员账号和密码"), central);
-    layout->addWidget(m_login); layout->addWidget(m_status); layout->addStretch(); setCentralWidget(central);
+    m_status->setProperty("role", "caption");
+    layout->addWidget(m_login); layout->addWidget(preview); layout->addWidget(m_status); layout->addStretch();
+    outer->addStretch(); outer->addWidget(card); outer->addStretch(); setCentralWidget(central);
+    connect(settingsButton, &QPushButton::clicked, settings, [settings, settingsButton]() {
+        settings->setVisible(!settings->isVisible());
+        settingsButton->setText(settings->isVisible() ? QStringLiteral("连接设置 ▴")
+                                                       : QStringLiteral("连接设置 ▾"));
+    });
+    connect(preview, &QPushButton::clicked, this, [this]() {
+        m_mockPreview = true;
+        buildManagementPages();
+        m_dashboard->setRevenueSummary({{QStringLiteral("todayRevenueFen"), 128600},
+                                        {QStringLiteral("monthRevenueFen"), 2864200},
+                                        {QStringLiteral("totalRevenueFen"), 18642000}});
+        m_dashboard->setRevenueTrend({{QStringLiteral("days"), 7},
+            {QStringLiteral("points"), QJsonArray{
+                QJsonObject{{"date", "09-01"}, {"revenueFen", 86400}, {"energyKwh", 720.0}, {"orderCount", 42}},
+                QJsonObject{{"date", "09-02"}, {"revenueFen", 103200}, {"energyKwh", 860.0}, {"orderCount", 51}},
+                QJsonObject{{"date", "09-03"}, {"revenueFen", 128600}, {"energyKwh", 1018.0}, {"orderCount", 63}}
+            }}});
+        m_dashboard->setPileStatusSummary({{QStringLiteral("total"), 24},
+            {QStringLiteral("statuses"), QJsonArray{
+                QJsonObject{{"status", "AVAILABLE"}, {"count", 12}, {"ratio", 0.50}},
+                QJsonObject{{"status", "CHARGING"}, {"count", 7}, {"ratio", 0.29}},
+                QJsonObject{{"status", "RESERVED"}, {"count", 3}, {"ratio", 0.13}},
+                QJsonObject{{"status", "FAULT"}, {"count", 2}, {"ratio", 0.08}}
+            }}});
+        m_dashboard->setWarnings({{QStringLiteral("predictions"), QJsonArray{
+            QJsonObject{{"stationName", "万达广场充电中心"}, {"predictionTime", "2026-09-03 17:00"}, {"predictedLoad", 0.91}, {"peakLevel", "HIGH"}},
+            QJsonObject{{"stationName", "软件园智慧充电站"}, {"predictionTime", "2026-09-03 18:00"}, {"predictedLoad", 0.78}, {"peakLevel", "MEDIUM"}}
+        }}});
+        m_piles->setPiles({{QStringLiteral("piles"), QJsonArray{
+            QJsonObject{{"pileId", 1}, {"pileNo", "P01"}, {"stationName", "软件园智慧充电站"}, {"type", "FAST"}, {"powerKw", 60.0}, {"status", "AVAILABLE"}, {"totalChargeCount", 126}, {"totalChargeMinutes", 3820}},
+            QJsonObject{{"pileId", 2}, {"pileNo", "P02"}, {"stationName", "软件园智慧充电站"}, {"type", "FAST"}, {"powerKw", 60.0}, {"status", "CHARGING"}, {"totalChargeCount", 98}, {"totalChargeMinutes", 2914}},
+            QJsonObject{{"pileId", 7}, {"pileNo", "A07"}, {"stationName", "万达广场充电中心"}, {"type", "SLOW"}, {"powerKw", 7.0}, {"status", "FAULT"}, {"totalChargeCount", 57}, {"totalChargeMinutes", 4860}}
+        }}});
+        m_stations->setStations({{QStringLiteral("stations"), QJsonArray{
+            QJsonObject{{"stationId", 1}, {"stationNo", "ST001"}, {"name", "软件园智慧充电站"}, {"address", "软件园路 8 号"}, {"longitude", 121.538}, {"latitude", 38.889}, {"pileCount", 4}, {"onlineRate", 1.0}},
+            QJsonObject{{"stationId", 2}, {"stationNo", "ST002"}, {"name", "万达广场充电中心"}, {"address", "虹韵路 6 号"}, {"longitude", 121.572}, {"latitude", 38.918}, {"pileCount", 12}, {"onlineRate", 0.92}},
+            QJsonObject{{"stationId", 3}, {"stationNo", "ST003"}, {"name", "星海绿色能源站"}, {"address", "中山路 608 号"}, {"longitude", 121.584}, {"latitude", 38.881}, {"pileCount", 8}, {"onlineRate", 0.88}}
+        }}});
+        m_stations->setPileDetails(QJsonArray{
+            QJsonObject{{"pileNo", "P01"}, {"powerKw", 60.0}, {"status", "AVAILABLE"}},
+            QJsonObject{{"pileNo", "P02"}, {"powerKw", 60.0}, {"status", "CHARGING"}},
+            QJsonObject{{"pileNo", "P03"}, {"powerKw", 7.0}, {"status", "RESERVED"}},
+            QJsonObject{{"pileNo", "P04"}, {"powerKw", 7.0}, {"status", "FAULT"}}
+        });
+        m_users->setUsers({{QStringLiteral("users"), QJsonArray{
+            QJsonObject{{"userId", 1}, {"phone", "13800000001"}, {"nickname", "海风"}, {"balanceFen", 12860}, {"createdAt", "2026-08-12 09:30"}, {"status", "NORMAL"}},
+            QJsonObject{{"userId", 2}, {"phone", "13800000002"}, {"nickname", "满电出发"}, {"balanceFen", 5200}, {"createdAt", "2026-08-18 14:12"}, {"status", "NORMAL"}},
+            QJsonObject{{"userId", 4}, {"phone", "13800000004"}, {"nickname", "测试用户"}, {"balanceFen", 800}, {"createdAt", "2026-08-26 11:06"}, {"status", "FROZEN"}}
+        }}});
+    });
     connect(m_login, &QPushButton::clicked, this, &MainWindow::submitLogin);
     connect(m_password, &QLineEdit::returnPressed, this, &MainWindow::submitLogin);
     connect(m_client, &AdminSocketClient::connected, this, [this]() {
         const QString id = m_client->sendRequest(MessageTypes::AdminLogin, {}, {
             {QStringLiteral("username"), m_username->text().trimmed()},
             {QStringLiteral("password"), m_password->text()}});
-        m_requestTypes.insert(id, MessageTypes::AdminLogin);
-        m_status->setText(QStringLiteral("正在验证账号…"));
+        if (!id.isEmpty()) {
+            m_requestTypes.insert(id, MessageTypes::AdminLogin);
+            m_status->setText(QStringLiteral("正在验证账号…"));
+        }
     });
     connect(m_client, &AdminSocketClient::responseReceived, this, &MainWindow::handleResponse);
     connect(m_client, &AdminSocketClient::socketError, this, [this](const QString &message) {
@@ -78,8 +151,21 @@ void MainWindow::submitLogin()
 
 QString MainWindow::send(const QString &type, const QJsonObject &payload)
 {
+    if (m_mockPreview) {
+        QMessageBox::information(this, QStringLiteral("Mock 预览"),
+                                 QStringLiteral("Mock 预览仅用于展示，不能修改真实业务数据。"));
+        return {};
+    }
+    if (!m_client->isConnected() || m_sessionId.isEmpty()) {
+        QMessageBox::warning(this, QStringLiteral("未登录"),
+                             QStringLiteral("请连接服务端并完成管理员登录后再执行操作。"));
+        return {};
+    }
     const QString id = m_client->sendRequest(type, m_sessionId, payload);
-    if (!id.isEmpty()) m_requestTypes.insert(id, type); return id;
+    if (!id.isEmpty()) {
+        m_requestTypes.insert(id, type);
+    }
+    return id;
 }
 
 void MainWindow::handleResponse(const QJsonObject &response)
@@ -88,11 +174,13 @@ void MainWindow::handleResponse(const QJsonObject &response)
     if (response.value(QStringLiteral("code")).toInt() != ErrorCodes::Success) { handleFailure(response); return; }
     const QJsonObject data = response.value(QStringLiteral("data")).toObject();
     if (type == MessageTypes::AdminLogin) {
+        m_mockPreview = false;
         m_sessionId = data.value(QStringLiteral("sessionId")).toString(); buildManagementPages();
         refreshDashboard(); requestPileList(); requestStationList(); requestUserList();
     } else if (type == MessageTypes::AdminRevenueSummary) m_dashboard->setRevenueSummary(data);
     else if (type == MessageTypes::AdminRevenueTrend) m_dashboard->setRevenueTrend(data);
     else if (type == MessageTypes::AdminPileStatusSummary) m_dashboard->setPileStatusSummary(data);
+    else if (type == MessageTypes::PredictionWarning) m_dashboard->setWarnings(data);
     else if (type == MessageTypes::AdminPileList) m_piles->setPiles(data);
     else if (type == MessageTypes::AdminStationList) m_stations->setStations(data);
     else if (type == MessageTypes::AdminUserList) m_users->setUsers(data);
@@ -122,13 +210,16 @@ void MainWindow::buildManagementPages()
              {{QStringLiteral("userId"), id}});
     });
     m_dashboardTimer = new QTimer(this); m_dashboardTimer->setInterval(30000);
-    connect(m_dashboardTimer, &QTimer::timeout, this, &MainWindow::refreshDashboard); m_dashboardTimer->start();
+    connect(m_dashboardTimer, &QTimer::timeout, this, &MainWindow::refreshDashboard);
+    if (m_client->isConnected()) m_dashboardTimer->start();
 }
 
 void MainWindow::refreshDashboard()
 {
     send(MessageTypes::AdminRevenueSummary); send(MessageTypes::AdminRevenueTrend, {{QStringLiteral("days"), 7}});
     send(MessageTypes::AdminPileStatusSummary);
+    send(MessageTypes::PredictionWarning, {{QStringLiteral("horizon"), QStringLiteral("1h")},
+                                           {QStringLiteral("limit"), 20}});
 }
 void MainWindow::requestPileList(const QJsonObject &payload) { send(MessageTypes::AdminPileList, payload); }
 void MainWindow::requestStationList() { send(MessageTypes::AdminStationList); }

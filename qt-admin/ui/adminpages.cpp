@@ -2,9 +2,14 @@
 
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QHeaderView>
+#include <QHash>
+#include <QHBoxLayout>
+#include <QFrame>
+#include <QGridLayout>
 #include <QJsonArray>
 #include <QLabel>
 #include <QLineEdit>
@@ -24,6 +29,47 @@ QPushButton *button(const QString &text, QWidget *parent)
     return new QPushButton(text, parent);
 }
 
+QLabel *label(const QString &text, const char *role = nullptr)
+{
+    auto *item = new QLabel(text);
+    if (role) item->setProperty("role", role);
+    return item;
+}
+
+QFrame *panel()
+{
+    auto *item = new QFrame;
+    item->setObjectName(QStringLiteral("panel"));
+    return item;
+}
+
+void prepareTable(QTableWidget *table)
+{
+    table->setAlternatingRowColors(true);
+    table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table->verticalHeader()->setVisible(false);
+    table->horizontalHeader()->setStretchLastSection(true);
+}
+
+QString statusText(const QString &status)
+{
+    static const QHash<QString, QString> names{
+        {QStringLiteral("AVAILABLE"), QStringLiteral("空闲")},
+        {QStringLiteral("RESERVED"), QStringLiteral("已预约")},
+        {QStringLiteral("CHARGING"), QStringLiteral("充电中")},
+        {QStringLiteral("FAULT"), QStringLiteral("故障")},
+        {QStringLiteral("OFFLINE"), QStringLiteral("离线")},
+        {QStringLiteral("RESTARTING"), QStringLiteral("重启中")},
+        {QStringLiteral("NORMAL"), QStringLiteral("正常")},
+        {QStringLiteral("FROZEN"), QStringLiteral("已冻结")},
+        {QStringLiteral("HIGH"), QStringLiteral("高峰")},
+        {QStringLiteral("MEDIUM"), QStringLiteral("中等")},
+        {QStringLiteral("LOW"), QStringLiteral("低")}
+    };
+    return names.value(status, status);
+}
+
 void replaceWidget(QVBoxLayout *layout, QWidget **current, QWidget *replacement)
 {
     if (*current) {
@@ -37,21 +83,34 @@ void replaceWidget(QVBoxLayout *layout, QWidget **current, QWidget *replacement)
 
 DashboardPage::DashboardPage(QWidget *parent) : QWidget(parent)
 {
-    auto *root = new QVBoxLayout(this);
+    auto *root = new QVBoxLayout(this); root->setContentsMargins(24, 22, 24, 24); root->setSpacing(16);
+    auto *top = new QHBoxLayout;
+    auto *heading = new QVBoxLayout; heading->addWidget(label(QStringLiteral("运营概览"), "pageTitle"));
+    heading->addWidget(label(QStringLiteral("查看营收、设备状态和负荷预测"), "subtitle")); top->addLayout(heading); top->addStretch();
     auto *refresh = button(QStringLiteral("刷新 Dashboard"), this);
     auto *seven = button(QStringLiteral("近 7 日"), this);
     auto *thirty = button(QStringLiteral("近 30 日"), this);
-    m_today = new QLabel(this);
-    m_month = new QLabel(this);
-    m_total = new QLabel(this);
-    root->addWidget(refresh);
-    root->addWidget(seven);
-    root->addWidget(thirty);
-    root->addWidget(m_today);
-    root->addWidget(m_month);
-    root->addWidget(m_total);
+    seven->setProperty("kind", "secondary"); thirty->setProperty("kind", "secondary");
+    top->addWidget(refresh); root->addLayout(top);
+    auto *metrics = new QHBoxLayout;
+    const QStringList names{QStringLiteral("今日营收"), QStringLiteral("本月营收"), QStringLiteral("累计营收")};
+    QLabel **values[]{&m_today, &m_month, &m_total};
+    for (int i = 0; i < names.size(); ++i) { auto *card = panel(); auto *box = new QVBoxLayout(card);
+        box->setContentsMargins(20, 16, 20, 16); box->addWidget(label(names.at(i), "metricTitle"));
+        *values[i] = label(QStringLiteral("¥ --"), "metricValue"); box->addWidget(*values[i]); metrics->addWidget(card, 1); }
+    root->addLayout(metrics);
+    auto *period = new QHBoxLayout; period->addWidget(label(QStringLiteral("营收趋势"), "pageTitle")); period->addStretch(); period->addWidget(seven); period->addWidget(thirty); root->addLayout(period);
     m_chartLayout = new QVBoxLayout;
-    root->addLayout(m_chartLayout, 1);
+    auto *chartPanel = panel(); chartPanel->setLayout(m_chartLayout); m_trendView = label(QStringLiteral("等待趋势数据"), "caption"); m_chartLayout->addWidget(m_trendView); root->addWidget(chartPanel, 2);
+    auto *bottom = new QHBoxLayout;
+    auto *statusPanel = panel(); m_statusLayout = new QVBoxLayout(statusPanel); m_statusLayout->addWidget(label(QStringLiteral("电桩状态"), "pageTitle"));
+    m_statusView = label(QStringLiteral("等待状态数据"), "caption"); m_statusLayout->addWidget(m_statusView); bottom->addWidget(statusPanel, 1);
+    auto *warningPanel = panel(); auto *warningLayout = new QVBoxLayout(warningPanel); auto *warningTop = new QHBoxLayout;
+    warningTop->addWidget(label(QStringLiteral("负荷预警"), "pageTitle")); warningTop->addStretch();
+    for (const QString &text : {QStringLiteral("1h"), QStringLiteral("6h"), QStringLiteral("24h")}) { auto *b = button(text, warningPanel); b->setProperty("kind", "secondary"); warningTop->addWidget(b); }
+    warningLayout->addLayout(warningTop); m_warningTable = new QTableWidget(0, 4, warningPanel);
+    m_warningTable->setHorizontalHeaderLabels({QStringLiteral("站点"), QStringLiteral("预测时间"), QStringLiteral("负荷率"), QStringLiteral("峰值")}); prepareTable(m_warningTable);
+    warningLayout->addWidget(m_warningTable); bottom->addWidget(warningPanel, 1); root->addLayout(bottom, 2);
     connect(refresh, &QPushButton::clicked, this, &DashboardPage::refreshRequested);
     connect(seven, &QPushButton::clicked, this, [this]() { emit trendRequested(7); });
     connect(thirty, &QPushButton::clicked, this, [this]() { emit trendRequested(30); });
@@ -97,14 +156,37 @@ void DashboardPage::setPileStatusSummary(const QJsonObject &data)
     chart->setTitle(QStringLiteral("电桩状态（总数 %1）").arg(data.value(QStringLiteral("total")).toInt()));
     auto *view = new QChartView(chart, this);
     view->setRenderHint(QPainter::Antialiasing);
-    replaceWidget(m_chartLayout, &m_statusView, view);
+    replaceWidget(m_statusLayout, &m_statusView, view);
+}
+
+void DashboardPage::setWarnings(const QJsonObject &data)
+{
+    const QJsonArray items = data.value(QStringLiteral("predictions")).toArray();
+    m_warningTable->setRowCount(items.size());
+    for (int row = 0; row < items.size(); ++row) {
+        const QJsonObject item = items.at(row).toObject();
+        const QStringList values{
+            item.value(QStringLiteral("stationName")).toString(),
+            item.value(QStringLiteral("predictionTime")).toString(),
+            QString::number(item.value(QStringLiteral("predictedLoad")).toDouble() * 100.0,
+                            'f', 0) + QStringLiteral("%"),
+            statusText(item.value(QStringLiteral("peakLevel")).toString())
+        };
+        for (int column = 0; column < values.size(); ++column) {
+            m_warningTable->setItem(row, column, new QTableWidgetItem(values.at(column)));
+        }
+    }
 }
 
 PilePage::PilePage(QWidget *parent) : QWidget(parent), m_table(new QTableWidget(this))
 {
-    auto *root = new QVBoxLayout(this);
+    auto *root = new QVBoxLayout(this); root->setContentsMargins(24, 22, 24, 24); root->setSpacing(14);
+    root->addWidget(label(QStringLiteral("充电桩管理"), "pageTitle"));
+    root->addWidget(label(QStringLiteral("查看设备状态与累计使用情况；危险操作需要二次确认"), "subtitle"));
+    auto *tools = new QHBoxLayout; m_filterHint = label(QStringLiteral("当前：全部站点"), "caption"); tools->addWidget(m_filterHint); tools->addStretch();
+    auto *statusFilter = new QComboBox(this); statusFilter->addItems({QStringLiteral("全部状态"), QStringLiteral("空闲"), QStringLiteral("已预约"), QStringLiteral("充电中"), QStringLiteral("故障"), QStringLiteral("离线"), QStringLiteral("重启中")}); tools->addWidget(statusFilter);
     auto *refresh = button(QStringLiteral("刷新电桩"), this);
-    root->addWidget(refresh);
+    tools->addWidget(refresh); root->addLayout(tools); prepareTable(m_table);
     root->addWidget(m_table, 1);
     connect(refresh, &QPushButton::clicked, this, &PilePage::refreshRequested);
 }
@@ -116,7 +198,7 @@ void PilePage::setPiles(const QJsonObject &data)
     m_table->setHorizontalHeaderLabels({QStringLiteral("桩号"), QStringLiteral("站点"), QStringLiteral("类型"), QStringLiteral("功率"), QStringLiteral("状态"), QStringLiteral("次数"), QStringLiteral("分钟"), QStringLiteral("操作")});
     for (int row = 0; row < piles.size(); ++row) {
         const QJsonObject pile = piles.at(row).toObject();
-        const QStringList values = {pile.value(QStringLiteral("pileNo")).toString(), pile.value(QStringLiteral("stationName")).toString(), pile.value(QStringLiteral("type")).toString(), QString::number(pile.value(QStringLiteral("powerKw")).toDouble()), pile.value(QStringLiteral("status")).toString(), QString::number(pile.value(QStringLiteral("totalChargeCount")).toInt()), QString::number(pile.value(QStringLiteral("totalChargeMinutes")).toInt())};
+        const QStringList values = {pile.value(QStringLiteral("pileNo")).toString(), pile.value(QStringLiteral("stationName")).toString(), pile.value(QStringLiteral("type")).toString() == QStringLiteral("FAST") ? QStringLiteral("快充") : QStringLiteral("慢充"), QString::number(pile.value(QStringLiteral("powerKw")).toDouble()) + QStringLiteral(" kW"), statusText(pile.value(QStringLiteral("status")).toString()), QString::number(pile.value(QStringLiteral("totalChargeCount")).toInt()), QString::number(pile.value(QStringLiteral("totalChargeMinutes")).toInt()) + QStringLiteral(" 分钟")};
         for (int column = 0; column < values.size(); ++column) m_table->setItem(row, column, new QTableWidgetItem(values.at(column)));
         auto *restart = button(QStringLiteral("远程重启"), m_table);
         const QString status = pile.value(QStringLiteral("status")).toString();
@@ -130,10 +212,14 @@ void PilePage::setPiles(const QJsonObject &data)
 
 StationPage::StationPage(QWidget *parent) : QWidget(parent), m_table(new QTableWidget(this))
 {
-    auto *root = new QVBoxLayout(this);
+    auto *root = new QVBoxLayout(this); root->setContentsMargins(24, 22, 24, 24); root->setSpacing(14);
+    auto *heading = new QHBoxLayout; auto *titles = new QVBoxLayout; titles->addWidget(label(QStringLiteral("充电站管理"), "pageTitle")); titles->addWidget(label(QStringLiteral("管理站点基础信息并查看站内电桩"), "subtitle")); heading->addLayout(titles); heading->addStretch();
     auto *refresh = button(QStringLiteral("刷新站点"), this);
     auto *create = button(QStringLiteral("新增站点"), this);
-    root->addWidget(refresh); root->addWidget(create); root->addWidget(m_table, 1);
+    refresh->setProperty("kind", "secondary"); heading->addWidget(refresh); heading->addWidget(create); root->addLayout(heading);
+    auto *split = new QHBoxLayout; prepareTable(m_table); split->addWidget(m_table, 3);
+    auto *detailPanel = panel(); auto *detailLayout = new QVBoxLayout(detailPanel); detailLayout->addWidget(label(QStringLiteral("站内电桩"), "pageTitle")); detailLayout->addWidget(label(QStringLiteral("选择左侧站点查看详情"), "caption"));
+    m_pileDetail = new QTableWidget(0, 3, detailPanel); m_pileDetail->setHorizontalHeaderLabels({QStringLiteral("桩号"), QStringLiteral("功率"), QStringLiteral("状态")}); prepareTable(m_pileDetail); detailLayout->addWidget(m_pileDetail); split->addWidget(detailPanel, 2); root->addLayout(split, 1);
     connect(refresh, &QPushButton::clicked, this, &StationPage::refreshRequested);
     connect(create, &QPushButton::clicked, this, &StationPage::openCreateDialog);
 }
@@ -168,11 +254,31 @@ void StationPage::openCreateDialog()
 
 UserPage::UserPage(QWidget *parent) : QWidget(parent), m_search(new QLineEdit(this)), m_table(new QTableWidget(this))
 {
-    auto *root = new QVBoxLayout(this); auto *refresh = button(QStringLiteral("刷新用户"), this);
-    m_search->setPlaceholderText(QStringLiteral("手机号关键字，回车查询"));
-    root->addWidget(refresh); root->addWidget(m_search); root->addWidget(m_table, 1);
+    auto *root = new QVBoxLayout(this); root->setContentsMargins(24, 22, 24, 24); root->setSpacing(14);
+    root->addWidget(label(QStringLiteral("用户管理"), "pageTitle")); root->addWidget(label(QStringLiteral("按手机号查询用户并维护账户状态"), "subtitle"));
+    auto *tools = new QHBoxLayout; auto *refresh = button(QStringLiteral("刷新用户"), this); refresh->setProperty("kind", "secondary");
+    auto *search = button(QStringLiteral("查询"), this); auto *clear = button(QStringLiteral("清空"), this); clear->setProperty("kind", "secondary");
+    m_search->setPlaceholderText(QStringLiteral("输入手机号关键词")); tools->addWidget(m_search, 1); tools->addWidget(search); tools->addWidget(clear); tools->addWidget(refresh); root->addLayout(tools); prepareTable(m_table); root->addWidget(m_table, 1);
     connect(refresh, &QPushButton::clicked, this, &UserPage::refreshRequested);
     connect(m_search, &QLineEdit::returnPressed, this, [this]() { emit searchRequested(phoneKeyword()); });
+    connect(search, &QPushButton::clicked, this, [this]() { emit searchRequested(phoneKeyword()); });
+    connect(clear, &QPushButton::clicked, this, [this]() { m_search->clear(); emit searchRequested(QString()); });
+}
+
+void StationPage::setPileDetails(const QJsonArray &piles)
+{
+    m_pileDetail->setRowCount(piles.size());
+    for (int row = 0; row < piles.size(); ++row) {
+        const QJsonObject pile = piles.at(row).toObject();
+        const QStringList values{
+            pile.value(QStringLiteral("pileNo")).toString(),
+            QString::number(pile.value(QStringLiteral("powerKw")).toDouble()) + QStringLiteral(" kW"),
+            statusText(pile.value(QStringLiteral("status")).toString())
+        };
+        for (int column = 0; column < values.size(); ++column) {
+            m_pileDetail->setItem(row, column, new QTableWidgetItem(values.at(column)));
+        }
+    }
 }
 
 QString UserPage::phoneKeyword() const { return m_search->text().trimmed(); }
@@ -184,7 +290,7 @@ void UserPage::setUsers(const QJsonObject &data)
     m_table->setHorizontalHeaderLabels({QStringLiteral("ID"), QStringLiteral("手机号"), QStringLiteral("昵称"), QStringLiteral("余额"), QStringLiteral("注册时间"), QStringLiteral("状态"), QStringLiteral("操作")});
     for (int row = 0; row < users.size(); ++row) {
         const QJsonObject user = users.at(row).toObject();
-        const QStringList values = {QString::number(user.value(QStringLiteral("userId")).toInteger()), user.value(QStringLiteral("phone")).toString(), user.value(QStringLiteral("nickname")).toString(), QString::number(user.value(QStringLiteral("balanceFen")).toInteger() / 100.0, 'f', 2), user.value(QStringLiteral("createdAt")).toString(), user.value(QStringLiteral("status")).toString()};
+        const QStringList values = {QString::number(user.value(QStringLiteral("userId")).toInteger()), user.value(QStringLiteral("phone")).toString(), user.value(QStringLiteral("nickname")).toString(), QStringLiteral("¥") + QString::number(user.value(QStringLiteral("balanceFen")).toInteger() / 100.0, 'f', 2), user.value(QStringLiteral("createdAt")).toString(), statusText(user.value(QStringLiteral("status")).toString())};
         for (int column = 0; column < values.size(); ++column) m_table->setItem(row, column, new QTableWidgetItem(values.at(column)));
         const bool frozen = user.value(QStringLiteral("status")).toString() == QStringLiteral("FROZEN");
         auto *change = button(frozen ? QStringLiteral("解冻") : QStringLiteral("冻结"), m_table);

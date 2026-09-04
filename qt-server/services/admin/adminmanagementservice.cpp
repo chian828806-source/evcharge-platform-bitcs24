@@ -20,7 +20,7 @@ ResponseMessage AdminManagementService::pileList(const RequestMessage &request) 
 {
     m_pileRepository.clearError();
     const QJsonArray piles = m_pileRepository.list(
-        request.payload.value(QStringLiteral("stationId")).toInteger());
+        static_cast<qint64>(request.payload.value(QStringLiteral("stationId")).toDouble()));
     if (!m_pileRepository.lastError().isEmpty()) return databaseError(request, m_pileRepository.lastError());
     return ResponseMessage::success(request.requestId, {{QStringLiteral("piles"), piles}});
 }
@@ -45,7 +45,8 @@ ResponseMessage AdminManagementService::userList(const RequestMessage &request) 
 ResponseMessage AdminManagementService::restartPile(const RequestMessage &request,
                                                      qint64 adminId) const
 {
-    const qint64 pileId = request.payload.value(QStringLiteral("pileId")).toInteger();
+    const qint64 pileId = static_cast<qint64>(
+        request.payload.value(QStringLiteral("pileId")).toDouble());
     m_pileRepository.clearError(); m_logRepository.clearError();
     bool found = false; const QString before = m_pileRepository.status(pileId, &found);
     if (!m_pileRepository.lastError().isEmpty()) return databaseError(request, m_pileRepository.lastError());
@@ -96,7 +97,8 @@ ResponseMessage AdminManagementService::createStation(const RequestMessage &requ
 ResponseMessage AdminManagementService::setUserFrozen(const RequestMessage &request,
                                                        qint64 adminId, bool frozen) const
 {
-    const qint64 userId = request.payload.value(QStringLiteral("userId")).toInteger();
+    const qint64 userId = static_cast<qint64>(
+        request.payload.value(QStringLiteral("userId")).toDouble());
     QString error;
     m_logRepository.clearError();
     const QJsonObject user = m_userRepository.statusForAdmin(m_database, userId, &error);
