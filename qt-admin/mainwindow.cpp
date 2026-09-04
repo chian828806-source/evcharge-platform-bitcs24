@@ -165,6 +165,7 @@ void MainWindow::submitLogin()
     if (!ok || m_username->text().trimmed().isEmpty() || m_password->text().isEmpty()) {
         m_status->setText(QStringLiteral("请填写有效的服务器、账号和密码")); return;
     }
+    m_logoutInProgress = false;
     m_login->setEnabled(false); m_client->connectToServer(m_host->text().trimmed(), port);
 }
 

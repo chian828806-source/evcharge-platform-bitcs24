@@ -320,10 +320,11 @@ void StationPage::setPileDetails(const QJsonArray &piles)
     m_pileDetail->setRowCount(piles.size());
     for (int row = 0; row < piles.size(); ++row) {
         const QJsonObject pile = piles.at(row).toObject();
+        const QString type = pile.value(QStringLiteral("type")).toString();
         const QStringList values{
             pile.value(QStringLiteral("pileNo")).toString(),
-            pile.value(QStringLiteral("type")).toString() == QStringLiteral("FAST")
-                ? QStringLiteral("快充") : QStringLiteral("慢充"),
+            type == QStringLiteral("FAST") ? QStringLiteral("快充")
+                : type == QStringLiteral("SLOW") ? QStringLiteral("慢充") : type,
             QString::number(pile.value(QStringLiteral("powerKw")).toDouble()) + QStringLiteral(" kW"),
             statusText(pile.value(QStringLiteral("status")).toString())
         };
