@@ -349,9 +349,18 @@ QWidget *UserWindow::buildStationDetailPage()
     auto *layout = new QVBoxLayout(content);
     layout->setContentsMargins(20, 0, 20, 24);
     layout->setSpacing(13);
+    auto *detailTop = new QHBoxLayout;
+    detailTop->setContentsMargins(0, 16, 0, 0);
+    detailTop->setSpacing(12);
+    auto *backButton = makeButton(QStringLiteral("← 返回首页"), "ghost");
+    backButton->setMaximumWidth(110);
+    backButton->setToolTip(QStringLiteral("返回附近充电站列表"));
+    backButton->setAccessibleName(QStringLiteral("返回首页"));
     auto *detailHeader = buildPageHeader(QStringLiteral("STATION DETAIL"),
                                          QStringLiteral("充电站详情"));
-    layout->addWidget(detailHeader);
+    detailTop->addWidget(backButton, 0, Qt::AlignTop);
+    detailTop->addWidget(detailHeader, 1);
+    layout->addLayout(detailTop);
     m_stationDetailTitle = makeLabel(QStringLiteral("请选择站点"), "cardTitle");
     layout->addWidget(m_stationDetailTitle);
 
@@ -371,6 +380,8 @@ QWidget *UserWindow::buildStationDetailPage()
     layout->addStretch();
     pageLayout->addWidget(makeScrollArea(content), 1);
     pageLayout->addWidget(buildBottomNavigation(Home));
+    connect(backButton, &QPushButton::clicked, this,
+            [this]() { showPage(Home); });
     connect(navigationButton, &QPushButton::clicked, this, [this]() {
         m_navigationDestination->setText(m_selectedStation.value(QStringLiteral("name")).toString());
         showPage(Navigation);
