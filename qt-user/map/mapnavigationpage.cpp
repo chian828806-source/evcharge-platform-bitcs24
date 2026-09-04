@@ -10,6 +10,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QStringList>
+#include <QStyle>
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QWebEngineView>
@@ -50,6 +51,8 @@ MapNavigationPage::MapNavigationPage(QWidget *parent)
     auto *toolbar = new QHBoxLayout();
     m_drivingButton = new QPushButton(QStringLiteral("驾车"), this);
     m_walkingButton = new QPushButton(QStringLiteral("步行"), this);
+    m_drivingButton->setProperty("kind", QStringLiteral("mapMode"));
+    m_walkingButton->setProperty("kind", QStringLiteral("mapMode"));
     auto *backButton = new QPushButton(QStringLiteral("返回"), this);
     toolbar->addWidget(m_drivingButton);
     toolbar->addWidget(m_walkingButton);
@@ -174,7 +177,7 @@ function initMap() {
   try { map.fitBounds(bounds, {padding: 52}); } catch (ignore) { }
   new TMap.MultiPolyline({
     map: map,
-    styles: { route: new TMap.PolylineStyle({color:'#1677ff',width:7,borderWidth:2,borderColor:'#ffffff',lineCap:'round'}) },
+    styles: { route: new TMap.PolylineStyle({color:'#1677ff',width:6,borderWidth:1,borderColor:'#ffffff',lineCap:'round',lineJoin:'round'}) },
     geometries: [{id:'planned-route',styleId:'route',paths:points}]
   });
   new TMap.MultiMarker({
@@ -287,11 +290,21 @@ void MapNavigationPage::updateRouteSummary()
 
 void MapNavigationPage::setTravelMode(TravelMode mode)
 {
-    if (m_travelMode == mode && m_drivingButton->isEnabled() == (mode != TravelMode::Driving)) {
+    const bool drivingSelected = mode == TravelMode::Driving;
+    if (m_travelMode == mode
+        && m_drivingButton->property("selected").toBool() == drivingSelected
+        && m_walkingButton->property("selected").toBool() == !drivingSelected) {
         return;
     }
     m_travelMode = mode;
-    m_drivingButton->setEnabled(mode != TravelMode::Driving);
-    m_walkingButton->setEnabled(mode != TravelMode::Walking);
+    const auto setSelected = [](QPushButton *button, bool selected) {
+        button->setEnabled(true);
+        button->setProperty("selected", selected);
+        button->style()->unpolish(button);
+        button->style()->polish(button);
+        button->update();
+    };
+    setSelected(m_drivingButton, drivingSelected);
+    setSelected(m_walkingButton, !drivingSelected);
     emit travelModeChanged(mode);
 }

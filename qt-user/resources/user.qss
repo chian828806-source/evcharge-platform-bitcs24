@@ -105,6 +105,27 @@ QPushButton[kind="ghost"], QPushButton[kind="link"] {
 QPushButton[kind="link"] {
     color: #d7ebe6; border-color: #42645d; min-height: 26px; font-size: 10px;
 }
+QPushButton[kind="mapMode"] {
+    color: #43635b;
+    background: #ffffff;
+    border: 1px solid #c8ddd6;
+    min-width: 74px;
+}
+QPushButton[kind="mapMode"]:hover {
+    color: #0c765c;
+    background: #e8f7f2;
+    border-color: #63bca4;
+}
+QPushButton[kind="mapMode"][selected="true"] {
+    color: #ffffff;
+    background: #118d6b;
+    border: 1px solid #118d6b;
+}
+QPushButton[kind="mapMode"][selected="true"]:hover {
+    color: #ffffff;
+    background: #0c765c;
+    border-color: #0c765c;
+}
 QPushButton[kind="danger"] { color: white; background: #d95656; border: none; }
 QPushButton[kind="dangerGhost"] {
     color: #b84545; background: #fff5f5; border: 1px solid #f2cccc;
