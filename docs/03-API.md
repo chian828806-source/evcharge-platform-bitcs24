@@ -311,7 +311,7 @@ Key，也不自行把地址解析为坐标。请求为 `district: string`、`add
 | `ADMIN_PILE_LIST` | `stationId: int`，可选；省略表示全部站点 | `piles [{ pileId, pileNo, stationId, stationName, type, powerKw, status, totalChargeCount, totalChargeMinutes }]` | `4003`，`5001` |
 | `ADMIN_PILE_RESTART` | `pileId: int` | `pileId`，`status=RESTARTING`，`restoreStatus` | `4003`，`4102` 当前状态禁止重启，`4202` 电桩不存在，`5001` |
 | `ADMIN_STATION_LIST` | 空对象 | `stations [{ stationId, stationNo, name, address, longitude, latitude, pileCount, onlineRate }]` | `4003`，`5001` |
-| `ADMIN_STATION_CREATE` | `name`，`address`，`longitude`，`latitude`，`pileCount`；`priceFenPerKwh` 可选，默认 120 | `stationId`，`stationNo`，`pileCount` | `4003`，`4401` 参数非法，`5001`；站点和模拟电桩在同一事务创建 |
+| `ADMIN_STATION_CREATE` | `name`，`address`，`longitude`，`latitude`，`pileCount`；`priceFenPerKwh` 可选，默认 120，范围 1～10000 | `stationId`，`stationNo`，`pileCount` | `4003`，`4401` 参数非法，`5001`；站点和模拟电桩在同一事务创建 |
 | `ADMIN_USER_LIST` | `phoneKeyword: string`，可选；支持手机号部分匹配 | `users [{ userId, phone, nickname, balanceFen, createdAt, status }]` | `4003`，`5001` |
 | `ADMIN_USER_FREEZE` | `userId: int` | `userId`，`status=FROZEN`，`changed` | `4001` 用户不存在，`4003`，`4401`，`5001` |
 | `ADMIN_USER_UNFREEZE` | `userId: int` | `userId`，`status=NORMAL`，`changed` | `4001` 用户不存在，`4003`，`4401`，`5001` |

@@ -3,19 +3,15 @@
 #include "network/sessionmanager.h"
 #include "shared/protocol/protocolmessage.h"
 
-#include <QSqlDatabase>
-#include "repositories/adminrepository.h"
-#include "repositories/operationlogrepository.h"
+class DatabaseManager;
 
 class AdminAuthService
 {
 public:
-    AdminAuthService(QSqlDatabase database, SessionManager *sessions);
+    AdminAuthService(DatabaseManager *databaseManager, SessionManager *sessions);
     ResponseMessage login(const RequestMessage &request);
 
 private:
-    QSqlDatabase m_database;
+    DatabaseManager *m_databaseManager = nullptr;
     SessionManager *m_sessions = nullptr;
-    AdminRepository m_adminRepository;
-    OperationLogRepository m_logRepository;
 };

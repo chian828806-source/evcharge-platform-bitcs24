@@ -1,6 +1,9 @@
 #include "adminauthservice.h"
 
 #include "common/passwordhasher.h"
+#include "database/databasemanager.h"
+#include "repositories/adminrepository.h"
+#include "repositories/operationlogrepository.h"
 #include "shared/protocol/errorcodes.h"
 
 #include <QDateTime>
@@ -8,14 +11,21 @@
 #include <QSqlError>
 #include <utility>
 
-AdminAuthService::AdminAuthService(QSqlDatabase database, SessionManager *sessions)
-    : m_database(database), m_sessions(sessions),
-      m_adminRepository(database), m_logRepository(database)
+AdminAuthService::AdminAuthService(DatabaseManager *databaseManager, SessionManager *sessions)
+    : m_databaseManager(databaseManager), m_sessions(sessions)
 {
 }
 
 ResponseMessage AdminAuthService::login(const RequestMessage &request)
 {
+    QSqlDatabase database;
+    QString databaseError;
+    if (!m_databaseManager || !m_databaseManager->database(&database, &databaseError)) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::DatabaseError,
+                                      databaseError);
+    }
+    AdminRepository adminRepository(database);
+    OperationLogRepository logRepository(database);
     const QString username = request.payload.value(QStringLiteral("username")).toString().trimmed();
     const QString password = request.payload.value(QStringLiteral("password")).toString();
     if (username.isEmpty() || password.isEmpty()) {
@@ -24,12 +34,10 @@ ResponseMessage AdminAuthService::login(const RequestMessage &request)
                                       QStringLiteral("管理员账号或密码错误"));
     }
 
-    m_adminRepository.clearError();
-    m_logRepository.clearError();
-    const QJsonObject admin = m_adminRepository.findByUsername(username);
-    if (admin.isEmpty() && !m_adminRepository.lastError().isEmpty()) {
+    const QJsonObject admin = adminRepository.findByUsername(username);
+    if (admin.isEmpty() && !adminRepository.lastError().isEmpty()) {
         return ResponseMessage::error(request.requestId, ErrorCodes::DatabaseError,
-                                      m_adminRepository.lastError());
+                                      adminRepository.lastError());
     }
     if (admin.isEmpty()
         || admin.value(QStringLiteral("status")).toString() != QStringLiteral("NORMAL")
@@ -44,19 +52,20 @@ ResponseMessage AdminAuthService::login(const RequestMessage &request)
         admin.value(QStringLiteral("adminId")).toDouble());
     const QString displayName = admin.value(QStringLiteral("displayName")).toString();
     const QString now = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
-    if (!m_database.transaction()) {
+    if (!database.transaction()) {
         return ResponseMessage::error(request.requestId, ErrorCodes::DatabaseError,
-                                      m_database.lastError().text());
+                                      database.lastError().text());
     }
-    if (!m_adminRepository.updateLastLogin(adminId, now)
-        || !m_logRepository.add(adminId, QStringLiteral("ADMIN_LOGIN"),
+    if (!adminRepository.updateLastLogin(adminId, now)
+        || !logRepository.add(adminId, QStringLiteral("ADMIN_LOGIN"),
                                 QStringLiteral("SYSTEM"), adminId, {}, {},
                                 QStringLiteral("管理员登录成功"), now)
-        || !m_database.commit()) {
-        m_database.rollback();
+        || !database.commit()) {
+        const QString error = adminRepository.lastError() + logRepository.lastError()
+            + database.lastError().text();
+        database.rollback();
         return ResponseMessage::error(request.requestId, ErrorCodes::DatabaseError,
-                                      m_adminRepository.lastError()
-                                          + m_logRepository.lastError());
+                                      error);
     }
     const QString sessionId = m_sessions->createSession(adminId, SessionRole::Admin);
     return ResponseMessage::success(request.requestId, {
