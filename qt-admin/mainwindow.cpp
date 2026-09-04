@@ -143,13 +143,19 @@ MainWindow::MainWindow(QWidget *parent)
                     QStringLiteral("%1：%2").arg(type, message));
             });
     connect(m_client, &AdminSocketClient::disconnected, this, [this]() {
-        if (!m_sessionId.isEmpty()) {
-            m_sessionId.clear();
-            if (m_dashboardTimer) m_dashboardTimer->stop();
-            QMessageBox::warning(this, QStringLiteral("连接已断开"),
-                                 QStringLiteral("与服务端的连接已断开，请重新登录。"));
-            showLoginPage(QStringLiteral("连接已断开，请重新登录"));
+        const bool loggedOut = m_logoutInProgress;
+        m_logoutInProgress = false;
+        if (m_sessionId.isEmpty() && !loggedOut) return;
+
+        m_sessionId.clear();
+        if (m_dashboardTimer) m_dashboardTimer->stop();
+        if (loggedOut) {
+            showLoginPage(QStringLiteral("已退出登录"));
+            return;
         }
+        QMessageBox::warning(this, QStringLiteral("连接已断开"),
+                             QStringLiteral("与服务端的连接已断开，请重新登录。"));
+        showLoginPage(QStringLiteral("连接已断开，请重新登录"));
     });
 }
 
@@ -243,6 +249,7 @@ void MainWindow::buildManagementPages()
     m_tabs->setCornerWidget(account, Qt::TopRightCorner);
     m_rootStack->addWidget(m_tabs); m_rootStack->setCurrentWidget(m_tabs);
     connect(logout, &QPushButton::clicked, this, [this]() {
+        m_logoutInProgress = true;
         m_sessionId.clear(); m_mockPreview = false;
         if (m_dashboardTimer) m_dashboardTimer->stop();
         m_client->disconnectFromServer(); showLoginPage(QStringLiteral("已退出登录"));

@@ -36,4 +36,5 @@ private:
     QStackedWidget *m_rootStack = nullptr; QWidget *m_loginPage = nullptr;
     int m_trendDays = 7; QString m_warningHorizon = QStringLiteral("1h");
     bool m_mockPreview = false;
+    bool m_logoutInProgress = false;
 };
