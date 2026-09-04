@@ -124,6 +124,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_client, &AdminSocketClient::requestTimedOut, this,
             [this](const QString &requestId, const QString &type) {
                 const qint64 stationId = m_stationDetailRequests.take(requestId);
+                m_trendRequests.remove(requestId);
+                m_warningRequests.remove(requestId);
+                m_userListRequests.remove(requestId);
                 m_requestTypes.remove(requestId);
                 finishAction(type);
                 if (stationId > 0 && stationId == m_activeDetailStationId && m_stations)
@@ -135,6 +138,9 @@ MainWindow::MainWindow(QWidget *parent)
             [this](const QString &requestId, const QString &type,
                    const QString &message) {
                 const qint64 stationId = m_stationDetailRequests.take(requestId);
+                m_trendRequests.remove(requestId);
+                m_warningRequests.remove(requestId);
+                m_userListRequests.remove(requestId);
                 m_requestTypes.remove(requestId);
                 finishAction(type);
                 if (stationId > 0 && stationId == m_activeDetailStationId && m_stations)
@@ -193,6 +199,9 @@ void MainWindow::handleResponse(const QJsonObject &response)
     const QString requestId = response.value(QStringLiteral("requestId")).toString();
     const QString type = m_requestTypes.take(requestId);
     const qint64 detailStationId = m_stationDetailRequests.take(requestId);
+    const int trendDays = m_trendRequests.take(requestId);
+    const QString warningHorizon = m_warningRequests.take(requestId);
+    const QString userKeyword = m_userListRequests.take(requestId);
     finishAction(type);
     if (response.value(QStringLiteral("code")).toInt() != ErrorCodes::Success) {
         if (detailStationId > 0 && detailStationId == m_activeDetailStationId && m_stations)
@@ -210,16 +219,22 @@ void MainWindow::handleResponse(const QJsonObject &response)
         buildManagementPages();
         refreshDashboard(); requestPileList(); requestStationList(); requestUserList();
     } else if (type == MessageTypes::AdminRevenueSummary) m_dashboard->setRevenueSummary(data);
-    else if (type == MessageTypes::AdminRevenueTrend) m_dashboard->setRevenueTrend(data);
+    else if (type == MessageTypes::AdminRevenueTrend) {
+        if (trendDays == m_trendDays) m_dashboard->setRevenueTrend(data);
+    }
     else if (type == MessageTypes::AdminPileStatusSummary) m_dashboard->setPileStatusSummary(data);
-    else if (type == MessageTypes::PredictionWarning) m_dashboard->setWarnings(data);
+    else if (type == MessageTypes::PredictionWarning) {
+        if (warningHorizon == m_warningHorizon) m_dashboard->setWarnings(data);
+    }
     else if (type == MessageTypes::AdminPileList && detailStationId > 0) {
         if (detailStationId == m_activeDetailStationId)
             m_stations->setPileDetails(data.value(QStringLiteral("piles")).toArray());
     }
     else if (type == MessageTypes::AdminPileList) m_piles->setPiles(data);
     else if (type == MessageTypes::AdminStationList) m_stations->setStations(data);
-    else if (type == MessageTypes::AdminUserList) m_users->setUsers(data);
+    else if (type == MessageTypes::AdminUserList) {
+        if (userKeyword == m_activeUserKeyword) m_users->setUsers(data);
+    }
     else if (type == MessageTypes::AdminPileRestart) {
         QMessageBox::information(this, QStringLiteral("操作成功"), QStringLiteral("远程重启指令已发送。"));
         QTimer::singleShot(1700, this, [this]() { requestPileList(); refreshDashboard(); });
@@ -257,11 +272,10 @@ void MainWindow::buildManagementPages()
     });
     connect(m_dashboard, &DashboardPage::refreshRequested, this, &MainWindow::refreshDashboard);
     connect(m_dashboard, &DashboardPage::trendRequested, this, [this](int days) {
-        m_trendDays = days; send(MessageTypes::AdminRevenueTrend, {{QStringLiteral("days"), days}});
+        requestRevenueTrend(days);
     });
     connect(m_dashboard, &DashboardPage::warningRequested, this, [this](const QString &horizon) {
-        m_warningHorizon = horizon;
-        send(MessageTypes::PredictionWarning, {{QStringLiteral("horizon"), horizon}, {QStringLiteral("limit"), 20}});
+        requestWarnings(horizon);
     });
     connect(m_stations, &StationPage::refreshRequested, this, &MainWindow::requestStationList);
     connect(m_stations, &StationPage::stationPilesRequested, this, &MainWindow::requestStationPileDetails);
@@ -294,10 +308,23 @@ void MainWindow::buildManagementPages()
 
 void MainWindow::refreshDashboard()
 {
-    send(MessageTypes::AdminRevenueSummary); send(MessageTypes::AdminRevenueTrend, {{QStringLiteral("days"), m_trendDays}});
+    send(MessageTypes::AdminRevenueSummary); requestRevenueTrend(m_trendDays);
     send(MessageTypes::AdminPileStatusSummary);
-    send(MessageTypes::PredictionWarning, {{QStringLiteral("horizon"), m_warningHorizon},
-                                           {QStringLiteral("limit"), 20}});
+    requestWarnings(m_warningHorizon);
+}
+void MainWindow::requestRevenueTrend(int days)
+{
+    m_trendDays = days;
+    const QString requestId = send(MessageTypes::AdminRevenueTrend,
+                                   {{QStringLiteral("days"), days}});
+    if (!requestId.isEmpty()) m_trendRequests.insert(requestId, days);
+}
+void MainWindow::requestWarnings(const QString &horizon)
+{
+    m_warningHorizon = horizon;
+    const QString requestId = send(MessageTypes::PredictionWarning,
+        {{QStringLiteral("horizon"), horizon}, {QStringLiteral("limit"), 20}});
+    if (!requestId.isEmpty()) m_warningRequests.insert(requestId, horizon);
 }
 void MainWindow::requestPileList(const QJsonObject &payload) { send(MessageTypes::AdminPileList, payload); }
 void MainWindow::requestStationPileDetails(qint64 stationId)
@@ -310,7 +337,14 @@ void MainWindow::requestStationPileDetails(qint64 stationId)
     else if (m_stations) m_stations->setPileDetailStatus(QStringLiteral("无法发起请求"));
 }
 void MainWindow::requestStationList() { send(MessageTypes::AdminStationList); }
-void MainWindow::requestUserList() { send(MessageTypes::AdminUserList, {{QStringLiteral("phoneKeyword"), m_users ? m_users->phoneKeyword() : QString()}}); }
+void MainWindow::requestUserList()
+{
+    const QString keyword = m_users ? m_users->phoneKeyword() : QString();
+    m_activeUserKeyword = keyword;
+    const QString requestId = send(MessageTypes::AdminUserList,
+                                   {{QStringLiteral("phoneKeyword"), keyword}});
+    if (!requestId.isEmpty()) m_userListRequests.insert(requestId, keyword);
+}
 
 void MainWindow::handleFailure(const QJsonObject &response)
 {
@@ -335,6 +369,7 @@ void MainWindow::finishAction(const QString &type)
 void MainWindow::showLoginPage(const QString &message)
 {
     m_activeDetailStationId = 0; m_stationDetailRequests.clear();
+    m_trendRequests.clear(); m_warningRequests.clear(); m_userListRequests.clear();
     setEnabled(true); m_rootStack->setCurrentWidget(m_loginPage);
     if (m_password) m_password->clear();
     if (m_login) m_login->setEnabled(true);

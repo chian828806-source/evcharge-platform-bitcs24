@@ -8,5 +8,6 @@ user_network.file = qt-user/qt-user-network.pro
 user_app.file = qt-user/qt-user.pro
 admin.file = qt-admin/qt-admin.pro
 network_tests.file = tests/network/network-protocol-tests.pro
+admin_tests.file = tests/admin/admin-management-tests.pro
 
-SUBDIRS += server user_network user_app admin network_tests
+SUBDIRS += server user_network user_app admin network_tests admin_tests
