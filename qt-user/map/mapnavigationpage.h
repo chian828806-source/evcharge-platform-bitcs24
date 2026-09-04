@@ -1,6 +1,7 @@
 /*
- * 功能：提供可嵌入用户端主窗口的地图导航页。
- * 边界：页面只展示服务端确认的路线 URL；不保存地图 Key，不请求 SQLite 或直接调用地图服务。
+ * 功能：提供可嵌入用户端主窗口的交互式地图导航页。
+ * 边界：页面只展示服务端确认的路线数据；不请求 SQLite 或直接调用地图服务。
+ *       JS 地图 Key 仅从运行环境 TENCENT_MAP_JS_KEY 读取，不写入源码或资源文件。
  */
 #pragma once
 
@@ -48,7 +49,7 @@ public:
 
     // 由首页或站点详情页在页面跳转前提供起终点；此操作不会发起外部网络请求。
     bool setRoute(const MapRoute &route);
-    // 由后续地图适配层提供已经验证的腾讯路线 URL；页面只负责加载和展示。
+    // 预留给受信任的 HTTPS 导航页；当前主流程使用 setRoutePlan() 的交互式底图。
     void setNavigationUrl(const QUrl &url);
     void setRoutePlan(const MapRoutePlanPreview &plan);
     void setLoadError(const QString &message);
@@ -70,6 +71,7 @@ private slots:
 
 private:
     bool hasValidCoordinates(const MapRoute &route) const;
+    QString interactiveMapHtml(const MapRoutePlanPreview &plan) const;
     void showPlaceholder(const QString &message);
     void updateRouteSummary();
     void setTravelMode(TravelMode mode);

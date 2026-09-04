@@ -4,11 +4,16 @@
 #include "mapnavigationpage.h"
 
 #include <QHBoxLayout>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLabel>
 #include <QPushButton>
 #include <QStringList>
+#include <QUrl>
 #include <QVBoxLayout>
 #include <QWebEngineView>
+#include <QWebEngineSettings>
 
 #include <cmath>
 
@@ -53,6 +58,9 @@ MapNavigationPage::MapNavigationPage(QWidget *parent)
     layout->addLayout(toolbar);
 
     m_mapView = new QWebEngineView(this);
+    // 页面内容由本程序生成，但腾讯 JS GL SDK 需要从 HTTPS 加载。
+    m_mapView->settings()->setAttribute(
+        QWebEngineSettings::LocalContentCanAccessRemoteUrls, true);
     m_mapView->setMinimumHeight(360);
     layout->addWidget(m_mapView, 1);
 
@@ -110,56 +118,81 @@ void MapNavigationPage::setRoutePlan(const MapRoutePlanPreview &plan)
         return;
     }
 
-    double minLongitude = plan.polyline.first().x();
-    double maxLongitude = minLongitude;
-    double minLatitude = plan.polyline.first().y();
-    double maxLatitude = minLatitude;
-    for (const QPointF &point : plan.polyline) {
-        minLongitude = qMin(minLongitude, point.x());
-        maxLongitude = qMax(maxLongitude, point.x());
-        minLatitude = qMin(minLatitude, point.y());
-        maxLatitude = qMax(maxLatitude, point.y());
+    if (qEnvironmentVariable("TENCENT_MAP_JS_KEY").trimmed().isEmpty()) {
+        setLoadError(QStringLiteral(
+            "未配置交互地图 Key。请在 qt-user 的运行环境中设置 TENCENT_MAP_JS_KEY。"));
+        return;
     }
-    const double longitudeRange = qMax(maxLongitude - minLongitude, 0.000001);
-    const double latitudeRange = qMax(maxLatitude - minLatitude, 0.000001);
-    QStringList svgPoints;
-    for (const QPointF &point : plan.polyline) {
-        const double x = 48.0 + (point.x() - minLongitude) / longitudeRange * 704.0;
-        const double y = 372.0 - (point.y() - minLatitude) / latitudeRange * 324.0;
-        svgPoints.append(QStringLiteral("%1,%2").arg(x, 0, 'f', 1).arg(y, 0, 'f', 1));
-    }
-    const QString firstPoint = svgPoints.first();
-    const QString lastPoint = svgPoints.last();
-    const QString mode = modeName(m_travelMode);
-    const QString html = QStringLiteral(
-        "<html><body style='margin:0;padding:18px;background:#f7fafc;"
-        "font-family:Microsoft YaHei,sans-serif;color:#102a43;'>"
-        "<h2 style='margin:0 0 8px;'>腾讯路线规划结果</h2>"
-        "<p style='margin:0 0 14px;color:#486581;'>%1 · 约 %2 公里 · 约 %3 分钟</p>"
-        "<svg viewBox='0 0 800 420' style='width:100%;height:auto;background:#e7f2ff;"
-        "border-radius:14px;'>"
-        "<path d='M 40 42 H 760 M 40 126 H 760 M 40 210 H 760 M 40 294 H 760 M 40 378 H 760'"
-        " stroke='#c9dff4' stroke-width='2'/>"
-        "<polyline points='%4' fill='none' stroke='#1677ff' stroke-width='8'"
-        " stroke-linecap='round' stroke-linejoin='round'/>"
-        "<circle cx='%5' cy='%6' r='12' fill='#23a55a' stroke='white' stroke-width='5'/>"
-        "<circle cx='%7' cy='%8' r='12' fill='#e5484d' stroke='white' stroke-width='5'/>"
-        "</svg><p style='color:#627d98;'>路线由服务端调用腾讯地图规划；此页面只展示路线，"
-        "不会保存 WebService Key。</p></body></html>")
-        .arg(mode)
-        .arg(plan.distanceMeters / 1000.0, 0, 'f', 1)
-        .arg(plan.durationMinutes, 0, 'f', 0)
-        .arg(svgPoints.join(QLatin1Char(' ')))
-        .arg(firstPoint.section(QLatin1Char(','), 0, 0))
-        .arg(firstPoint.section(QLatin1Char(','), 1, 1))
-        .arg(lastPoint.section(QLatin1Char(','), 0, 0))
-        .arg(lastPoint.section(QLatin1Char(','), 1, 1));
 
-    m_loadingNavigation = false;
-    m_mapView->setHtml(html);
-    m_statusLabel->setText(QStringLiteral("已获取%1路线：%2 米，约 %3 分钟。")
-        .arg(mode).arg(plan.distanceMeters).arg(plan.durationMinutes, 0, 'f', 0));
+    m_loadingNavigation = true;
+    // 用固定的本地开发来源，便于 JavaScript API GL Key 配置 localhost 域名白名单。
+    m_mapView->setHtml(interactiveMapHtml(plan), QUrl(QStringLiteral("https://localhost/")));
+    m_statusLabel->setText(QStringLiteral("正在加载可交互的腾讯%1地图：%2 米，约 %3 分钟。")
+        .arg(modeName(m_travelMode)).arg(plan.distanceMeters).arg(plan.durationMinutes, 0, 'f', 0));
     m_retryButton->setVisible(false);
+}
+
+QString MapNavigationPage::interactiveMapHtml(const MapRoutePlanPreview &plan) const
+{
+    QJsonArray points;
+    for (const QPointF &point : plan.polyline) {
+        points.append(QJsonObject{
+            {QStringLiteral("longitude"), point.x()},
+            {QStringLiteral("latitude"), point.y()}
+        });
+    }
+    const QString routeJson = QString::fromUtf8(
+        QJsonDocument(points).toJson(QJsonDocument::Compact));
+    const QString encodedKey = QString::fromLatin1(
+        QUrl::toPercentEncoding(qEnvironmentVariable("TENCENT_MAP_JS_KEY").trimmed()));
+    const QString mode = modeName(m_travelMode).toHtmlEscaped();
+
+    return QStringLiteral(R"HTML(
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+html,body,#container{margin:0;width:100%;height:100%;overflow:hidden;font-family:"Microsoft YaHei",sans-serif}
+#hint{position:fixed;z-index:10;left:12px;top:12px;padding:7px 10px;border-radius:8px;
+background:rgba(255,255,255,.94);box-shadow:0 1px 6px rgba(0,0,0,.2);font-size:12px;color:#1d4e45}
+#error{display:none;position:fixed;z-index:20;inset:0;padding:24px;background:#fff7f7;color:#a61b29;font-size:14px}
+</style></head><body>
+<div id="container"></div><div id="hint">腾讯地图 · %1路线，可拖动、滚轮缩放</div><div id="error"></div>
+<script>
+const route = %2;
+function showError(message) {
+  const error = document.getElementById('error'); error.textContent = message; error.style.display = 'block';
+}
+function initMap() {
+  if (typeof TMap === 'undefined') { showError('腾讯地图脚本未加载，请检查 TENCENT_MAP_JS_KEY、域名白名单和网络。'); return; }
+  if (!Array.isArray(route) || route.length < 2) { showError('路线数据不完整。'); return; }
+  const toLatLng = p => new TMap.LatLng(p.latitude, p.longitude);
+  const map = new TMap.Map(document.getElementById('container'), {
+    center: toLatLng(route[0]), zoom: 13, draggable: true, scrollable: true
+  });
+  const points = route.map(toLatLng);
+  const bounds = new TMap.LatLngBounds(); points.forEach(point => bounds.extend(point));
+  try { map.fitBounds(bounds, {padding: 52}); } catch (ignore) { }
+  new TMap.MultiPolyline({
+    map: map,
+    styles: { route: new TMap.PolylineStyle({color:'#1677ff',width:7,borderWidth:2,borderColor:'#ffffff',lineCap:'round'}) },
+    geometries: [{id:'planned-route',styleId:'route',paths:points}]
+  });
+  new TMap.MultiMarker({
+    map: map,
+    styles: { marker: new TMap.MarkerStyle({width:25,height:35,anchor:{x:12,y:35},
+      src:'https://mapapi.qq.com/web/lbs/javascriptGL/demo/img/markerDefault.png'}) },
+    geometries: [
+      {id:'route-start',styleId:'marker',position:points[0],properties:{title:'起点'}},
+      {id:'route-end',styleId:'marker',position:points[points.length-1],properties:{title:'终点'}}
+    ]
+  });
+}
+const script = document.createElement('script');
+script.charset = 'utf-8'; script.src = 'https://map.qq.com/api/gljs?v=1.exp&key=%3';
+script.onload = initMap; script.onerror = () => showError('腾讯地图脚本加载失败，请检查网络和 JavaScript API GL Key。');
+document.head.appendChild(script);
+</script></body></html>)HTML")
+        .arg(mode, routeJson, encodedKey);
 }
 
 void MapNavigationPage::setLoadError(const QString &message)

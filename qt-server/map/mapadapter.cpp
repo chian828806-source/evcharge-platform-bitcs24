@@ -8,14 +8,17 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QCryptographicHash>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QSharedPointer>
 #include <QTimer>
 #include <QUrl>
 #include <QUrlQuery>
+#include <QStringList>
 
 #include <cmath>
+#include <algorithm>
 
 namespace {
 
@@ -36,14 +39,36 @@ QString coordinateText(double longitude, double latitude)
 
 }
 
-MapAdapter::MapAdapter(const QString &apiKey)
-    : m_apiKey(apiKey.trimmed())
+MapAdapter::MapAdapter(const QString &apiKey, const QString &signingSecret)
+    : m_apiKey(apiKey.trimmed()), m_signingSecret(signingSecret.trimmed())
 {
 }
 
 bool MapAdapter::isConfigured() const
 {
     return !m_apiKey.isEmpty();
+}
+
+void MapAdapter::appendSignature(QUrl &url, QUrlQuery *query) const
+{
+    if (m_signingSecret.isEmpty() || !query) {
+        return;
+    }
+
+    // 腾讯 WebService 签名：path + '?' + 按参数名排序的 query + SK，再作 MD5。
+    // sig 本身不参与签名；签名完成后才加入最终请求参数。
+    QList<QPair<QString, QString>> items = query->queryItems(QUrl::FullyDecoded);
+    std::sort(items.begin(), items.end(), [](const auto &left, const auto &right) {
+        return left.first < right.first;
+    });
+    QStringList pieces;
+    for (const auto &item : items) {
+        pieces.append(item.first + QLatin1Char('=') + item.second);
+    }
+    const QByteArray source = (url.path() + QLatin1Char('?')
+        + pieces.join(QLatin1Char('&')) + m_signingSecret).toUtf8();
+    query->addQueryItem(QStringLiteral("sig"), QString::fromLatin1(
+        QCryptographicHash::hash(source, QCryptographicHash::Md5).toHex()));
 }
 
 void MapAdapter::geocode(const QString &district, const QString &address,
@@ -63,6 +88,7 @@ void MapAdapter::geocode(const QString &district, const QString &address,
         query.addQueryItem(QStringLiteral("region"), district.trimmed());
     }
     query.addQueryItem(QStringLiteral("key"), m_apiKey);
+    appendSignature(url, &query);
     url.setQuery(query);
 
     QNetworkRequest request(url);
@@ -145,6 +171,7 @@ void MapAdapter::planRoute(double originLongitude, double originLatitude,
     query.addQueryItem(QStringLiteral("from"), coordinateText(originLongitude, originLatitude));
     query.addQueryItem(QStringLiteral("to"), coordinateText(destinationLongitude, destinationLatitude));
     query.addQueryItem(QStringLiteral("key"), m_apiKey);
+    appendSignature(url, &query);
     url.setQuery(query);
 
     QNetworkRequest request(url);

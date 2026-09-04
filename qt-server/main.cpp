@@ -93,6 +93,9 @@ int main(int argc, char *argv[])
     parser.addOption({QStringLiteral("tencent-map-key"),
                       QStringLiteral("Tencent Map API key; prefer TENCENT_MAP_KEY environment variable"),
                       QStringLiteral("key")});
+    parser.addOption({QStringLiteral("tencent-map-sk"),
+                      QStringLiteral("Tencent Map WebService signing secret; prefer TENCENT_MAP_SK environment variable"),
+                      QStringLiteral("secret")});
     parser.process(application);
 
     bool tcpOk = false;
@@ -120,8 +123,12 @@ int main(int argc, char *argv[])
     const QString mapApiKey = parser.isSet(QStringLiteral("tencent-map-key"))
         ? parser.value(QStringLiteral("tencent-map-key"))
         : qEnvironmentVariable("TENCENT_MAP_KEY");
+    const QString mapSigningSecret = parser.isSet(QStringLiteral("tencent-map-sk"))
+        ? parser.value(QStringLiteral("tencent-map-sk"))
+        : qEnvironmentVariable("TENCENT_MAP_SK");
     UserBackendRegistry userHandlers(&databaseManager, &sessions, &dispatcher,
-                                     parser.value(QStringLiteral("avatar-dir")), mapApiKey);
+                                     parser.value(QStringLiteral("avatar-dir")), mapApiKey,
+                                     mapSigningSecret);
     AdminHandlerRegistry adminHandlers(database, &sessions, &dispatcher);
     PredictionHandlerRegistry predictionHandlers(&databaseManager, &dispatcher);
     SocketServer socketServer(&dispatcher);

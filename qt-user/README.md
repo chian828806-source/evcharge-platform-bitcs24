@@ -13,7 +13,7 @@
 | ui/ | 用户端页面、页面导航和交互状态 |
 | resources/ | 用户端统一 QSS 样式 |
 | qt-user.pro | 可运行的 Qt Widgets 用户端工程 |
-| map/mapnavigationpage.h/.cpp | U06 地图导航组件；接收起终点与服务端提供的导航 URL，使用 QWebEngineView 展示路线 |
+| map/mapnavigationpage.h/.cpp | U06 地图导航组件；使用 QWebEngineView 和腾讯 JavaScript API GL 展示可拖动、可缩放的真实地图与服务端路线 |
 | qt-user-map.pro | 地图导航组件独立静态库工程（供单独编译或复用） |
 
 ## UI V1 页面
@@ -49,8 +49,11 @@ Windows 使用对应编译套件的 `mingw32-make` 或 `nmake`。
 `MapAdapter` 调用腾讯路线规划后返回距离、时长和解压后的路线折线；其余页面只以真实
 Socket 响应更新业务状态，未连接服务端时才进入明确标注的 Mock 模式。
 
-地图 Key 仅由服务端配置；U06 页面不保存 Key。页面通过 `setRoutePlan()` 在
-`QWebEngineView` 中展示服务端返回的路线预览。
+U06 使用两类职责不同的配置：服务端通过 `TENCENT_MAP_KEY`（以及启用签名时的
+`TENCENT_MAP_SK`）调用 WebService 计算路线；用户端通过运行环境
+`TENCENT_MAP_JS_KEY` 加载腾讯 JavaScript API GL 并展示真实、可交互的地图。JS Key
+不是服务端 SK，必须单独创建并限制在地图页面的可信域名；两种 Key 都不得写入源码、
+资源文件或提交到 Git。
 
 ## 页面调用原则
 
@@ -62,5 +65,7 @@ Socket 响应更新业务状态，未连接服务端时才进入明确标注的 
 
 首页 U02 或站点详情 U03 创建 `MapRoute` 并调用 `MapNavigationPage::setRoute()`；
 页面通过 `retryRequested(route, mode)` 向上层发送 `MAP_ROUTE_PLAN`，再调用
-`setRoutePlan()` 显示服务端确认的路线数据。地图 Key 只放在服务端配置，不得放入
-Qt 用户端源码或资源文件。
+`setRoutePlan()` 将服务端确认的路线坐标叠加到腾讯 JavaScript API GL 真实底图；
+用户可拖动和缩放。开发时 `QWebEngineView` 使用 `https://localhost/` 作为页面来源，
+因此 JS Key 的域名白名单应允许 `localhost`。地图 Key 只在 Qt Creator 的本地运行环境中
+配置，不得写入 Qt 用户端源码、资源文件或 Git。

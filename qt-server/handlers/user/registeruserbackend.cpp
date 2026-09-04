@@ -20,8 +20,8 @@ class UserBackendRegistry::Impl
 public:
     Impl(DatabaseManager *databaseManager, SessionManager *sessions,
          MessageDispatcher *dispatcher, const QString &avatarDirectory,
-         const QString &mapApiKey)
-        : mapAdapter(mapApiKey),
+         const QString &mapApiKey, const QString &mapSigningSecret)
+        : mapAdapter(mapApiKey, mapSigningSecret),
           userService(databaseManager, &userRepository, avatarDirectory),
           userHandler(&userService, sessions),
           stationService(databaseManager, &stationRepository, &predictionRepository, &mapAdapter),
@@ -48,7 +48,9 @@ public:
 UserBackendRegistry::UserBackendRegistry(DatabaseManager *databaseManager, SessionManager *sessions,
                                          MessageDispatcher *dispatcher,
                                          const QString &avatarDirectory,
-                                         const QString &mapApiKey)
-    : m_impl(new Impl(databaseManager, sessions, dispatcher, avatarDirectory, mapApiKey))
+                                         const QString &mapApiKey,
+                                         const QString &mapSigningSecret)
+    : m_impl(new Impl(databaseManager, sessions, dispatcher, avatarDirectory, mapApiKey,
+                      mapSigningSecret))
 {
 }

@@ -13,7 +13,8 @@ public:
     UserBackendRegistry(DatabaseManager *databaseManager, SessionManager *sessions,
                         MessageDispatcher *dispatcher,
                         const QString &avatarDirectory = QStringLiteral("data/avatars"),
-                        const QString &mapApiKey = {});
+                        const QString &mapApiKey = {},
+                        const QString &mapSigningSecret = {});
 
 private:
     class Impl;

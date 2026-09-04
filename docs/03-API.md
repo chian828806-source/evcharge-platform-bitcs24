@@ -279,10 +279,11 @@ Socket 读取线程。
 `MAP_GEOCODE` 由服务端调用腾讯地图地理编码能力，Qt 用户端不直接持有腾讯地图
 Key，也不自行把地址解析为坐标。请求为 `district: string`、`address: string`；成功
 响应为 `formattedAddress: string`、`longitude: number`、`latitude: number`。服务端用
-环境变量 `TENCENT_MAP_KEY`（推荐）或服务端启动参数 `--tencent-map-key` 读取 Key，
-并通过异步 `MapAdapter` 完成网络请求；用户端 `QWebEngineView` 仅使用服务端返回的
-坐标或导航 URL 展示路线。Key 不写入仓库、不记录到日志；不能以同步网络调用占用
-Socket 读取回调。
+环境变量 `TENCENT_MAP_KEY`（推荐）或服务端启动参数 `--tencent-map-key` 读取 Key。
+若腾讯控制台对该 WebService Key 启用了签名校验，服务端还必须设置本地环境变量
+`TENCENT_MAP_SK`（或启动参数 `--tencent-map-sk`）；`MapAdapter` 会生成 `sig`，SK 不写入
+仓库、不记录到日志。用户端 `QWebEngineView` 仅使用服务端返回的坐标或导航路线，不得
+持有 WebService Key/SK；不能以同步网络调用占用 Socket 读取回调。
 
 ### 12.1.3 `MAP_ROUTE_PLAN` 契约
 
@@ -294,8 +295,8 @@ Socket 读取回调。
 
 成功 data 包含 `mode`、`distanceMeters`、`durationMinutes` 与
 `polyline: [{ longitude, latitude }]`。`polyline` 已由服务端解压，客户端不接触腾讯的
-压缩路线格式，也不接触地图 Key。坐标或模式非法返回 `4401`；未配置 Key、超时、
-网络失败或无可用路线返回 `5002`。
+压缩路线格式，也不接触 WebService Key/SK。坐标或模式非法返回 `4401`；未配置 Key、
+超时、网络失败或无可用路线返回 `5002`。
 
 ## 12.2 管理端 API 字段
 

@@ -446,9 +446,11 @@ Service 必须强制使用 Session 用户 ID，不能查询其他用户的订单
 已确认：`MAP_GEOCODE` 由服务端调用腾讯地图，`QWebEngineView` 仅依据服务端
 返回的坐标或导航 URL 展示路线。地图 Key 必须来自配置或环境变量，不得提交到
 仓库；外部请求属于耗时操作，必须经异步 `MapAdapter`，不得阻塞 Socket 线程。
-当前实现从 `TENCENT_MAP_KEY` 或 `--tencent-map-key` 获取 Key；未配置 Key、超时或
-服务拒绝地址时统一返回 `5002`。路线规划已由 `MAP_ROUTE_PLAN` 提供，当前客户端以
-服务端返回的路线折线绘制预览。
+服务端从 `TENCENT_MAP_KEY` 或 `--tencent-map-key` 获取 WebService Key；若腾讯控制台
+启用签名校验，还必须通过 `TENCENT_MAP_SK` 或 `--tencent-map-sk` 提供 SK。未配置 Key、
+超时或服务拒绝地址时统一返回 `5002`。路线规划已由 `MAP_ROUTE_PLAN` 提供。Qt 用户端
+以独立的 `TENCENT_MAP_JS_KEY` 加载腾讯 JavaScript API GL，将服务端返回的路线折线叠加
+到可拖动、可缩放的真实地图。JS Key 不得复用服务端 SK，且必须通过域名白名单限制。
 
 ### 8.8 `MAP_ROUTE_PLAN`
 
@@ -461,7 +463,8 @@ Service 必须强制使用 Session 用户 ID，不能查询其他用户的订单
 | 数据操作 | 无 |
 
 路线请求经异步 `MapAdapter` 执行；服务端将第三方压缩折线解压后再发送给 Qt 用户端。
-用户端在 `QWebEngineView` 中绘制路线预览，地图 Key 仍只存在服务端。
+用户端在 `QWebEngineView` 的腾讯 JavaScript API GL 真实底图中绘制路线，地图交互只在
+客户端进行。WebService Key/SK 仍只存在服务端；客户端仅使用受域名白名单约束的 JS Key。
 
 ### 8.9 `STATION_LIST_NEARBY`
 
