@@ -266,7 +266,7 @@ StationPage::StationPage(QWidget *parent) : QWidget(parent), m_table(new QTableW
     refresh->setProperty("kind", "secondary"); heading->addWidget(refresh); heading->addWidget(m_create); root->addLayout(heading);
     auto *split = new QHBoxLayout; prepareTable(m_table); split->addWidget(m_table, 3);
     auto *detailPanel = panel(); auto *detailLayout = new QVBoxLayout(detailPanel); detailLayout->addWidget(label(QStringLiteral("站内电桩"), "pageTitle")); m_pileDetailTitle = label(QStringLiteral("选择左侧站点查看详情"), "caption"); detailLayout->addWidget(m_pileDetailTitle);
-    m_pileDetail = new QTableWidget(0, 3, detailPanel); m_pileDetail->setHorizontalHeaderLabels({QStringLiteral("桩号"), QStringLiteral("功率"), QStringLiteral("状态")}); prepareTable(m_pileDetail); detailLayout->addWidget(m_pileDetail); split->addWidget(detailPanel, 2); root->addLayout(split, 1);
+    m_pileDetail = new QTableWidget(0, 4, detailPanel); m_pileDetail->setHorizontalHeaderLabels({QStringLiteral("桩号"), QStringLiteral("类型"), QStringLiteral("功率"), QStringLiteral("状态")}); prepareTable(m_pileDetail); detailLayout->addWidget(m_pileDetail); split->addWidget(detailPanel, 2); root->addLayout(split, 1);
     connect(refresh, &QPushButton::clicked, this, &StationPage::refreshRequested);
     connect(m_create, &QPushButton::clicked, this, &StationPage::openCreateDialog);
 }
@@ -320,8 +320,11 @@ void StationPage::setPileDetails(const QJsonArray &piles)
     m_pileDetail->setRowCount(piles.size());
     for (int row = 0; row < piles.size(); ++row) {
         const QJsonObject pile = piles.at(row).toObject();
+        const QString type = pile.value(QStringLiteral("type")).toString();
         const QStringList values{
             pile.value(QStringLiteral("pileNo")).toString(),
+            type == QStringLiteral("FAST") ? QStringLiteral("快充")
+                                                : type == QStringLiteral("SLOW") ? QStringLiteral("慢充") : type,
             QString::number(pile.value(QStringLiteral("powerKw")).toDouble()) + QStringLiteral(" kW"),
             statusText(pile.value(QStringLiteral("status")).toString())
         };
@@ -329,6 +332,16 @@ void StationPage::setPileDetails(const QJsonArray &piles)
             m_pileDetail->setItem(row, column, new QTableWidgetItem(values.at(column)));
         }
     }
+}
+
+void StationPage::setPileDetailsLoading()
+{
+    m_pileDetailTitle->setText(QStringLiteral("正在加载…"));
+}
+
+void StationPage::setPileDetailsError(const QString &message)
+{
+    m_pileDetailTitle->setText(message);
 }
 
 void StationPage::setCreateBusy(bool busy) { m_create->setEnabled(!busy); }

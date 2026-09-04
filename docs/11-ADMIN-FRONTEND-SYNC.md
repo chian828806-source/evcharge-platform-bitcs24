@@ -214,7 +214,9 @@ stationId, stationNo, name, address, longitude, latitude, pileCount, onlineRate
 - 右侧至少显示桩号、类型、功率和状态；
 - 新请求返回前保留旧内容并显示加载状态；
 - 空数组显示“该站暂无电桩”；
-- 连续点击不同站点时以各自 `requestId` 判断响应归属。
+- 保存当前选中的 `stationId`。连续点击不同站点时，响应中的请求对应站点只有等于当前
+  `stationId` 才能更新右侧详情，旧站点迟到的响应直接丢弃；`requestId` 仍用于区分站点
+  详情请求和全部电桩列表请求。
 
 省略 `stationId` 调用相同接口时表示获取全部电桩，用于独立的电桩管理页。
 

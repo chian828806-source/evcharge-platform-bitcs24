@@ -90,10 +90,10 @@ MainWindow::MainWindow(QWidget *parent)
             QJsonObject{{"stationId", 3}, {"stationNo", "ST003"}, {"name", "星海绿色能源站"}, {"address", "中山路 608 号"}, {"longitude", 121.584}, {"latitude", 38.881}, {"pileCount", 8}, {"onlineRate", 0.88}}
         }}});
         m_stations->setPileDetails(QJsonArray{
-            QJsonObject{{"pileNo", "P01"}, {"powerKw", 60.0}, {"status", "AVAILABLE"}},
-            QJsonObject{{"pileNo", "P02"}, {"powerKw", 60.0}, {"status", "CHARGING"}},
-            QJsonObject{{"pileNo", "P03"}, {"powerKw", 7.0}, {"status", "RESERVED"}},
-            QJsonObject{{"pileNo", "P04"}, {"powerKw", 7.0}, {"status", "FAULT"}}
+            QJsonObject{{"pileNo", "P01"}, {"type", "FAST"}, {"powerKw", 60.0}, {"status", "AVAILABLE"}},
+            QJsonObject{{"pileNo", "P02"}, {"type", "FAST"}, {"powerKw", 60.0}, {"status", "CHARGING"}},
+            QJsonObject{{"pileNo", "P03"}, {"type", "SLOW"}, {"powerKw", 7.0}, {"status", "RESERVED"}},
+            QJsonObject{{"pileNo", "P04"}, {"type", "SLOW"}, {"powerKw", 7.0}, {"status", "FAULT"}}
         });
         m_users->setUsers({{QStringLiteral("users"), QJsonArray{
             QJsonObject{{"userId", 1}, {"phone", "13800000001"}, {"nickname", "海风"}, {"balanceFen", 12860}, {"createdAt", "2026-08-12 09:30"}, {"status", "NORMAL"}},
@@ -122,7 +122,10 @@ MainWindow::MainWindow(QWidget *parent)
             });
     connect(m_client, &AdminSocketClient::requestTimedOut, this,
             [this](const QString &requestId, const QString &type) {
-                m_requestTypes.remove(requestId); m_stationDetailRequests.remove(requestId);
+                m_requestTypes.remove(requestId);
+                const qint64 detailStationId = m_stationDetailRequests.take(requestId);
+                if (detailStationId > 0 && detailStationId == m_currentStationDetailId && m_stations)
+                    m_stations->setPileDetailsError(QStringLiteral("加载超时，请重试"));
                 finishAction(type);
                 QMessageBox::warning(this, QStringLiteral("请求超时"),
                                      QStringLiteral("%1 请求未及时响应").arg(type));
@@ -130,7 +133,10 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_client, &AdminSocketClient::requestFailed, this,
             [this](const QString &requestId, const QString &type,
                    const QString &message) {
-                m_requestTypes.remove(requestId); m_stationDetailRequests.remove(requestId);
+                m_requestTypes.remove(requestId);
+                const qint64 detailStationId = m_stationDetailRequests.take(requestId);
+                if (detailStationId > 0 && detailStationId == m_currentStationDetailId && m_stations)
+                    m_stations->setPileDetailsError(QStringLiteral("加载失败，请重试"));
                 finishAction(type);
                 QMessageBox::warning(this, QStringLiteral("请求失败"),
                     QStringLiteral("%1：%2").arg(type, message));
@@ -180,7 +186,12 @@ void MainWindow::handleResponse(const QJsonObject &response)
     const QString type = m_requestTypes.take(requestId);
     const qint64 detailStationId = m_stationDetailRequests.take(requestId);
     finishAction(type);
-    if (response.value(QStringLiteral("code")).toInt() != ErrorCodes::Success) { handleFailure(response); return; }
+    if (response.value(QStringLiteral("code")).toInt() != ErrorCodes::Success) {
+        if (detailStationId > 0 && detailStationId == m_currentStationDetailId && m_stations)
+            m_stations->setPileDetailsError(QStringLiteral("加载失败，请重试"));
+        handleFailure(response);
+        return;
+    }
     const QJsonObject data = response.value(QStringLiteral("data")).toObject();
     if (type == MessageTypes::AdminLogin) {
         m_mockPreview = false;
@@ -190,9 +201,14 @@ void MainWindow::handleResponse(const QJsonObject &response)
     else if (type == MessageTypes::AdminRevenueTrend) m_dashboard->setRevenueTrend(data);
     else if (type == MessageTypes::AdminPileStatusSummary) m_dashboard->setPileStatusSummary(data);
     else if (type == MessageTypes::PredictionWarning) m_dashboard->setWarnings(data);
-    else if (type == MessageTypes::AdminPileList && detailStationId > 0)
-        m_stations->setPileDetails(data.value(QStringLiteral("piles")).toArray());
-    else if (type == MessageTypes::AdminPileList) m_piles->setPiles(data);
+    else if (type == MessageTypes::AdminPileList) {
+        if (detailStationId > 0) {
+            if (detailStationId == m_currentStationDetailId)
+                m_stations->setPileDetails(data.value(QStringLiteral("piles")).toArray());
+        } else {
+            m_piles->setPiles(data);
+        }
+    }
     else if (type == MessageTypes::AdminStationList) m_stations->setStations(data);
     else if (type == MessageTypes::AdminUserList) m_users->setUsers(data);
     else if (type == MessageTypes::AdminPileRestart) {
@@ -210,6 +226,8 @@ void MainWindow::handleResponse(const QJsonObject &response)
 
 void MainWindow::buildManagementPages()
 {
+    m_currentStationDetailId = 0;
+    m_stationDetailRequests.clear();
     if (m_dashboardTimer) { m_dashboardTimer->stop(); m_dashboardTimer->deleteLater(); m_dashboardTimer = nullptr; }
     if (m_tabs) { m_rootStack->removeWidget(m_tabs); m_tabs->deleteLater(); }
     m_tabs = new QTabWidget(m_rootStack); m_dashboard = new DashboardPage(m_tabs);
@@ -271,9 +289,12 @@ void MainWindow::refreshDashboard()
 void MainWindow::requestPileList(const QJsonObject &payload) { send(MessageTypes::AdminPileList, payload); }
 void MainWindow::requestStationPileDetails(qint64 stationId)
 {
+    m_currentStationDetailId = stationId;
+    m_stations->setPileDetailsLoading();
     const QString requestId = send(MessageTypes::AdminPileList,
                                    {{QStringLiteral("stationId"), stationId}});
     if (!requestId.isEmpty()) m_stationDetailRequests.insert(requestId, stationId);
+    else m_stations->setPileDetailsError(QStringLiteral("加载失败，请重试"));
 }
 void MainWindow::requestStationList() { send(MessageTypes::AdminStationList); }
 void MainWindow::requestUserList() { send(MessageTypes::AdminUserList, {{QStringLiteral("phoneKeyword"), m_users ? m_users->phoneKeyword() : QString()}}); }
