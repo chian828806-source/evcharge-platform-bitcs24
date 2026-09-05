@@ -94,6 +94,9 @@ MAP_GEOCODE
 MAP_ROUTE_PLAN
 ```
 
+`PREDICTION_RECOMMENDATION` 是用户/站点业务接口：由 `StationService` 结合预测数据、
+站点信息、距离及当前/预测可用桩生成推荐结果，不属于纯预测数据查询接口。
+
 充电订单：
 
 ```text
@@ -133,7 +136,7 @@ PREDICTION_WARNING
 PREDICTION_IMPORT
 ```
 
-`PREDICTION_LIST` 允许已认证用户和管理员按 `stationId`、`horizon`、`limit` 查询；`PREDICTION_RECOMMENDATION` 仅用户可调用，返回未来且预计有空闲桩的站点；`PREDICTION_WARNING` 仅管理员可调用，返回未来负荷率不低于 `0.7` 的预测。`PREDICTION_IMPORT` 属于管理员/受控 ML 维护流程，用于导入完整预测批次；它不属于用户端推荐接口。
+Prediction 模块只负责纯预测数据查询与受保护的导入：`PREDICTION_LIST` 允许已认证用户和管理员按 `stationId`、`horizon`、`limit` 查询，`PREDICTION_WARNING` 仅管理员可调用并返回未来负荷率不低于 `0.7` 的预测。`PREDICTION_IMPORT` 属于 Prediction / ML integration，仅 Admin / internal maintenance 可调用，用于导入完整预测批次。`PREDICTION_RECOMMENDATION` 属于 User Backend，由用户侧站点推荐调用链处理；它不是 ML 导入或 Admin 接口。
 
 ## 7. 认证
 
@@ -322,10 +325,10 @@ Key，也不自行把地址解析为坐标。请求为 `district: string`、`add
 
 ## 13. Web 大屏 WebSocket
 
-连接地址：
+默认连接地址：
 
 ```text
-ws://<server-host>:<port>/dashboard
+ws://<server-host>:18081/dashboard
 ```
 
 大屏请求：
@@ -356,9 +359,21 @@ ws://<server-host>:<port>/dashboard
 
 `stationLoad` 使用 SRS 中统一负荷口径，取值范围为 0 到 1。
 
+WebSocket 默认监听端口为 `18081`。订阅成功后，服务端会对每个已订阅 topic
+立即发送一帧 `DASHBOARD_UPDATE` initial snapshot，随后按当前 3 秒只读运营数据刷新
+推送；浏览器断线重连后必须重新订阅，并会再次取得 snapshot。通信层不直接访问
+SQLite：`summary` 复用 `OrderRepository` 的当日营收、完成电量和订单统计，以及
+`PileRepository` 的状态统计计算负荷；`revenueTrend` 复用 `OrderRepository`；
+`pileStatus` 复用 `PileRepository`；`prediction` 复用 `PredictionService` /
+`PredictionRepository` 的 `PREDICTION_LIST` 数据形状。
+
 ## 14. ML 数据交换
 
-ML 数据交换是服务端与 Python 进程之间的受控文件契约，不属于 Qt 用户端或 Qt 管理端可调用的 Socket 消息。ML 进程不得获得 SQLite 文件路径、数据库连接或写库权限。
+ML 数据交换是服务端与 Python 进程之间的受控文件/JSON 契约。ML 进程不得获得
+SQLite 文件路径、数据库连接或写库权限；它产出 JSON 后，由受保护的
+`PREDICTION_IMPORT` Server 能力写入统一 SQLite。普通 User 不得调用该接口。
+`PREDICTION_IMPORT` 与 User Backend 的 `PREDICTION_RECOMMENDATION` 职责不同：
+前者是受保护的预测数据导入，后者仍由 Station/User 业务链路处理推荐。
 
 ### 14.1 服务端导出
 
@@ -408,11 +423,24 @@ ml/output/<batchId>/predictions.json
 }
 ```
 
-`horizon` 只能是 `1h`、`6h` 或 `24h`；`predictedLoad` 必须是 0 到 1 的有限数值；`predictedAvailableCount` 必须为非负整数且不得超过项目站点当前实际桩数；`peakLevel` 只能是 `LOW`、`MEDIUM` 或 `HIGH`；`generatedAt` 为必填的带时区 ISO 8601 时间。
+`schemaVersion` 必须为 `1.0`，`batchId` 必填且非空，`predictions` 必须是非空数组。
+每条记录的 `stationId` 必须为正整数且引用存在的站点；`predictionTime` 必填且为合法
+ISO 8601 时间；`horizon` 只能是 `1h`、`6h` 或 `24h`；`predictedLoad` 必须是 0 到 1
+的有限数值；`predictedAvailableCount` 必须为非负整数且不得超过该站点当前实际桩数；
+`peakLevel` 只能是 `LOW`、`MEDIUM` 或 `HIGH`；`modelName` 非空；`generatedAt` 为
+必填的带时区 ISO 8601 时间。可选的 `mae`、`rmse` 必须为非负有限数值。
 
 ### 14.3 服务端导入
 
-Qt/C++ 服务端读取 ML 输出后，必须校验 `schemaVersion`、`batchId`、必填字段、站点存在性和上述范围约束。一个批次中任一记录不合法时，服务端拒绝整个批次且不得写入 `prediction` 表；全部合法时，以一个数据库事务写入。导入成功后，服务端向用户端、管理端和 WebSocket 大屏提供最新预测结果。
+`PREDICTION_IMPORT` 的请求 payload 为 `{"document": <上述完整 JSON>}`，仅 Admin /
+internal maintenance 可调用。服务端先校验完整文档，再在同一数据库事务内检查
+`batchId`：相同 `batchId` 重复提交返回 `already_imported`、`inserted: 0`、
+`duplicate: true`，不会产生重复预测数据。新批次会逐条校验站点存在性与可用桩数，
+任一校验、批次写入或 prediction 行写入失败都会 `ROLLBACK`，不得写入部分
+`prediction_batch` 或 `prediction` 数据；全部成功时按
+`BEGIN → prediction_batch → prediction rows → COMMIT` 提交。成功响应返回
+`batchId`、`status`、`inserted` 和 `duplicate`；COMMIT 失败返回数据库错误而不返回成功。
+导入成功后，服务端向用户端、管理端和 WebSocket 大屏提供最新预测结果。
 
 ## 15. 接口修改流程
 

@@ -127,6 +127,9 @@ UI 使用约定：
 本分支已经让图表使用三组数据，并保留 7/30 日选择。前端若调整图表样式，不要丢弃
 `date`、`energyKwh` 或 `orderCount`。
 
+营收和充电量使用左侧纵轴，订单数使用右侧纵轴。连续切换 7/30 日时，只显示与当前
+天数相同的响应，较早请求的迟到响应直接丢弃；空数组显示“暂无趋势数据”。
+
 ## 5. 负荷预警
 
 消息：`PREDICTION_WARNING`，仅管理员可调用。
@@ -174,6 +177,8 @@ Admin 预警只使用 `PREDICTION_WARNING`。
 管理端预警列表至少展示：`stationName`、`predictionTime`、`horizon`、
 `predictedLoad`、`predictedAvailableCount`、`peakLevel`。`predictedLoad` 为 0～1，
 UI 转成百分比。返回空数组表示暂无预警，不是请求失败。
+
+连续切换预警范围时，只显示与当前 `horizon` 相同的响应；空数组显示“暂无负荷预警”。
 
 ## 6. 站点与右侧电桩详情
 
@@ -251,6 +256,7 @@ stationId, stationNo, name, address, longitude, latitude, pileCount, onlineRate
 | `priceFenPerKwh` | 1～10000 的整数；UI 按元/度输入后乘 100 |
 
 `priceFenPerKwh` 在协议上仍可省略，省略时服务端使用 120；当前管理端 UI 会始终发送。
+UI 提交前检查站名和地址非空，数值范围由输入控件限制。
 
 ## 8. 其余管理接口
 
@@ -266,6 +272,9 @@ stationId, stationNo, name, address, longitude, latitude, pileCount, onlineRate
 
 重启、冻结和解冻都需要二次确认；写请求发出后禁用对应操作，收到成功、失败或超时后
 恢复。成功后显示提示并刷新相关列表。
+
+用户连续查询或清空搜索时，只接受与当前 `phoneKeyword` 相同的响应。站点、用户、电桩
+和预警列表为空时显示简短空状态，不保留上一轮数据。
 
 ## 9. 本次不修改的协议
 

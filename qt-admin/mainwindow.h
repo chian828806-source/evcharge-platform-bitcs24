@@ -14,6 +14,8 @@ private:
     void handleResponse(const QJsonObject &response);
     void buildManagementPages();
     void refreshDashboard();
+    void requestRevenueTrend(int days);
+    void requestWarnings(const QString &horizon);
     void requestPileList(const QJsonObject &payload = {});
     void requestStationPileDetails(qint64 stationId);
     void requestStationList();
@@ -31,7 +33,11 @@ private:
     UserPage *m_users = nullptr; QTimer *m_dashboardTimer = nullptr;
     QString m_sessionId; QHash<QString, QString> m_requestTypes;
     QHash<QString, qint64> m_stationDetailRequests;
+    QHash<QString, int> m_trendRequests;
+    QHash<QString, QString> m_warningRequests;
+    QHash<QString, QString> m_userListRequests;
     qint64 m_activeDetailStationId = 0;
+    QString m_activeUserKeyword;
     QString m_adminDisplayName;
     QStackedWidget *m_rootStack = nullptr; QWidget *m_loginPage = nullptr;
     int m_trendDays = 7; QString m_warningHorizon = QStringLiteral("1h");
