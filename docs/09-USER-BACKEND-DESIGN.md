@@ -446,6 +446,8 @@ Service 必须强制使用 Session 用户 ID，不能查询其他用户的订单
 已确认：`MAP_GEOCODE` 由服务端调用腾讯地图，`QWebEngineView` 仅依据服务端
 返回的坐标或导航 URL 展示路线。地图 Key 必须来自配置或环境变量，不得提交到
 仓库；外部请求属于耗时操作，必须经异步 `MapAdapter`，不得阻塞 Socket 线程。
+当前 V1 限定大连市：服务端将区县和详细地址合成为 `大连市<district><address>`，并以
+`大连市` 作为腾讯地理编码接口的 `region`，不得将区县直接传为 `region`。
 服务端从 `TENCENT_MAP_KEY` 或 `--tencent-map-key` 获取 WebService Key；若腾讯控制台
 启用签名校验，还必须通过 `TENCENT_MAP_SK` 或 `--tencent-map-sk` 提供 SK。未配置 Key、
 超时或服务拒绝地址时统一返回 `5002`。路线规划已由 `MAP_ROUTE_PLAN` 提供。Qt 用户端

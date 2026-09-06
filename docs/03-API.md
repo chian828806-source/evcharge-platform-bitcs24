@@ -283,6 +283,9 @@ Socket 读取线程。
 Key，也不自行把地址解析为坐标。请求为 `district: string`、`address: string`；成功
 响应为 `formattedAddress: string`、`longitude: number`、`latitude: number`。服务端用
 环境变量 `TENCENT_MAP_KEY`（推荐）或服务端启动参数 `--tencent-map-key` 读取 Key。
+当前 V1 的区域下拉仅覆盖大连市：服务端会把 `district` 与 `address` 规范化为完整地址
+（如 `大连市甘井子区软件园路`），并向腾讯接口传城市级 `region=大连市`；不得把区县名
+直接作为腾讯 `region` 参数。
 若腾讯控制台对该 WebService Key 启用了签名校验，服务端还必须设置本地环境变量
 `TENCENT_MAP_SK`（或启动参数 `--tencent-map-sk`）；`MapAdapter` 会生成 `sig`，SK 不写入
 仓库、不记录到日志。用户端 `QWebEngineView` 仅使用服务端返回的坐标或导航路线，不得
