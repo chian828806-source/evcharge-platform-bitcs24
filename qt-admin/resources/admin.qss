@@ -16,8 +16,8 @@ QPushButton:disabled { background: #c7d5d1; color: #758681; }
 QPushButton[kind="secondary"] { background: #e5f3ef; color: #087f69; }
 QPushButton[kind="danger"] { background: #fff0ef; color: #c53b32; }
 QPushButton[kind="tableAction"] {
-    min-height: 22px;
-    padding: 5px 10px;
+    min-height: 18px;
+    padding: 3px 10px;
     border-radius: 6px;
 }
 QTabWidget::pane { border: 0; background: #f4f7f6; }
@@ -26,3 +26,4 @@ QTabBar::tab:selected { background: #087f69; color: white; }
 QTableWidget { background: white; alternate-background-color: #f6faf8; border: 1px solid #dce8e4; border-radius: 10px; gridline-color: #e8efed; selection-background-color: #d9f2ea; selection-color: #173b34; }
 QHeaderView::section { background: #eaf3f0; color: #35514b; border: 0; border-bottom: 1px solid #d5e3df; padding: 10px 8px; font-weight: 600; }
 QTableWidget::item { padding: 7px; }
+QWidget#tableActionCell { background: transparent; }

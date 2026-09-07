@@ -52,8 +52,8 @@ void prepareTable(QTableWidget *table)
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table->verticalHeader()->setVisible(false);
-    table->verticalHeader()->setMinimumSectionSize(44);
-    table->verticalHeader()->setDefaultSectionSize(44);
+    table->verticalHeader()->setMinimumSectionSize(36);
+    table->verticalHeader()->setDefaultSectionSize(36);
     table->horizontalHeader()->setStretchLastSection(true);
 }
 
@@ -61,11 +61,12 @@ QPushButton *tableActionButton(QTableWidget *table, int row, int column,
                                const QString &text)
 {
     auto *cell = new QWidget(table);
+    cell->setObjectName(QStringLiteral("tableActionCell"));
     auto *layout = new QHBoxLayout(cell);
-    layout->setContentsMargins(6, 5, 6, 5);
+    layout->setContentsMargins(6, 3, 6, 3);
     auto *action = new QPushButton(text, cell);
     action->setProperty("kind", "tableAction");
-    action->setMinimumHeight(32);
+    action->setFixedHeight(28);
     layout->addWidget(action);
     table->setCellWidget(row, column, cell);
     return action;
@@ -77,7 +78,7 @@ void configureActionColumn(QTableWidget *table, int actionColumn)
     for (int column = 0; column < table->columnCount(); ++column)
         header->setSectionResizeMode(column, QHeaderView::Stretch);
     header->setSectionResizeMode(actionColumn, QHeaderView::Fixed);
-    table->setColumnWidth(actionColumn, 116);
+    table->setColumnWidth(actionColumn, 132);
 }
 
 QString statusText(const QString &status)
