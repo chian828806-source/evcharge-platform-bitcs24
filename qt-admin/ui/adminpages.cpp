@@ -52,7 +52,32 @@ void prepareTable(QTableWidget *table)
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table->verticalHeader()->setVisible(false);
+    table->verticalHeader()->setMinimumSectionSize(44);
+    table->verticalHeader()->setDefaultSectionSize(44);
     table->horizontalHeader()->setStretchLastSection(true);
+}
+
+QPushButton *tableActionButton(QTableWidget *table, int row, int column,
+                               const QString &text)
+{
+    auto *cell = new QWidget(table);
+    auto *layout = new QHBoxLayout(cell);
+    layout->setContentsMargins(6, 5, 6, 5);
+    auto *action = new QPushButton(text, cell);
+    action->setProperty("kind", "tableAction");
+    action->setMinimumHeight(32);
+    layout->addWidget(action);
+    table->setCellWidget(row, column, cell);
+    return action;
+}
+
+void configureActionColumn(QTableWidget *table, int actionColumn)
+{
+    auto *header = table->horizontalHeader();
+    for (int column = 0; column < table->columnCount(); ++column)
+        header->setSectionResizeMode(column, QHeaderView::Stretch);
+    header->setSectionResizeMode(actionColumn, QHeaderView::Fixed);
+    table->setColumnWidth(actionColumn, 116);
 }
 
 QString statusText(const QString &status)
@@ -268,14 +293,13 @@ void PilePage::applyFilter()
         const QJsonObject pile = piles.at(row).toObject();
         const QStringList values = {pile.value(QStringLiteral("pileNo")).toString(), pile.value(QStringLiteral("stationName")).toString(), pile.value(QStringLiteral("type")).toString() == QStringLiteral("FAST") ? QStringLiteral("快充") : QStringLiteral("慢充"), QString::number(pile.value(QStringLiteral("powerKw")).toDouble()) + QStringLiteral(" kW"), statusText(pile.value(QStringLiteral("status")).toString()), QString::number(pile.value(QStringLiteral("totalChargeCount")).toInt()), QString::number(pile.value(QStringLiteral("totalChargeMinutes")).toInt()) + QStringLiteral(" 分钟")};
         for (int column = 0; column < values.size(); ++column) m_table->setItem(row, column, new QTableWidgetItem(values.at(column)));
-        auto *restart = button(QStringLiteral("远程重启"), m_table);
+        auto *restart = tableActionButton(m_table, row, 7, QStringLiteral("远程重启"));
         const QString status = pile.value(QStringLiteral("status")).toString();
         restart->setEnabled(!m_actionBusy && status != QStringLiteral("RESERVED") && status != QStringLiteral("CHARGING") && status != QStringLiteral("RESTARTING"));
         const qint64 pileId = pile.value(QStringLiteral("pileId")).toInteger();
         connect(restart, &QPushButton::clicked, this, [this, pileId]() { emit restartRequested(pileId); });
-        m_table->setCellWidget(row, 7, restart);
     }
-    m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    configureActionColumn(m_table, 7);
 }
 
 void PilePage::setActionBusy(bool busy)
@@ -316,12 +340,11 @@ void StationPage::setStations(const QJsonObject &data)
         const QJsonObject station = stations.at(row).toObject();
         const QStringList values = {station.value(QStringLiteral("stationNo")).toString(), station.value(QStringLiteral("name")).toString(), station.value(QStringLiteral("address")).toString(), QString::number(station.value(QStringLiteral("longitude")).toDouble(), 'f', 6), QString::number(station.value(QStringLiteral("latitude")).toDouble(), 'f', 6), QString::number(station.value(QStringLiteral("pileCount")).toInt()), QString::number(station.value(QStringLiteral("onlineRate")).toDouble() * 100, 'f', 1) + '%'};
         for (int column = 0; column < values.size(); ++column) m_table->setItem(row, column, new QTableWidgetItem(values.at(column)));
-        auto *view = button(QStringLiteral("查看电桩"), m_table);
+        auto *view = tableActionButton(m_table, row, 7, QStringLiteral("查看电桩"));
         const qint64 stationId = station.value(QStringLiteral("stationId")).toInteger();
         connect(view, &QPushButton::clicked, this, [this, stationId]() { emit stationPilesRequested(stationId); });
-        m_table->setCellWidget(row, 7, view);
     }
-    m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    configureActionColumn(m_table, 7);
 }
 
 void StationPage::openCreateDialog()
@@ -400,13 +423,13 @@ void UserPage::setUsers(const QJsonObject &data)
         const QStringList values = {QString::number(user.value(QStringLiteral("userId")).toInteger()), user.value(QStringLiteral("phone")).toString(), user.value(QStringLiteral("nickname")).toString(), QStringLiteral("¥") + QString::number(user.value(QStringLiteral("balanceFen")).toInteger() / 100.0, 'f', 2), user.value(QStringLiteral("createdAt")).toString(), statusText(user.value(QStringLiteral("status")).toString())};
         for (int column = 0; column < values.size(); ++column) m_table->setItem(row, column, new QTableWidgetItem(values.at(column)));
         const bool frozen = user.value(QStringLiteral("status")).toString() == QStringLiteral("FROZEN");
-        auto *change = button(frozen ? QStringLiteral("解冻") : QStringLiteral("冻结"), m_table);
+        auto *change = tableActionButton(m_table, row, 6,
+            frozen ? QStringLiteral("解冻") : QStringLiteral("冻结"));
         change->setEnabled(!m_actionBusy);
         const qint64 userId = user.value(QStringLiteral("userId")).toInteger();
         connect(change, &QPushButton::clicked, this, [this, userId, frozen]() { emit statusChangeRequested(userId, !frozen); });
-        m_table->setCellWidget(row, 6, change);
     }
-    m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    configureActionColumn(m_table, 6);
 }
 
 void UserPage::setActionBusy(bool busy)
