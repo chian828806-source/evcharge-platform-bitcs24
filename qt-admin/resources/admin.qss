@@ -21,7 +21,9 @@ QTabBar::tab:selected { background: #087f69; color: white; }
 QTableWidget { background: white; alternate-background-color: #f6faf8; border: 1px solid #dce8e4; border-radius: 10px; gridline-color: #e8efed; selection-background-color: #d9f2ea; selection-color: #173b34; }
 QHeaderView::section { background: #eaf3f0; color: #35514b; border: 0; border-bottom: 1px solid #d5e3df; padding: 10px 8px; font-weight: 600; }
 QTableWidget::item { padding: 7px; }
+QTableWidget::item:hover { background: #edf7f3; }
 QWidget#tableActionCell { background: transparent; }
+QToolTip { background: #173b34; color: white; border: 0; border-radius: 5px; padding: 6px 9px; }
 
 QDialog, QMessageBox { background: #f7faf9; }
 QMessageBox QLabel#qt_msgbox_label {

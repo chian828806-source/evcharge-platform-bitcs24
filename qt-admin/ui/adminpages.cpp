@@ -3,8 +3,10 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QComboBox>
+#include <QColor>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
+#include <QFont>
 #include <QHeaderView>
 #include <QHash>
 #include <QHBoxLayout>
@@ -15,6 +17,7 @@
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPainter>
+#include <QPen>
 #include <QPushButton>
 #include <QScrollBar>
 #include <QSpinBox>
@@ -25,10 +28,14 @@
 #include <QtCharts/QChartView>
 #include <QtCharts/QCategoryAxis>
 #include <QtCharts/QLineSeries>
+#include <QtCharts/QLegend>
 #include <QtCharts/QPieSeries>
+#include <QtCharts/QPieSlice>
 #include <QtCharts/QValueAxis>
 
 namespace {
+QString statusText(const QString &status);
+
 QPushButton *button(const QString &text, QWidget *parent)
 {
     return new QPushButton(text, parent);
@@ -54,12 +61,55 @@ void prepareTable(QTableWidget *table)
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    table->setShowGrid(false);
+    table->setWordWrap(false);
+    table->setTextElideMode(Qt::ElideRight);
+    table->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     table->verticalHeader()->setVisible(false);
     table->verticalHeader()->setSectionResizeMode(QHeaderView::Fixed);
     table->verticalHeader()->setMinimumSectionSize(56);
     table->verticalHeader()->setDefaultSectionSize(56);
     table->horizontalHeader()->setMinimumSectionSize(40);
     table->horizontalHeader()->setStretchLastSection(false);
+}
+
+QTableWidgetItem *tableItem(const QString &text, bool centered = false)
+{
+    auto *item = new QTableWidgetItem(text);
+    item->setToolTip(text);
+    item->setTextAlignment(centered ? Qt::AlignCenter
+                                    : Qt::AlignLeft | Qt::AlignVCenter);
+    return item;
+}
+
+QTableWidgetItem *statusItem(const QString &status)
+{
+    auto *item = tableItem(statusText(status), true);
+    const bool positive = status == QStringLiteral("AVAILABLE")
+        || status == QStringLiteral("NORMAL") || status == QStringLiteral("LOW");
+    const bool warning = status == QStringLiteral("RESERVED")
+        || status == QStringLiteral("CHARGING") || status == QStringLiteral("RESTARTING")
+        || status == QStringLiteral("MEDIUM");
+    item->setForeground(QColor(positive ? QStringLiteral("#087f69")
+        : warning ? QStringLiteral("#a35a00") : QStringLiteral("#b53b34")));
+    QFont font = item->font();
+    font.setBold(true);
+    item->setFont(font);
+    return item;
+}
+
+void styleChart(QChart *chart)
+{
+    chart->setBackgroundVisible(false);
+    chart->setPlotAreaBackgroundVisible(false);
+    chart->setAnimationOptions(QChart::SeriesAnimations);
+    chart->legend()->setAlignment(Qt::AlignBottom);
+    QFont titleFont;
+    titleFont.setPointSize(14);
+    titleFont.setBold(true);
+    chart->setTitleFont(titleFont);
+    chart->setTitleBrush(QColor(QStringLiteral("#172b28")));
+    chart->legend()->setLabelColor(QColor(QStringLiteral("#536763")));
 }
 
 QToolButton *tableActionButton(QTableWidget *table, int row, int column,
@@ -206,6 +256,9 @@ void DashboardPage::setRevenueTrend(const QJsonObject &data)
         axisX->append(point.value(QStringLiteral("date")).toString(), i + 0.5);
     }
     auto *chart = new QChart;
+    revenueSeries->setPen(QPen(QColor(QStringLiteral("#087f69")), 3));
+    energySeries->setPen(QPen(QColor(QStringLiteral("#2f80c9")), 3));
+    orderSeries->setPen(QPen(QColor(QStringLiteral("#d97706")), 3));
     chart->addSeries(revenueSeries); chart->addSeries(energySeries); chart->addSeries(orderSeries);
     chart->addAxis(axisX, Qt::AlignBottom);
     auto *axisY = new QValueAxis; axisY->setMin(0); chart->addAxis(axisY, Qt::AlignLeft);
@@ -217,6 +270,7 @@ void DashboardPage::setRevenueTrend(const QJsonObject &data)
     chart->addAxis(orderAxis, Qt::AlignRight);
     orderSeries->attachAxis(axisX); orderSeries->attachAxis(orderAxis);
     chart->setTitle(QStringLiteral("近 %1 日营收趋势").arg(data.value(QStringLiteral("days")).toInt()));
+    styleChart(chart);
     auto *view = new QChartView(chart, this);
     view->setRenderHint(QPainter::Antialiasing);
     replaceWidget(m_chartLayout, &m_trendView, view);
@@ -235,6 +289,18 @@ void DashboardPage::setPileStatusSummary(const QJsonObject &data)
     auto *chart = new QChart;
     chart->addSeries(series);
     chart->setTitle(QStringLiteral("电桩状态（总数 %1）").arg(data.value(QStringLiteral("total")).toInt()));
+    const QList<QColor> colors{QColor(QStringLiteral("#10a37f")), QColor(QStringLiteral("#2f80c9")),
+                               QColor(QStringLiteral("#d97706")), QColor(QStringLiteral("#c9473d")),
+                               QColor(QStringLiteral("#7a8b86"))};
+    int sliceIndex = 0;
+    for (QPieSlice *slice : series->slices()) {
+        slice->setColor(colors.at(sliceIndex++ % colors.size()));
+        slice->setLabelVisible(true);
+        slice->setLabelColor(QColor(QStringLiteral("#35514b")));
+        slice->setLabel(QStringLiteral("%1  %2%").arg(statusText(slice->label()))
+                        .arg(slice->percentage() * 100.0, 0, 'f', 0));
+    }
+    styleChart(chart);
     auto *view = new QChartView(chart, this);
     view->setRenderHint(QPainter::Antialiasing);
     replaceWidget(m_statusLayout, &m_statusView, view);
@@ -262,7 +328,9 @@ void DashboardPage::setWarnings(const QJsonObject &data)
             statusText(item.value(QStringLiteral("peakLevel")).toString())
         };
         for (int column = 0; column < values.size(); ++column) {
-            m_warningTable->setItem(row, column, new QTableWidgetItem(values.at(column)));
+            m_warningTable->setItem(row, column,
+                column == 5 ? statusItem(item.value(QStringLiteral("peakLevel")).toString())
+                            : tableItem(values.at(column), column >= 2));
         }
     }
 }
@@ -308,7 +376,11 @@ void PilePage::applyFilter()
     for (int row = 0; row < piles.size(); ++row) {
         const QJsonObject pile = piles.at(row).toObject();
         const QStringList values = {pile.value(QStringLiteral("pileNo")).toString(), pile.value(QStringLiteral("stationName")).toString(), pile.value(QStringLiteral("type")).toString() == QStringLiteral("FAST") ? QStringLiteral("快充") : QStringLiteral("慢充"), QString::number(pile.value(QStringLiteral("powerKw")).toDouble()) + QStringLiteral(" kW"), statusText(pile.value(QStringLiteral("status")).toString()), QString::number(pile.value(QStringLiteral("totalChargeCount")).toInt()), QString::number(pile.value(QStringLiteral("totalChargeMinutes")).toInt()) + QStringLiteral(" 分钟")};
-        for (int column = 0; column < values.size(); ++column) m_table->setItem(row, column, new QTableWidgetItem(values.at(column)));
+        for (int column = 0; column < values.size(); ++column) {
+            m_table->setItem(row, column,
+                column == 4 ? statusItem(pile.value(QStringLiteral("status")).toString())
+                            : tableItem(values.at(column), column != 1));
+        }
         auto *restart = tableActionButton(m_table, row, 7, QStringLiteral("远程重启"));
         const QString status = pile.value(QStringLiteral("status")).toString();
         restart->setEnabled(!m_actionBusy && status != QStringLiteral("RESERVED") && status != QStringLiteral("CHARGING") && status != QStringLiteral("RESTARTING"));
@@ -355,7 +427,8 @@ void StationPage::setStations(const QJsonObject &data)
     for (int row = 0; row < stations.size(); ++row) {
         const QJsonObject station = stations.at(row).toObject();
         const QStringList values = {station.value(QStringLiteral("stationNo")).toString(), station.value(QStringLiteral("name")).toString(), station.value(QStringLiteral("address")).toString(), QString::number(station.value(QStringLiteral("longitude")).toDouble(), 'f', 6), QString::number(station.value(QStringLiteral("latitude")).toDouble(), 'f', 6), QString::number(station.value(QStringLiteral("pileCount")).toInt()), QString::number(station.value(QStringLiteral("onlineRate")).toDouble() * 100, 'f', 1) + '%'};
-        for (int column = 0; column < values.size(); ++column) m_table->setItem(row, column, new QTableWidgetItem(values.at(column)));
+        for (int column = 0; column < values.size(); ++column)
+            m_table->setItem(row, column, tableItem(values.at(column), column != 1 && column != 2));
         auto *view = tableActionButton(m_table, row, 7, QStringLiteral("查看电桩"));
         const qint64 stationId = station.value(QStringLiteral("stationId")).toInteger();
         connect(view, &QToolButton::clicked, this, [this, stationId]() { emit stationPilesRequested(stationId); });
@@ -429,7 +502,9 @@ void StationPage::setPileDetails(const QJsonArray &piles)
             statusText(pile.value(QStringLiteral("status")).toString())
         };
         for (int column = 0; column < values.size(); ++column) {
-            m_pileDetail->setItem(row, column, new QTableWidgetItem(values.at(column)));
+            m_pileDetail->setItem(row, column,
+                column == 3 ? statusItem(pile.value(QStringLiteral("status")).toString())
+                            : tableItem(values.at(column), true));
         }
     }
 }
@@ -456,7 +531,11 @@ void UserPage::setUsers(const QJsonObject &data)
     for (int row = 0; row < users.size(); ++row) {
         const QJsonObject user = users.at(row).toObject();
         const QStringList values = {QString::number(user.value(QStringLiteral("userId")).toInteger()), user.value(QStringLiteral("phone")).toString(), user.value(QStringLiteral("nickname")).toString(), QStringLiteral("¥") + QString::number(user.value(QStringLiteral("balanceFen")).toInteger() / 100.0, 'f', 2), user.value(QStringLiteral("createdAt")).toString(), statusText(user.value(QStringLiteral("status")).toString())};
-        for (int column = 0; column < values.size(); ++column) m_table->setItem(row, column, new QTableWidgetItem(values.at(column)));
+        for (int column = 0; column < values.size(); ++column) {
+            m_table->setItem(row, column,
+                column == 5 ? statusItem(user.value(QStringLiteral("status")).toString())
+                            : tableItem(values.at(column), column == 0 || column == 3));
+        }
         const bool frozen = user.value(QStringLiteral("status")).toString() == QStringLiteral("FROZEN");
         auto *change = tableActionButton(m_table, row, 6,
             frozen ? QStringLiteral("解冻") : QStringLiteral("冻结"));
