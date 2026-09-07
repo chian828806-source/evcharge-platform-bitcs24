@@ -365,12 +365,31 @@ void StationPage::setStations(const QJsonObject &data)
 
 void StationPage::openCreateDialog()
 {
-    QDialog dialog(this); QFormLayout form(&dialog); QLineEdit name, address;
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("新增充电站"));
+    dialog.setMinimumWidth(460);
+    auto *dialogLayout = new QVBoxLayout(&dialog);
+    dialogLayout->setContentsMargins(28, 24, 28, 24);
+    dialogLayout->setSpacing(16);
+    dialogLayout->addWidget(label(QStringLiteral("新增充电站"), "dialogTitle"));
+    dialogLayout->addWidget(label(QStringLiteral("填写站点基础信息，创建后可继续查看和维护站内电桩。"),
+                                  "dialogDescription"));
+    auto *form = new QFormLayout;
+    form->setHorizontalSpacing(18);
+    form->setVerticalSpacing(12);
+    QLineEdit name, address;
     QDoubleSpinBox longitude, latitude, price; QSpinBox count;
     longitude.setRange(-180, 180); latitude.setRange(-90, 90); count.setRange(1, 100); count.setValue(4);
     price.setRange(0.01, 100.0); price.setDecimals(2); price.setValue(1.20); price.setSuffix(QStringLiteral(" 元/度"));
-    form.addRow(QStringLiteral("站名"), &name); form.addRow(QStringLiteral("地址"), &address); form.addRow(QStringLiteral("经度"), &longitude); form.addRow(QStringLiteral("纬度"), &latitude); form.addRow(QStringLiteral("电桩数"), &count); form.addRow(QStringLiteral("充电单价"), &price);
-    QDialogButtonBox buttons(QDialogButtonBox::Ok | QDialogButtonBox::Cancel); form.addRow(&buttons);
+    name.setPlaceholderText(QStringLiteral("请输入充电站名称"));
+    address.setPlaceholderText(QStringLiteral("请输入详细地址"));
+    form->addRow(QStringLiteral("站名"), &name); form->addRow(QStringLiteral("地址"), &address); form->addRow(QStringLiteral("经度"), &longitude); form->addRow(QStringLiteral("纬度"), &latitude); form->addRow(QStringLiteral("电桩数"), &count); form->addRow(QStringLiteral("充电单价"), &price);
+    dialogLayout->addLayout(form);
+    QDialogButtonBox buttons(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    buttons.button(QDialogButtonBox::Ok)->setText(QStringLiteral("创建站点"));
+    buttons.button(QDialogButtonBox::Cancel)->setText(QStringLiteral("取消"));
+    buttons.button(QDialogButtonBox::Cancel)->setProperty("kind", "secondary");
+    dialogLayout->addWidget(&buttons);
     connect(&buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept); connect(&buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     if (dialog.exec() != QDialog::Accepted) return;
     if (name.text().trimmed().isEmpty() || address.text().trimmed().isEmpty()) {
