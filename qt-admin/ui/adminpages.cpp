@@ -16,6 +16,7 @@
 #include <QMessageBox>
 #include <QPainter>
 #include <QPushButton>
+#include <QScrollBar>
 #include <QSpinBox>
 #include <QTableWidget>
 #include <QVBoxLayout>
@@ -54,6 +55,8 @@ void prepareTable(QTableWidget *table)
     table->verticalHeader()->setVisible(false);
     table->verticalHeader()->setMinimumSectionSize(36);
     table->verticalHeader()->setDefaultSectionSize(36);
+    table->horizontalHeader()->setMinimumSectionSize(48);
+    table->horizontalHeader()->setDefaultSectionSize(76);
     table->horizontalHeader()->setStretchLastSection(true);
 }
 
@@ -78,7 +81,8 @@ void configureActionColumn(QTableWidget *table, int actionColumn)
     for (int column = 0; column < table->columnCount(); ++column)
         header->setSectionResizeMode(column, QHeaderView::Stretch);
     header->setSectionResizeMode(actionColumn, QHeaderView::Fixed);
-    table->setColumnWidth(actionColumn, 132);
+    table->setColumnWidth(actionColumn, 118);
+    table->horizontalScrollBar()->setValue(0);
 }
 
 QString statusText(const QString &status)
