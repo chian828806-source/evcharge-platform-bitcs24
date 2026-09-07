@@ -19,6 +19,7 @@
 #include <QScrollBar>
 #include <QSpinBox>
 #include <QTableWidget>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include <QtCharts/QChart>
 #include <QtCharts/QChartView>
@@ -55,26 +56,33 @@ void prepareTable(QTableWidget *table)
     table->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     table->verticalHeader()->setVisible(false);
     table->verticalHeader()->setSectionResizeMode(QHeaderView::Fixed);
-    table->verticalHeader()->setMinimumSectionSize(42);
-    table->verticalHeader()->setDefaultSectionSize(42);
+    table->verticalHeader()->setMinimumSectionSize(56);
+    table->verticalHeader()->setDefaultSectionSize(56);
     table->horizontalHeader()->setMinimumSectionSize(40);
     table->horizontalHeader()->setStretchLastSection(false);
 }
 
-QPushButton *tableActionButton(QTableWidget *table, int row, int column,
+QToolButton *tableActionButton(QTableWidget *table, int row, int column,
                                const QString &text)
 {
     auto *cell = new QWidget(table);
     cell->setObjectName(QStringLiteral("tableActionCell"));
     auto *layout = new QHBoxLayout(cell);
-    layout->setContentsMargins(6, 5, 6, 5);
+    layout->setContentsMargins(8, 10, 8, 10);
+    layout->setSpacing(0);
     layout->setAlignment(Qt::AlignCenter);
-    auto *action = new QPushButton(text, cell);
-    action->setProperty("kind", "tableAction");
+    auto *action = new QToolButton(cell);
+    action->setText(text);
     action->setMinimumWidth(82);
     action->setFixedHeight(30);
+    action->setStyleSheet(QStringLiteral(
+        "QToolButton { background:#087f69; color:white; border:1px solid #087f69; "
+        "border-radius:8px; padding:0px 10px; margin:0px; font-weight:600; }"
+        "QToolButton:hover { background:#066b59; border-color:#066b59; }"
+        "QToolButton:disabled { background:#c7d5d1; border-color:#c7d5d1; color:#758681; }"));
     layout->addWidget(action);
     table->setCellWidget(row, column, cell);
+    table->setRowHeight(row, 56);
     return action;
 }
 
@@ -305,7 +313,7 @@ void PilePage::applyFilter()
         const QString status = pile.value(QStringLiteral("status")).toString();
         restart->setEnabled(!m_actionBusy && status != QStringLiteral("RESERVED") && status != QStringLiteral("CHARGING") && status != QStringLiteral("RESTARTING"));
         const qint64 pileId = pile.value(QStringLiteral("pileId")).toInteger();
-        connect(restart, &QPushButton::clicked, this, [this, pileId]() { emit restartRequested(pileId); });
+        connect(restart, &QToolButton::clicked, this, [this, pileId]() { emit restartRequested(pileId); });
     }
     configureActionColumn(m_table, 7);
 }
@@ -350,7 +358,7 @@ void StationPage::setStations(const QJsonObject &data)
         for (int column = 0; column < values.size(); ++column) m_table->setItem(row, column, new QTableWidgetItem(values.at(column)));
         auto *view = tableActionButton(m_table, row, 7, QStringLiteral("查看电桩"));
         const qint64 stationId = station.value(QStringLiteral("stationId")).toInteger();
-        connect(view, &QPushButton::clicked, this, [this, stationId]() { emit stationPilesRequested(stationId); });
+        connect(view, &QToolButton::clicked, this, [this, stationId]() { emit stationPilesRequested(stationId); });
     }
     configureActionColumn(m_table, 7);
 }
@@ -435,7 +443,7 @@ void UserPage::setUsers(const QJsonObject &data)
             frozen ? QStringLiteral("解冻") : QStringLiteral("冻结"));
         change->setEnabled(!m_actionBusy);
         const qint64 userId = user.value(QStringLiteral("userId")).toInteger();
-        connect(change, &QPushButton::clicked, this, [this, userId, frozen]() { emit statusChangeRequested(userId, !frozen); });
+        connect(change, &QToolButton::clicked, this, [this, userId, frozen]() { emit statusChangeRequested(userId, !frozen); });
     }
     configureActionColumn(m_table, 6);
 }

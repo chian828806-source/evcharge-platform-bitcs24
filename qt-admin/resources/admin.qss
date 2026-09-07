@@ -15,10 +15,6 @@ QPushButton:hover { background: #066b59; }
 QPushButton:disabled { background: #c7d5d1; color: #758681; }
 QPushButton[kind="secondary"] { background: #e5f3ef; color: #087f69; }
 QPushButton[kind="danger"] { background: #fff0ef; color: #c53b32; }
-QPushButton[kind="tableAction"] {
-    padding: 0 10px;
-    border-radius: 7px;
-}
 QTabWidget::pane { border: 0; background: #f4f7f6; }
 QTabBar::tab { background: #e7eeec; color: #536763; padding: 13px 24px; margin-right: 4px; border-radius: 8px; }
 QTabBar::tab:selected { background: #087f69; color: white; }
