@@ -52,12 +52,13 @@ void prepareTable(QTableWidget *table)
     table->setAlternatingRowColors(true);
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     table->verticalHeader()->setVisible(false);
-    table->verticalHeader()->setMinimumSectionSize(36);
-    table->verticalHeader()->setDefaultSectionSize(36);
-    table->horizontalHeader()->setMinimumSectionSize(48);
-    table->horizontalHeader()->setDefaultSectionSize(76);
-    table->horizontalHeader()->setStretchLastSection(true);
+    table->verticalHeader()->setSectionResizeMode(QHeaderView::Fixed);
+    table->verticalHeader()->setMinimumSectionSize(42);
+    table->verticalHeader()->setDefaultSectionSize(42);
+    table->horizontalHeader()->setMinimumSectionSize(40);
+    table->horizontalHeader()->setStretchLastSection(false);
 }
 
 QPushButton *tableActionButton(QTableWidget *table, int row, int column,
@@ -66,10 +67,12 @@ QPushButton *tableActionButton(QTableWidget *table, int row, int column,
     auto *cell = new QWidget(table);
     cell->setObjectName(QStringLiteral("tableActionCell"));
     auto *layout = new QHBoxLayout(cell);
-    layout->setContentsMargins(6, 3, 6, 3);
+    layout->setContentsMargins(6, 5, 6, 5);
+    layout->setAlignment(Qt::AlignCenter);
     auto *action = new QPushButton(text, cell);
     action->setProperty("kind", "tableAction");
-    action->setFixedHeight(28);
+    action->setMinimumWidth(82);
+    action->setFixedHeight(30);
     layout->addWidget(action);
     table->setCellWidget(row, column, cell);
     return action;
@@ -81,7 +84,7 @@ void configureActionColumn(QTableWidget *table, int actionColumn)
     for (int column = 0; column < table->columnCount(); ++column)
         header->setSectionResizeMode(column, QHeaderView::Stretch);
     header->setSectionResizeMode(actionColumn, QHeaderView::Fixed);
-    table->setColumnWidth(actionColumn, 118);
+    table->setColumnWidth(actionColumn, 112);
     table->horizontalScrollBar()->setValue(0);
 }
 
