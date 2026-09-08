@@ -284,3 +284,5 @@ UI 提交前检查站名和地址非空，数值范围由输入控件限制。
 - 没有修改任何用户端消息；
 - 字段不足时先与 Admin 后端负责人确认，不要直接修改 `shared/protocol` 或
   `docs/03-API.md`。
+
+管理端订单页面后续接口见 `docs/12-ADMIN-ORDER-FRONTEND-SYNC.md`。

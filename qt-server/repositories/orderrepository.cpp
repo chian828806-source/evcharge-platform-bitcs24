@@ -6,6 +6,7 @@
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QHash>
+#include <QStringList>
 #include <QVariant>
 
 namespace {
@@ -21,6 +22,14 @@ QString orderSelectSql(const QString &whereClause)
         "LEFT JOIN charging_station s ON s.id = o.station_id "
         "LEFT JOIN charging_pile p ON p.id = o.pile_id "
         "%1").arg(whereClause);
+}
+
+QString likePattern(QString keyword)
+{
+    keyword.replace('\\', QStringLiteral("\\\\"));
+    keyword.replace('%', QStringLiteral("\\%"));
+    keyword.replace('_', QStringLiteral("\\_"));
+    return QStringLiteral("%") + keyword + QStringLiteral("%");
 }
 
 }
@@ -109,6 +118,70 @@ qint64 OrderRepository::countByUser(QSqlDatabase &database, qint64 userId,
         if (errorMessage) {
             *errorMessage = query.lastError().text();
         }
+        return -1;
+    }
+    return query.value(0).toLongLong();
+}
+
+QJsonArray OrderRepository::listForAdmin(QSqlDatabase &database,
+                                         const QString &phoneKeyword,
+                                         const QString &status, int limit, qint64 offset,
+                                         QString *errorMessage) const
+{
+    const bool filterPhone = !phoneKeyword.isEmpty();
+    const bool filterStatus = !status.isEmpty();
+    QStringList conditions;
+    if (filterPhone) conditions.append(QStringLiteral("u.phone LIKE :phone ESCAPE '\\'"));
+    if (filterStatus) conditions.append(QStringLiteral("o.status = :status"));
+    const QString where = conditions.isEmpty()
+        ? QString() : QStringLiteral("WHERE ") + conditions.join(QStringLiteral(" AND "));
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral(
+        "SELECT o.id, o.order_no, o.user_id, o.station_id, s.name, "
+        "o.pile_id, p.pile_no, p.power_kw, o.status, o.price_fen_per_kwh, "
+        "o.service_fee_fen_per_kwh, o.start_at, o.end_at, o.charge_minutes, "
+        "o.energy_kwh, o.amount_fen, o.created_at, u.phone, u.nickname "
+        "FROM charging_order o JOIN user u ON u.id=o.user_id "
+        "LEFT JOIN charging_station s ON s.id=o.station_id "
+        "LEFT JOIN charging_pile p ON p.id=o.pile_id %1 "
+        "ORDER BY o.created_at DESC, o.id DESC LIMIT :limit OFFSET :offset").arg(where));
+    if (filterPhone) query.bindValue(QStringLiteral(":phone"), likePattern(phoneKeyword));
+    if (filterStatus) query.bindValue(QStringLiteral(":status"), status);
+    query.bindValue(QStringLiteral(":limit"), limit);
+    query.bindValue(QStringLiteral(":offset"), offset);
+    if (!query.exec()) {
+        if (errorMessage) *errorMessage = query.lastError().text();
+        return {};
+    }
+    QJsonArray items;
+    while (query.next()) {
+        QJsonObject item = mapOrder(query).toJson();
+        item.insert(QStringLiteral("userPhone"), query.value(17).toString());
+        item.insert(QStringLiteral("userNickname"), query.value(18).toString());
+        items.append(item);
+    }
+    return items;
+}
+
+qint64 OrderRepository::countForAdmin(QSqlDatabase &database,
+                                      const QString &phoneKeyword,
+                                      const QString &status,
+                                      QString *errorMessage) const
+{
+    const bool filterPhone = !phoneKeyword.isEmpty();
+    const bool filterStatus = !status.isEmpty();
+    QStringList conditions;
+    if (filterPhone) conditions.append(QStringLiteral("u.phone LIKE :phone ESCAPE '\\'"));
+    if (filterStatus) conditions.append(QStringLiteral("o.status = :status"));
+    const QString where = conditions.isEmpty()
+        ? QString() : QStringLiteral("WHERE ") + conditions.join(QStringLiteral(" AND "));
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral(
+        "SELECT COUNT(*) FROM charging_order o JOIN user u ON u.id=o.user_id %1").arg(where));
+    if (filterPhone) query.bindValue(QStringLiteral(":phone"), likePattern(phoneKeyword));
+    if (filterStatus) query.bindValue(QStringLiteral(":status"), status);
+    if (!query.exec() || !query.next()) {
+        if (errorMessage) *errorMessage = query.lastError().text();
         return -1;
     }
     return query.value(0).toLongLong();

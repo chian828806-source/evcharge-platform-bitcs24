@@ -5,6 +5,7 @@
 #include <QObject>
 #include "repositories/stationrepository.h"
 #include "repositories/userrepository.h"
+#include "repositories/orderrepository.h"
 class DatabaseManager;
 
 class AdminManagementService : public QObject
@@ -17,6 +18,7 @@ public:
     ResponseMessage stationList(const RequestMessage &request) const;
     ResponseMessage createStation(const RequestMessage &request, qint64 adminId) const;
     ResponseMessage userList(const RequestMessage &request) const;
+    ResponseMessage orderList(const RequestMessage &request) const;
     ResponseMessage setUserFrozen(const RequestMessage &request, qint64 adminId,
                                   bool frozen) const;
 
@@ -24,4 +26,5 @@ private:
     DatabaseManager *m_databaseManager = nullptr;
     StationRepository m_stationRepository;
     UserRepository m_userRepository;
+    OrderRepository m_orderRepository;
 };
