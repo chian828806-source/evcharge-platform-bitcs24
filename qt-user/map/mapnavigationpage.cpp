@@ -4,6 +4,7 @@
 #include "mapnavigationpage.h"
 
 #include <QHBoxLayout>
+#include <QFrame>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -62,6 +63,19 @@ MapNavigationPage::MapNavigationPage(QWidget *parent)
     toolbar->addWidget(backButton);
     layout->addLayout(toolbar);
 
+    auto *metricsCard = new QFrame(this);
+    metricsCard->setObjectName(QStringLiteral("routeMetricsCard"));
+    auto *metricsLayout = new QVBoxLayout(metricsCard);
+    metricsLayout->setContentsMargins(14, 10, 14, 10);
+    auto *metricsTitle = new QLabel(QStringLiteral("路线信息"), metricsCard);
+    metricsTitle->setObjectName(QStringLiteral("routeMetricsTitle"));
+    m_routeMetrics = new QLabel(metricsCard);
+    m_routeMetrics->setObjectName(QStringLiteral("routeMetricsValue"));
+    m_routeMetrics->setWordWrap(true);
+    metricsLayout->addWidget(metricsTitle);
+    metricsLayout->addWidget(m_routeMetrics);
+    layout->addWidget(metricsCard);
+
     m_mapView = new QWebEngineView(this);
     // 页面内容由本程序生成，但腾讯 JS GL SDK 需要从 HTTPS 加载。
     m_mapView->settings()->setAttribute(
@@ -100,6 +114,8 @@ bool MapNavigationPage::setRoute(const MapRoute &route)
     }
     m_route = route;
     updateRouteSummary();
+    showRouteMetricsHint(QStringLiteral("选择%1路线后，将显示距离和预计时间。")
+        .arg(modeName(m_travelMode)));
     showPlaceholder(QStringLiteral("路线信息已准备好，正在等待地图服务返回导航页面。"));
     return true;
 }
@@ -122,6 +138,7 @@ void MapNavigationPage::setRoutePlan(const MapRoutePlanPreview &plan)
         setLoadError(QStringLiteral("地图服务返回的路线数据不完整。"));
         return;
     }
+    updateRouteMetrics(plan);
 
     if (qEnvironmentVariable("TENCENT_MAP_JS_KEY").trimmed().isEmpty()) {
         setLoadError(QStringLiteral(
@@ -299,6 +316,26 @@ void MapNavigationPage::updateRouteSummary()
         .arg(m_route.destinationLatitude, 0, 'f', 6));
 }
 
+void MapNavigationPage::showRouteMetricsHint(const QString &message)
+{
+    if (m_routeMetrics) {
+        m_routeMetrics->setText(message);
+    }
+}
+
+void MapNavigationPage::updateRouteMetrics(const MapRoutePlanPreview &plan)
+{
+    const QString distance = plan.distanceMeters >= 1000
+        ? QStringLiteral("%1 公里").arg(plan.distanceMeters / 1000.0, 0, 'f', 1)
+        : QStringLiteral("%1 米").arg(plan.distanceMeters);
+    const int roundedMinutes = qRound(plan.durationMinutes);
+    const QString duration = roundedMinutes >= 60
+        ? QStringLiteral("%1 小时 %2 分钟").arg(roundedMinutes / 60).arg(roundedMinutes % 60)
+        : QStringLiteral("%1 分钟").arg(roundedMinutes);
+    showRouteMetricsHint(QStringLiteral("%1 · %2 · 预计 %3")
+        .arg(modeName(m_travelMode), distance, duration));
+}
+
 void MapNavigationPage::setTravelMode(TravelMode mode)
 {
     if (m_travelMode == mode && m_drivingButton->isChecked() == (mode == TravelMode::Driving)) {
@@ -308,5 +345,11 @@ void MapNavigationPage::setTravelMode(TravelMode mode)
     // 选中项保持可点击并显示高亮，不再用禁用（灰色）表达当前模式。
     m_drivingButton->setChecked(mode == TravelMode::Driving);
     m_walkingButton->setChecked(mode == TravelMode::Walking);
+    if (hasValidCoordinates(m_route)) {
+        showRouteMetricsHint(QStringLiteral("正在重新规划%1路线…").arg(modeName(mode)));
+    } else {
+        showRouteMetricsHint(QStringLiteral("选择路线后，将显示%1的距离和预计时间。")
+            .arg(modeName(mode)));
+    }
     emit travelModeChanged(mode);
 }
