@@ -405,9 +405,8 @@ QWidget *UserWindow::buildHomePage()
         m_locationDistrict = districtBox->currentText();
         m_originName = m_locationDistrict + QStringLiteral(" · ") + address;
         sendRequest(MessageTypes::MapGeocode,
-                    QJsonObject{{QStringLiteral("district"), QStringLiteral("大连市")},
-                                {QStringLiteral("address"),
-                                 QStringLiteral("大连市%1").arg(address)}});
+                    QJsonObject{{QStringLiteral("district"), m_locationDistrict},
+                                {QStringLiteral("address"), address}});
     });
     return page;
 }
