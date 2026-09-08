@@ -29,6 +29,7 @@
 #include <QRegularExpressionValidator>
 #include <QScrollArea>
 #include <QStackedWidget>
+#include <QStringList>
 #include <QStyle>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -367,16 +368,28 @@ QWidget *UserWindow::buildHomePage()
     locationLayout->addWidget(makeLabel(QStringLiteral("搜索位置"), "sectionTitle"));
     auto *locationRow = new QHBoxLayout;
     auto *districtBox = new QComboBox;
-    districtBox->addItems({QStringLiteral("甘井子区"), QStringLiteral("高新园区"),
-                           QStringLiteral("沙河口区"), QStringLiteral("中山区")});
-    auto *addressEdit = new QLineEdit(QStringLiteral("黄浦路901号东软软件园A区"));
-    addressEdit->setPlaceholderText(QStringLiteral("输入完整街道、门牌号或地标"));
-    auto *locateButton = makeButton(QStringLiteral("搜索"), "primary");
-    locateButton->setMinimumWidth(76);
-    locationRow->addWidget(districtBox);
-    locationRow->addWidget(addressEdit, 1);
-    locationRow->addWidget(locateButton);
+    districtBox->addItem(QStringLiteral("甘井子区 · 东软软件园 A 区"),
+                         QStringLiteral("甘井子区|黄浦路901号东软软件园A区"));
+    districtBox->addItem(QStringLiteral("高新园区 · 河口湾产业园"),
+                         QStringLiteral("高新园区|河口湾产业园区地下停车场"));
+    districtBox->addItem(QStringLiteral("沙河口区 · 星海广场"),
+                         QStringLiteral("沙河口区|星海广场"));
+    districtBox->addItem(QStringLiteral("中山区 · 人民路"),
+                         QStringLiteral("中山区|人民路"));
+    auto *presetButton = makeButton(QStringLiteral("预设定位"), "primary");
+    presetButton->setMinimumWidth(86);
+    locationRow->addWidget(districtBox, 1);
+    locationRow->addWidget(presetButton);
     locationLayout->addLayout(locationRow);
+
+    auto *manualRow = new QHBoxLayout;
+    auto *addressEdit = new QLineEdit;
+    addressEdit->setPlaceholderText(QStringLiteral("输入完整街道、门牌号或地标"));
+    auto *locateButton = makeButton(QStringLiteral("地址搜索"), "secondary");
+    locateButton->setMinimumWidth(86);
+    manualRow->addWidget(addressEdit, 1);
+    manualRow->addWidget(locateButton);
+    locationLayout->addLayout(manualRow);
     layout->addWidget(locationCard);
 
     auto *headingRow = new QHBoxLayout;
@@ -392,21 +405,28 @@ QWidget *UserWindow::buildHomePage()
 
     pageLayout->addWidget(makeScrollArea(content), 1);
     pageLayout->addWidget(buildBottomNavigation(Home));
-    connect(locateButton, &QPushButton::clicked, this, [this, districtBox, addressEdit]() {
+    const auto sendLocation = [this](const QString &district, const QString &address) {
         if (!m_socketClient->isConnected() || m_sessionId.isEmpty()) {
             showNotice(QStringLiteral("请连接服务并登录后再定位"), true);
             return;
         }
-        const QString address = addressEdit->text().trimmed();
         if (address.isEmpty()) {
             showNotice(QStringLiteral("请输入街道或地标"), true);
             return;
         }
-        m_locationDistrict = districtBox->currentText();
+        m_locationDistrict = district;
         m_originName = m_locationDistrict + QStringLiteral(" · ") + address;
         sendRequest(MessageTypes::MapGeocode,
                     QJsonObject{{QStringLiteral("district"), m_locationDistrict},
                                 {QStringLiteral("address"), address}});
+    };
+    connect(presetButton, &QPushButton::clicked, this, [districtBox, sendLocation]() {
+        const QStringList preset = districtBox->currentData().toString().split(QLatin1Char('|'));
+        if (preset.size() == 2) sendLocation(preset.at(0), preset.at(1));
+    });
+    connect(locateButton, &QPushButton::clicked, this, [districtBox, addressEdit, sendLocation]() {
+        const QString district = districtBox->currentData().toString().section(QLatin1Char('|'), 0, 0);
+        sendLocation(district, addressEdit->text().trimmed());
     });
     return page;
 }
