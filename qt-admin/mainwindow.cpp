@@ -16,6 +16,26 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
+namespace {
+
+bool confirmDangerousAction(QWidget *parent, const QString &title,
+                            const QString &message, const QString &confirmText)
+{
+    QMessageBox box(QMessageBox::Warning, title, message,
+                    QMessageBox::NoButton, parent);
+    box.setInformativeText(QStringLiteral("该操作会立即提交到服务端，请确认当前对象和状态无误。"));
+    auto *confirm = box.addButton(confirmText, QMessageBox::AcceptRole);
+    auto *cancel = box.addButton(QStringLiteral("取消"), QMessageBox::RejectRole);
+    confirm->setProperty("kind", "danger");
+    cancel->setProperty("kind", "secondary");
+    box.setDefaultButton(cancel);
+    box.setEscapeButton(cancel);
+    box.exec();
+    return box.clickedButton() == confirm;
+}
+
+} // namespace
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), m_client(new AdminSocketClient(this))
 {
@@ -285,8 +305,9 @@ void MainWindow::buildManagementPages()
     });
     connect(m_piles, &PilePage::refreshRequested, this, [this]() { requestPileList(); });
     connect(m_piles, &PilePage::restartRequested, this, [this](qint64 id) {
-        if (QMessageBox::question(this, QStringLiteral("确认重启"),
-                                  QStringLiteral("确认远程重启该电桩吗？")) != QMessageBox::Yes) return;
+        if (!confirmDangerousAction(this, QStringLiteral("确认远程重启"),
+                                    QStringLiteral("确定要远程重启该电桩吗？"),
+                                    QStringLiteral("确认重启"))) return;
         m_piles->setActionBusy(true);
         if (send(MessageTypes::AdminPileRestart, {{QStringLiteral("pileId"), id}}).isEmpty())
             m_piles->setActionBusy(false);
@@ -295,8 +316,9 @@ void MainWindow::buildManagementPages()
     connect(m_users, &UserPage::searchRequested, this, [this](const QString &) { requestUserList(); });
     connect(m_users, &UserPage::statusChangeRequested, this, [this](qint64 id, bool freeze) {
         const QString action = freeze ? QStringLiteral("冻结") : QStringLiteral("解冻");
-        if (QMessageBox::question(this, QStringLiteral("确认%1").arg(action),
-                                  QStringLiteral("确认%1该用户吗？").arg(action)) != QMessageBox::Yes) return;
+        if (!confirmDangerousAction(this, QStringLiteral("确认%1账户").arg(action),
+                                    QStringLiteral("确定要%1该用户账户吗？").arg(action),
+                                    QStringLiteral("确认%1").arg(action))) return;
         m_users->setActionBusy(true);
         if (send(freeze ? MessageTypes::AdminUserFreeze : MessageTypes::AdminUserUnfreeze,
                  {{QStringLiteral("userId"), id}}).isEmpty()) m_users->setActionBusy(false);
