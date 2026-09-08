@@ -402,7 +402,11 @@ void MainWindow::requestOrderList(int page, const QString &phoneKeyword, const Q
     const QString requestId = send(MessageTypes::AdminOrderList,
         {{QStringLiteral("page"), page}, {QStringLiteral("pageSize"), 20},
          {QStringLiteral("phoneKeyword"), phoneKeyword}, {QStringLiteral("status"), status}});
-    if (!requestId.isEmpty()) m_orderListRequests.insert(requestId, queryKey);
+    if (!requestId.isEmpty()) {
+        m_orderListRequests.insert(requestId, queryKey);
+    } else if (m_orders && queryKey == m_activeOrderQuery) {
+        m_orders->setLoadError(QStringLiteral("无法发起请求"));
+    }
 }
 
 void MainWindow::handleFailure(const QJsonObject &response)
