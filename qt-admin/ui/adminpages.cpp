@@ -15,6 +15,7 @@
 #include <QJsonArray>
 #include <QLabel>
 #include <QLineEdit>
+#include <QList>
 #include <QMessageBox>
 #include <QPainter>
 #include <QPen>
@@ -86,10 +87,12 @@ QTableWidgetItem *statusItem(const QString &status)
 {
     auto *item = tableItem(statusText(status), true);
     const bool positive = status == QStringLiteral("AVAILABLE")
-        || status == QStringLiteral("NORMAL") || status == QStringLiteral("LOW");
+        || status == QStringLiteral("NORMAL") || status == QStringLiteral("LOW")
+        || status == QStringLiteral("COMPLETED");
     const bool warning = status == QStringLiteral("RESERVED")
         || status == QStringLiteral("CHARGING") || status == QStringLiteral("RESTARTING")
-        || status == QStringLiteral("MEDIUM");
+        || status == QStringLiteral("MEDIUM") || status == QStringLiteral("CREATED")
+        || status == QStringLiteral("PENDING_PAYMENT");
     item->setForeground(QColor(positive ? QStringLiteral("#087f69")
         : warning ? QStringLiteral("#a35a00") : QStringLiteral("#b53b34")));
     QFont font = item->font();
@@ -157,6 +160,10 @@ QString statusText(const QString &status)
         {QStringLiteral("RESTARTING"), QStringLiteral("重启中")},
         {QStringLiteral("NORMAL"), QStringLiteral("正常")},
         {QStringLiteral("FROZEN"), QStringLiteral("已冻结")},
+        {QStringLiteral("CREATED"), QStringLiteral("已创建")},
+        {QStringLiteral("PENDING_PAYMENT"), QStringLiteral("待支付")},
+        {QStringLiteral("COMPLETED"), QStringLiteral("已完成")},
+        {QStringLiteral("CANCELLED"), QStringLiteral("已取消")},
         {QStringLiteral("HIGH"), QStringLiteral("高峰")},
         {QStringLiteral("MEDIUM"), QStringLiteral("中等")},
         {QStringLiteral("LOW"), QStringLiteral("低")}
@@ -549,4 +556,123 @@ void UserPage::setUsers(const QJsonObject &data)
 void UserPage::setActionBusy(bool busy)
 {
     m_actionBusy = busy; m_table->setEnabled(!busy);
+}
+
+OrderPage::OrderPage(QWidget *parent)
+    : QWidget(parent), m_search(new QLineEdit(this)),
+      m_statusFilter(new QComboBox(this)), m_table(new QTableWidget(this))
+{
+    auto *root = new QVBoxLayout(this);
+    root->setContentsMargins(24, 22, 24, 24); root->setSpacing(14);
+    root->addWidget(label(QStringLiteral("订单管理"), "pageTitle"));
+    root->addWidget(label(QStringLiteral("按用户手机号和订单状态查看充电订单"), "subtitle"));
+    auto *tools = new QHBoxLayout;
+    m_search->setPlaceholderText(QStringLiteral("输入用户手机号关键词"));
+    m_statusFilter->addItem(QStringLiteral("全部状态"), QString());
+    m_statusFilter->addItem(QStringLiteral("已创建"), QStringLiteral("CREATED"));
+    m_statusFilter->addItem(QStringLiteral("充电中"), QStringLiteral("CHARGING"));
+    m_statusFilter->addItem(QStringLiteral("待支付"), QStringLiteral("PENDING_PAYMENT"));
+    m_statusFilter->addItem(QStringLiteral("已完成"), QStringLiteral("COMPLETED"));
+    m_statusFilter->addItem(QStringLiteral("已取消"), QStringLiteral("CANCELLED"));
+    auto *query = button(QStringLiteral("查询"), this);
+    auto *clear = button(QStringLiteral("清空"), this); clear->setProperty("kind", "secondary");
+    tools->addWidget(m_search, 1); tools->addWidget(m_statusFilter);
+    tools->addWidget(query); tools->addWidget(clear); root->addLayout(tools);
+    prepareTable(m_table);
+    m_table->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    root->addWidget(m_table, 1);
+
+    auto *pages = new QHBoxLayout; pages->addStretch();
+    m_previous = button(QStringLiteral("上一页"), this);
+    m_next = button(QStringLiteral("下一页"), this);
+    m_previous->setProperty("kind", "secondary"); m_next->setProperty("kind", "secondary");
+    m_pageLabel = label(QStringLiteral("第 1 页"), "caption");
+    pages->addWidget(m_previous); pages->addWidget(m_pageLabel); pages->addWidget(m_next);
+    root->addLayout(pages);
+    connect(query, &QPushButton::clicked, this, [this]() { requestPage(1); });
+    connect(m_search, &QLineEdit::returnPressed, this, [this]() { requestPage(1); });
+    connect(m_statusFilter, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, [this](int) { requestPage(1); });
+    connect(clear, &QPushButton::clicked, this, [this]() {
+        m_search->clear();
+        if (m_statusFilter->currentIndex() == 0) requestPage(1);
+        else m_statusFilter->setCurrentIndex(0);
+    });
+    connect(m_previous, &QPushButton::clicked, this, [this]() { requestPage(m_page - 1); });
+    connect(m_next, &QPushButton::clicked, this, [this]() { requestPage(m_page + 1); });
+}
+
+void OrderPage::requestPage(int page)
+{
+    emit queryRequested(qMax(1, page), m_search->text().trimmed(),
+                        m_statusFilter->currentData().toString());
+}
+
+void OrderPage::setLoading()
+{
+    m_pageLabel->setText(QStringLiteral("正在加载…"));
+    m_previous->setEnabled(false); m_next->setEnabled(false);
+}
+
+void OrderPage::setLoadError(const QString &message)
+{
+    m_pageLabel->setText(message);
+    m_previous->setEnabled(m_page > 1);
+    const int pageCount = qMax(1, (m_total + m_pageSize - 1) / m_pageSize);
+    m_next->setEnabled(m_page < pageCount);
+}
+
+void OrderPage::setOrders(const QJsonObject &data)
+{
+    const QJsonArray items = data.value(QStringLiteral("items")).toArray();
+    m_page = data.value(QStringLiteral("page")).toInt(1);
+    m_pageSize = data.value(QStringLiteral("pageSize")).toInt(20);
+    m_total = data.value(QStringLiteral("total")).toInt();
+    const int pageCount = qMax(1, (m_total + m_pageSize - 1) / m_pageSize);
+    m_pageLabel->setText(QStringLiteral("第 %1 / %2 页，共 %3 条")
+                         .arg(m_page).arg(pageCount).arg(m_total));
+    m_previous->setEnabled(m_page > 1);
+    m_next->setEnabled(m_page < pageCount);
+    m_table->clear(); m_table->clearSpans();
+    m_table->setColumnCount(9); m_table->setRowCount(items.size());
+    m_table->setHorizontalHeaderLabels({QStringLiteral("订单号"), QStringLiteral("用户"),
+        QStringLiteral("站点"), QStringLiteral("电桩"), QStringLiteral("状态"),
+        QStringLiteral("电量"), QStringLiteral("时长"), QStringLiteral("金额"),
+        QStringLiteral("创建时间")});
+    if (items.isEmpty()) {
+        showEmptyState(m_table, 9, QStringLiteral("当前条件下暂无订单"));
+        return;
+    }
+    for (int row = 0; row < items.size(); ++row) {
+        const QJsonObject order = items.at(row).toObject();
+        const QString nickname = order.value(QStringLiteral("userNickname")).toString();
+        const QString phone = order.value(QStringLiteral("userPhone")).toString();
+        const QString user = nickname.isEmpty() ? phone
+            : QStringLiteral("%1（%2）").arg(nickname, phone);
+        const QStringList values{
+            order.value(QStringLiteral("orderNo")).toString(), user,
+            order.value(QStringLiteral("stationName")).toString(),
+            order.value(QStringLiteral("pileNo")).toString(),
+            statusText(order.value(QStringLiteral("status")).toString()),
+            QString::number(order.value(QStringLiteral("energyKwh")).toDouble(), 'f', 2)
+                + QStringLiteral(" kWh"),
+            QString::number(order.value(QStringLiteral("chargeMinutes")).toInt())
+                + QStringLiteral(" 分钟"),
+            QStringLiteral("¥") + QString::number(
+                order.value(QStringLiteral("amountFen")).toInteger() / 100.0, 'f', 2),
+            order.value(QStringLiteral("createdAt")).toString()
+        };
+        for (int column = 0; column < values.size(); ++column) {
+            m_table->setItem(row, column, column == 4
+                ? statusItem(order.value(QStringLiteral("status")).toString())
+                : tableItem(values.at(column), column != 1 && column != 2));
+        }
+    }
+    auto *header = m_table->horizontalHeader();
+    for (int column = 0; column < m_table->columnCount(); ++column)
+        header->setSectionResizeMode(column, QHeaderView::Interactive);
+    const QList<int> widths{170, 190, 180, 80, 90, 100, 90, 100};
+    for (int column = 0; column < widths.size(); ++column)
+        m_table->setColumnWidth(column, widths.at(column));
+    header->setSectionResizeMode(8, QHeaderView::Stretch);
 }
