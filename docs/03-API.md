@@ -125,6 +125,7 @@ ADMIN_STATION_CREATE
 ADMIN_USER_LIST
 ADMIN_USER_FREEZE
 ADMIN_USER_UNFREEZE
+ADMIN_ORDER_LIST
 ```
 
 ML 展示：
@@ -318,6 +319,7 @@ Key，也不自行把地址解析为坐标。请求为 `district: string`、`add
 | `ADMIN_USER_LIST` | `phoneKeyword: string`，可选；支持手机号部分匹配 | `users [{ userId, phone, nickname, balanceFen, createdAt, status }]` | `4003`，`5001` |
 | `ADMIN_USER_FREEZE` | `userId: int` | `userId`，`status=FROZEN`，`changed` | `4001` 用户不存在，`4003`，`4401`，`5001` |
 | `ADMIN_USER_UNFREEZE` | `userId: int` | `userId`，`status=NORMAL`，`changed` | `4001` 用户不存在，`4003`，`4401`，`5001` |
+| `ADMIN_ORDER_LIST` | 可选 `page`、`pageSize`、`phoneKeyword`、`status`；`pageSize` 最大 50 | `items`、`page`、`pageSize`、`total`；订单项额外含 `userPhone`、`userNickname` | `4003`，`4401` 筛选或分页非法，`5001` |
 
 冻结和解冻采用幂等语义：目标状态已满足时仍返回成功，`changed=false`，不重复写操作日志。
 远程重启拒绝 `RESERVED`、`CHARGING` 和 `RESTARTING` 状态；其余状态进入短暂

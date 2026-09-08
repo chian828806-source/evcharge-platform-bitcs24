@@ -121,6 +121,17 @@ MainWindow::MainWindow(QWidget *parent)
             QJsonObject{{"userId", 2}, {"phone", "13800000002"}, {"nickname", "满电出发"}, {"balanceFen", 5200}, {"createdAt", "2026-08-18 14:12"}, {"status", "NORMAL"}},
             QJsonObject{{"userId", 4}, {"phone", "13800000004"}, {"nickname", "测试用户"}, {"balanceFen", 800}, {"createdAt", "2026-08-26 11:06"}, {"status", "FROZEN"}}
         }}});
+        m_orders->setOrders({{QStringLiteral("page"), 1}, {QStringLiteral("pageSize"), 20},
+            {QStringLiteral("total"), 2}, {QStringLiteral("items"), QJsonArray{
+                QJsonObject{{"orderNo", "O-20260908-001"}, {"userPhone", "13800000001"},
+                    {"userNickname", "海风"}, {"stationName", "软件园智慧充电站"},
+                    {"pileNo", "P01"}, {"status", "COMPLETED"}, {"energyKwh", 20.5},
+                    {"chargeMinutes", 30}, {"amountFen", 2460}, {"createdAt", "2026-09-08 10:00"}},
+                QJsonObject{{"orderNo", "O-20260908-002"}, {"userPhone", "13800000002"},
+                    {"userNickname", "满电出发"}, {"stationName", "万达广场充电中心"},
+                    {"pileNo", "A07"}, {"status", "CHARGING"}, {"energyKwh", 8.2},
+                    {"chargeMinutes", 12}, {"amountFen", 984}, {"createdAt", "2026-09-08 11:20"}}
+            }}});
     });
     connect(m_login, &QPushButton::clicked, this, &MainWindow::submitLogin);
     connect(m_password, &QLineEdit::returnPressed, this, &MainWindow::submitLogin);
@@ -144,6 +155,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_client, &AdminSocketClient::requestTimedOut, this,
             [this](const QString &requestId, const QString &type) {
                 const qint64 stationId = m_stationDetailRequests.take(requestId);
+                const QString orderQuery = m_orderListRequests.take(requestId);
                 m_trendRequests.remove(requestId);
                 m_warningRequests.remove(requestId);
                 m_userListRequests.remove(requestId);
@@ -151,6 +163,8 @@ MainWindow::MainWindow(QWidget *parent)
                 finishAction(type);
                 if (stationId > 0 && stationId == m_activeDetailStationId && m_stations)
                     m_stations->setPileDetailStatus(QStringLiteral("加载超时，请重试"));
+                if (!orderQuery.isEmpty() && orderQuery == m_activeOrderQuery && m_orders)
+                    m_orders->setLoadError(QStringLiteral("加载超时，请重试"));
                 QMessageBox::warning(this, QStringLiteral("请求超时"),
                                      QStringLiteral("%1 请求未及时响应").arg(type));
             });
@@ -158,6 +172,7 @@ MainWindow::MainWindow(QWidget *parent)
             [this](const QString &requestId, const QString &type,
                    const QString &message) {
                 const qint64 stationId = m_stationDetailRequests.take(requestId);
+                const QString orderQuery = m_orderListRequests.take(requestId);
                 m_trendRequests.remove(requestId);
                 m_warningRequests.remove(requestId);
                 m_userListRequests.remove(requestId);
@@ -165,6 +180,8 @@ MainWindow::MainWindow(QWidget *parent)
                 finishAction(type);
                 if (stationId > 0 && stationId == m_activeDetailStationId && m_stations)
                     m_stations->setPileDetailStatus(QStringLiteral("加载失败，请重试"));
+                if (!orderQuery.isEmpty() && orderQuery == m_activeOrderQuery && m_orders)
+                    m_orders->setLoadError(QStringLiteral("加载失败，请重试"));
                 QMessageBox::warning(this, QStringLiteral("请求失败"),
                     QStringLiteral("%1：%2").arg(type, message));
             });
@@ -222,10 +239,13 @@ void MainWindow::handleResponse(const QJsonObject &response)
     const int trendDays = m_trendRequests.take(requestId);
     const QString warningHorizon = m_warningRequests.take(requestId);
     const QString userKeyword = m_userListRequests.take(requestId);
+    const QString orderQuery = m_orderListRequests.take(requestId);
     finishAction(type);
     if (response.value(QStringLiteral("code")).toInt() != ErrorCodes::Success) {
         if (detailStationId > 0 && detailStationId == m_activeDetailStationId && m_stations)
             m_stations->setPileDetailStatus(QStringLiteral("加载失败，请重试"));
+        if (!orderQuery.isEmpty() && orderQuery == m_activeOrderQuery && m_orders)
+            m_orders->setLoadError(QStringLiteral("加载失败，请重试"));
         handleFailure(response); return;
     }
     const QJsonObject data = response.value(QStringLiteral("data")).toObject();
@@ -238,6 +258,7 @@ void MainWindow::handleResponse(const QJsonObject &response)
             m_adminDisplayName = admin.value(QStringLiteral("username")).toString();
         buildManagementPages();
         refreshDashboard(); requestPileList(); requestStationList(); requestUserList();
+        requestOrderList();
     } else if (type == MessageTypes::AdminRevenueSummary) m_dashboard->setRevenueSummary(data);
     else if (type == MessageTypes::AdminRevenueTrend) {
         if (trendDays == m_trendDays) m_dashboard->setRevenueTrend(data);
@@ -254,6 +275,9 @@ void MainWindow::handleResponse(const QJsonObject &response)
     else if (type == MessageTypes::AdminStationList) m_stations->setStations(data);
     else if (type == MessageTypes::AdminUserList) {
         if (userKeyword == m_activeUserKeyword) m_users->setUsers(data);
+    }
+    else if (type == MessageTypes::AdminOrderList) {
+        if (orderQuery == m_activeOrderQuery) m_orders->setOrders(data);
     }
     else if (type == MessageTypes::AdminPileRestart) {
         QMessageBox::information(this, QStringLiteral("操作成功"), QStringLiteral("远程重启指令已发送。"));
@@ -273,9 +297,11 @@ void MainWindow::buildManagementPages()
     if (m_dashboardTimer) { m_dashboardTimer->stop(); m_dashboardTimer->deleteLater(); m_dashboardTimer = nullptr; }
     if (m_tabs) { m_rootStack->removeWidget(m_tabs); m_tabs->deleteLater(); }
     m_tabs = new QTabWidget(m_rootStack); m_dashboard = new DashboardPage(m_tabs);
-    m_stations = new StationPage(m_tabs); m_piles = new PilePage(m_tabs); m_users = new UserPage(m_tabs);
+    m_stations = new StationPage(m_tabs); m_piles = new PilePage(m_tabs);
+    m_users = new UserPage(m_tabs); m_orders = new OrderPage(m_tabs);
     m_tabs->addTab(m_dashboard, QStringLiteral("运营概览")); m_tabs->addTab(m_stations, QStringLiteral("站点管理"));
     m_tabs->addTab(m_piles, QStringLiteral("电桩管理")); m_tabs->addTab(m_users, QStringLiteral("用户管理"));
+    m_tabs->addTab(m_orders, QStringLiteral("订单管理"));
     auto *account = new QWidget(m_tabs); auto *accountLayout = new QHBoxLayout(account);
     accountLayout->setContentsMargins(8, 0, 8, 0);
     accountLayout->addWidget(new QLabel(m_adminDisplayName.isEmpty()
@@ -323,6 +349,7 @@ void MainWindow::buildManagementPages()
         if (send(freeze ? MessageTypes::AdminUserFreeze : MessageTypes::AdminUserUnfreeze,
                  {{QStringLiteral("userId"), id}}).isEmpty()) m_users->setActionBusy(false);
     });
+    connect(m_orders, &OrderPage::queryRequested, this, &MainWindow::requestOrderList);
     m_dashboardTimer = new QTimer(this); m_dashboardTimer->setInterval(30000);
     connect(m_dashboardTimer, &QTimer::timeout, this, &MainWindow::refreshDashboard);
     if (m_client->isConnected()) m_dashboardTimer->start();
@@ -367,6 +394,16 @@ void MainWindow::requestUserList()
                                    {{QStringLiteral("phoneKeyword"), keyword}});
     if (!requestId.isEmpty()) m_userListRequests.insert(requestId, keyword);
 }
+void MainWindow::requestOrderList(int page, const QString &phoneKeyword, const QString &status)
+{
+    const QString queryKey = QStringLiteral("%1|%2|%3").arg(page).arg(phoneKeyword).arg(status);
+    m_activeOrderQuery = queryKey;
+    if (m_orders) m_orders->setLoading();
+    const QString requestId = send(MessageTypes::AdminOrderList,
+        {{QStringLiteral("page"), page}, {QStringLiteral("pageSize"), 20},
+         {QStringLiteral("phoneKeyword"), phoneKeyword}, {QStringLiteral("status"), status}});
+    if (!requestId.isEmpty()) m_orderListRequests.insert(requestId, queryKey);
+}
 
 void MainWindow::handleFailure(const QJsonObject &response)
 {
@@ -392,6 +429,7 @@ void MainWindow::showLoginPage(const QString &message)
 {
     m_activeDetailStationId = 0; m_stationDetailRequests.clear();
     m_trendRequests.clear(); m_warningRequests.clear(); m_userListRequests.clear();
+    m_orderListRequests.clear();
     setEnabled(true); m_rootStack->setCurrentWidget(m_loginPage);
     if (m_password) m_password->clear();
     if (m_login) m_login->setEnabled(true);
