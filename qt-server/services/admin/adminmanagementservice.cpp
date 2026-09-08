@@ -50,6 +50,26 @@ ResponseMessage AdminManagementService::userList(const RequestMessage &request) 
     return ResponseMessage::success(request.requestId, {{QStringLiteral("users"), users}});
 }
 
+ResponseMessage AdminManagementService::orderList(const RequestMessage &request) const
+{
+    QSqlDatabase database; QString error;
+    if (!databaseFor(m_databaseManager, &database, &error)) return databaseError(request, error);
+    const int page = request.payload.value(QStringLiteral("page")).toInt(1);
+    const int pageSize = request.payload.value(QStringLiteral("pageSize")).toInt(20);
+    const QString phoneKeyword = request.payload.value(QStringLiteral("phoneKeyword"))
+                                     .toString().trimmed();
+    const QString status = request.payload.value(QStringLiteral("status")).toString();
+    const qint64 total = m_orderRepository.countForAdmin(database, phoneKeyword, status, &error);
+    if (total < 0 || !error.isEmpty()) return databaseError(request, error);
+    const QJsonArray items = m_orderRepository.listForAdmin(
+        database, phoneKeyword, status, pageSize,
+        (static_cast<qint64>(page) - 1) * pageSize, &error);
+    if (!error.isEmpty()) return databaseError(request, error);
+    return ResponseMessage::success(request.requestId,
+        {{QStringLiteral("items"), items}, {QStringLiteral("page"), page},
+         {QStringLiteral("pageSize"), pageSize}, {QStringLiteral("total"), total}});
+}
+
 ResponseMessage AdminManagementService::restartPile(const RequestMessage &request,
                                                      qint64 adminId) const
 {

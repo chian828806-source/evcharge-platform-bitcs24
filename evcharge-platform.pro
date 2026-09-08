@@ -9,5 +9,6 @@ user_app.file = qt-user/qt-user.pro
 admin.file = qt-admin/qt-admin.pro
 network_tests.file = tests/network/network-protocol-tests.pro
 admin_tests.file = tests/admin/admin-management-tests.pro
+integration_tests.file = tests/integration/system-integration-tests.pro
 
-SUBDIRS += server user_network user_app admin network_tests admin_tests
+SUBDIRS += server user_network user_app admin network_tests admin_tests integration_tests

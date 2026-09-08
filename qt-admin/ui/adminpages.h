@@ -93,3 +93,26 @@ private:
     QTableWidget *m_table = nullptr;
     bool m_actionBusy = false;
 };
+
+class OrderPage : public QWidget
+{
+    Q_OBJECT
+public:
+    explicit OrderPage(QWidget *parent = nullptr);
+    void setOrders(const QJsonObject &data);
+    void setLoading();
+    void setLoadError(const QString &message);
+signals:
+    void queryRequested(int page, const QString &phoneKeyword, const QString &status);
+private:
+    void requestPage(int page);
+    QLineEdit *m_search = nullptr;
+    QComboBox *m_statusFilter = nullptr;
+    QTableWidget *m_table = nullptr;
+    QLabel *m_pageLabel = nullptr;
+    QPushButton *m_previous = nullptr;
+    QPushButton *m_next = nullptr;
+    int m_page = 1;
+    int m_pageSize = 20;
+    int m_total = 0;
+};

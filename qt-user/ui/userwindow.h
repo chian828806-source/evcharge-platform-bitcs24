@@ -34,7 +34,6 @@ private:
 
     enum class SessionMode {
         None,
-        Demo,
         Real
     };
 
@@ -71,7 +70,11 @@ private:
     QVBoxLayout *m_pileListLayout = nullptr;
     QVBoxLayout *m_orderListLayout = nullptr;
     QTimer *m_orderPollTimer = nullptr;
-    int m_balanceFenInFen = 12860;
+    int m_balanceFenInFen = 0;
+    double m_originLongitude = 121.538;
+    double m_originLatitude = 38.889;
+    QString m_originName = QStringLiteral("默认位置 · 甘井子区");
+    QString m_locationDistrict = QStringLiteral("甘井子区");
     Page m_navigationSource = Home;
 
     QWidget *buildLoginPage();
@@ -92,7 +95,6 @@ private:
     void openNavigation(const QJsonObject &station, Page source);
     void requestRoutePlan(const MapRoute &route, bool driving);
     void attemptLogin();
-    bool isDemoMode() const;
     void setConnected(bool connected);
     void setOrderStatus(const QString &status);
     void showNotice(const QString &message, bool error = false);
@@ -101,7 +103,6 @@ private:
     void uploadAvatar();
     QString sendRequest(const QString &type, const QJsonObject &payload = {});
     void requestInitialData();
-    void loadDemoData();
     void requestActiveOrder();
     void applyUser(const QJsonObject &user);
     void applyOrder(const QJsonObject &order);

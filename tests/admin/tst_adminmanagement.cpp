@@ -4,6 +4,7 @@
 
 #include <QSqlDatabase>
 #include <QSqlQuery>
+#include <QJsonArray>
 #include <QTemporaryDir>
 #include <QtTest>
 
@@ -18,6 +19,7 @@ private slots:
     void invalidStationPriceIsRejected();
     void createStationAndListPiles();
     void restartAvailablePile();
+    void listOrdersForAdmin();
 
 private:
     RequestMessage request(qint64 userId) const;
@@ -37,7 +39,8 @@ void AdminManagementTest::initTestCase()
     QVERIFY2(m_databaseManager->database(&m_database, &error), qPrintable(error));
     QSqlQuery query(m_database);
     QVERIFY(query.exec(QStringLiteral(
-        "CREATE TABLE user(id INTEGER PRIMARY KEY, phone TEXT, status TEXT, updated_at TEXT)")));
+        "CREATE TABLE user(id INTEGER PRIMARY KEY, phone TEXT, nickname TEXT, balance_fen INTEGER, "
+        "status TEXT, created_at TEXT, updated_at TEXT)")));
     QVERIFY(query.exec(QStringLiteral(
         "CREATE TABLE operation_log(id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id INTEGER, "
         "action TEXT, target_type TEXT, target_id INTEGER, before_status TEXT, "
@@ -51,7 +54,14 @@ void AdminManagementTest::initTestCase()
         "pile_no TEXT, type TEXT, power_kw REAL, status TEXT, total_charge_count INTEGER DEFAULT 0, "
         "total_charge_minutes INTEGER DEFAULT 0, created_at TEXT, updated_at TEXT)")));
     QVERIFY(query.exec(QStringLiteral(
-        "INSERT INTO user VALUES(1, '13800138000', 'NORMAL', '2026-09-02 00:00:00')")));
+        "CREATE TABLE charging_order(id INTEGER PRIMARY KEY AUTOINCREMENT, order_no TEXT, "
+        "user_id INTEGER, station_id INTEGER, pile_id INTEGER, status TEXT, "
+        "price_fen_per_kwh INTEGER, service_fee_fen_per_kwh INTEGER, start_at TEXT, end_at TEXT, "
+        "charge_minutes INTEGER DEFAULT 0, energy_kwh REAL DEFAULT 0, amount_fen INTEGER DEFAULT 0, "
+        "created_at TEXT, updated_at TEXT)")));
+    QVERIFY(query.exec(QStringLiteral(
+        "INSERT INTO user VALUES(1, '13800138000', '测试用户', 10000, 'NORMAL', "
+        "'2026-09-02 00:00:00', '2026-09-02 00:00:00')")));
     m_service = new AdminManagementService(m_databaseManager, this);
 }
 
@@ -164,6 +174,38 @@ void AdminManagementTest::restartAvailablePile()
     query.bindValue(QStringLiteral(":id"), pileId);
     QVERIFY(query.exec()); QVERIFY(query.next());
     QCOMPARE(query.value(0).toString(), QStringLiteral("RESTARTING"));
+}
+
+void AdminManagementTest::listOrdersForAdmin()
+{
+    QSqlQuery query(m_database);
+    QVERIFY(query.exec(QStringLiteral("SELECT id FROM charging_station ORDER BY id LIMIT 1")));
+    QVERIFY(query.next()); const qint64 stationId = query.value(0).toLongLong();
+    QVERIFY(query.exec(QStringLiteral("SELECT id FROM charging_pile ORDER BY id LIMIT 1")));
+    QVERIFY(query.next()); const qint64 pileId = query.value(0).toLongLong();
+    query.prepare(QStringLiteral(
+        "INSERT INTO charging_order(order_no,user_id,station_id,pile_id,status,"
+        "price_fen_per_kwh,service_fee_fen_per_kwh,charge_minutes,energy_kwh,amount_fen,"
+        "created_at,updated_at) VALUES('O-ADMIN-1',1,:station,:pile,'COMPLETED',"
+        "135,0,30,20.5,2768,'2026-09-08 10:00:00','2026-09-08 10:30:00')"));
+    query.bindValue(QStringLiteral(":station"), stationId);
+    query.bindValue(QStringLiteral(":pile"), pileId);
+    QVERIFY(query.exec());
+
+    const RequestMessage request{
+        QStringLiteral("TEST-ORDER-LIST"), QStringLiteral("ADMIN_ORDER_LIST"),
+        QStringLiteral("S-ADMIN"),
+        {{QStringLiteral("page"), 1}, {QStringLiteral("pageSize"), 20},
+         {QStringLiteral("phoneKeyword"), QStringLiteral("1380")},
+         {QStringLiteral("status"), QStringLiteral("COMPLETED")}}};
+    const ResponseMessage response = m_service->orderList(request);
+    QCOMPARE(response.code, ErrorCodes::Success);
+    QCOMPARE(response.data.value(QStringLiteral("total")).toInteger(), 1);
+    const QJsonObject order = response.data.value(QStringLiteral("items"))
+                                  .toArray().first().toObject();
+    QCOMPARE(order.value(QStringLiteral("orderNo")).toString(), QStringLiteral("O-ADMIN-1"));
+    QCOMPARE(order.value(QStringLiteral("userPhone")).toString(), QStringLiteral("13800138000"));
+    QCOMPARE(order.value(QStringLiteral("userNickname")).toString(), QStringLiteral("测试用户"));
 }
 
 QTEST_MAIN(AdminManagementTest)

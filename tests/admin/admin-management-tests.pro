@@ -15,6 +15,7 @@ SOURCES += $$PWD/tst_adminmanagement.cpp \
            $$REPO_ROOT/qt-server/repositories/stationrepository.cpp \
            $$REPO_ROOT/qt-server/repositories/userrepository.cpp \
            $$REPO_ROOT/qt-server/repositories/operationlogrepository.cpp \
+           $$REPO_ROOT/qt-server/repositories/orderrepository.cpp \
            $$REPO_ROOT/shared/protocol/protocolmessage.cpp
 
 HEADERS += $$REPO_ROOT/qt-server/services/admin/adminmanagementservice.h \

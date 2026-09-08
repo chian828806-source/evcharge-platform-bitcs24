@@ -16,7 +16,7 @@ const QSet<QString> &tcpTypes()
         OrderStop, OrderSettle, AdminLogin, AdminRevenueSummary,
         AdminRevenueTrend, AdminPileStatusSummary, AdminPileList,
         AdminPileRestart, AdminStationList, AdminStationCreate, AdminUserList,
-        AdminUserFreeze, AdminUserUnfreeze, PredictionList,
+        AdminUserFreeze, AdminUserUnfreeze, AdminOrderList, PredictionList,
         PredictionRecommendation, PredictionWarning, PredictionImport
     };
     return types;

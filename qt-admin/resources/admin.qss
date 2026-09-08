@@ -21,3 +21,42 @@ QTabBar::tab:selected { background: #087f69; color: white; }
 QTableWidget { background: white; alternate-background-color: #f6faf8; border: 1px solid #dce8e4; border-radius: 10px; gridline-color: #e8efed; selection-background-color: #d9f2ea; selection-color: #173b34; }
 QHeaderView::section { background: #eaf3f0; color: #35514b; border: 0; border-bottom: 1px solid #d5e3df; padding: 10px 8px; font-weight: 600; }
 QTableWidget::item { padding: 7px; }
+QTableWidget::item:hover { background: #edf7f3; }
+QWidget#tableActionCell { background: transparent; }
+QToolTip { background: #173b34; color: white; border: 0; border-radius: 5px; padding: 6px 9px; }
+
+QDialog, QMessageBox { background: #f7faf9; }
+QMessageBox QLabel#qt_msgbox_label {
+    min-width: 340px;
+    color: #172b28;
+    font-size: 15px;
+    padding: 8px 4px 2px 4px;
+}
+QMessageBox QLabel#qt_msgboxex_icon_label { padding: 8px 6px 2px 4px; }
+QMessageBox QDialogButtonBox { min-height: 46px; }
+QMessageBox QPushButton, QDialogButtonBox QPushButton {
+    min-width: 92px;
+    min-height: 34px;
+    padding: 0 16px;
+    border-radius: 8px;
+}
+QMessageBox QPushButton[kind="secondary"],
+QDialogButtonBox QPushButton[kind="secondary"] {
+    background: #e5f3ef;
+    color: #087f69;
+    border: 1px solid #c9e3dc;
+}
+QMessageBox QPushButton[kind="danger"] {
+    background: #c9473d;
+    color: white;
+}
+QMessageBox QPushButton[kind="danger"]:hover { background: #ad382f; }
+QLabel[role="dialogTitle"] {
+    color: #102a26;
+    font-size: 22px;
+    font-weight: 700;
+}
+QLabel[role="dialogDescription"] {
+    color: #6c7e7a;
+    font-size: 13px;
+}

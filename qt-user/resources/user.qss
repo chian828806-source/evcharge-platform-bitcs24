@@ -14,8 +14,24 @@ QWidget#loginPage {
 }
 
 QFrame#connectionBar { background: #102b26; border: none; }
-QFrame#card { background: #ffffff; border: 1px solid #e5ecea; border-radius: 14px; }
-QFrame#bottomNavigation { background: #ffffff; border-top: 1px solid #e3ebe8; }
+QFrame#card { background: #ffffff; border: 1px solid #e1ebe8; border-radius: 18px; }
+QFrame#card[variant="search"] { background: #f9fffd; border-color: #d7ebe5; }
+QFrame#card[variant="station"] { border-left: 4px solid #20b486; }
+QFrame#card[variant="stationHero"] { background: #eaf9f4; border-color: #cbeadf; }
+QFrame#card[variant="pile"] { background: #fbfdfc; }
+QFrame#card[variant="orderHero"] { background: #173b34; border: none; }
+QFrame#card[variant="orderHero"] QLabel[role="cardTitle"], QFrame#card[variant="orderHero"] QLabel[role="caption"] { color: #f3fbf8; }
+QFrame#card[variant="chargeProgress"] { border-color: #c9e9df; }
+QFrame#card[variant="profile"] { background: #173b34; border: none; }
+QFrame#card[variant="profile"] QLabel[role="cardTitle"] { color: #ffffff; font-size: 17px; }
+QFrame#card[variant="profile"] QLabel[role="caption"] { color: #b8d6ce; }
+QFrame#card[variant="wallet"] { background: #edfaf6; border-color: #d1ede4; }
+QFrame#card[variant="order"] { background: #fbfdfc; }
+QFrame#bottomNavigation { background: #ffffff; border-top: 1px solid #dce9e5; }
+QToolTip {
+    color: #f8fffd; background: #173f36; border: 1px solid #2b5d50;
+    border-radius: 6px; padding: 6px 9px;
+}
 QFrame#mapPlaceholder {
     background: #e4eee9;
     border: 1px dashed #9bbab1;
@@ -26,7 +42,7 @@ QFrame#mapPlaceholder {
 QLabel[role="connection"] { color: #c6ded8; font-size: 11px; }
 QLabel[role="connection"][online="true"] { color: #6ee7b7; }
 QLabel[role="eyebrow"] { color: #14866d; font-size: 10px; font-weight: 700; }
-QLabel[role="pageTitle"] { color: #11231f; font-size: 26px; font-weight: 700; }
+QLabel[role="pageTitle"] { color: #11231f; font-size: 27px; font-weight: 800; }
 QLabel[role="heroTitle"] { color: #102b26; font-size: 27px; font-weight: 800; }
 QLabel[role="brandMark"] {
     color: #ffffff;
@@ -47,8 +63,8 @@ QLabel[role="hint"] {
     padding: 9px;
     font-size: 11px;
 }
-QLabel[role="sectionTitle"] { color: #182b27; font-size: 15px; font-weight: 700; }
-QLabel[role="cardTitle"] { color: #172824; font-size: 14px; font-weight: 700; }
+QLabel[role="sectionTitle"] { color: #182b27; font-size: 16px; font-weight: 800; }
+QLabel[role="cardTitle"] { color: #172824; font-size: 15px; font-weight: 800; }
 QLabel[role="metric"] { color: #174f43; font-size: 12px; font-weight: 700; }
 QLabel[role="metricLarge"] { color: #183c35; font-size: 15px; font-weight: 700; }
 QLabel[role="distance"] { color: #14866d; font-size: 12px; font-weight: 700; }
@@ -79,7 +95,7 @@ QLabel[role="mapPin"] {
 }
 
 QLineEdit, QComboBox {
-    min-height: 40px;
+    min-height: 42px;
     padding: 0 12px;
     background: #ffffff;
     border: 1px solid #d9e4e1;
@@ -89,13 +105,20 @@ QLineEdit, QComboBox {
 QLineEdit:focus, QComboBox:focus { border: 1px solid #18a67e; }
 
 QPushButton {
-    min-height: 38px;
+    min-height: 42px;
     padding: 0 15px;
-    border-radius: 9px;
+    border-radius: 12px;
     font-weight: 700;
+    color: #174f43;
+    background: #ffffff;
+    border: 1px solid #d3e2de;
 }
+QPushButton:hover { background: #f0f8f5; border-color: #96c9bb; }
+QPushButton:pressed { background: #dff1eb; border-color: #55aa92; }
+QPushButton:focus { border: 2px solid #18a67e; }
 QPushButton[kind="primary"] { color: white; background: #159873; border: none; }
 QPushButton[kind="primary"]:hover { background: #117c60; }
+QPushButton[kind="primary"]:pressed { background: #0d664f; padding-top: 2px; }
 QPushButton[kind="secondary"] {
     color: #14765f; background: #e4f5ef; border: 1px solid #c4e8dd;
 }
@@ -104,6 +127,16 @@ QPushButton[kind="ghost"], QPushButton[kind="link"] {
 }
 QPushButton[kind="link"] {
     color: #d7ebe6; border-color: #42645d; min-height: 26px; font-size: 10px;
+}
+QPushButton[kind="ghostCompact"] {
+    color: #d9efe9; background: #244b43; border: 1px solid #3a665c;
+    min-height: 34px; padding: 0 11px; font-size: 11px;
+}
+QPushButton[kind="ghostCompact"]:hover { background: #2e5c52; border-color: #65a895; }
+QPushButton[kind="icon"] {
+    min-width: 42px; max-width: 42px; min-height: 42px; max-height: 42px;
+    padding: 0; color: #173b34; background: #ffffff;
+    border: 1px solid #d6e5e0; border-radius: 21px; font-size: 20px;
 }
 QPushButton[kind="mapMode"] {
     color: #43635b;
@@ -135,8 +168,27 @@ QPushButton[kind="disabled"], QPushButton:disabled {
 }
 QPushButton[kind="nav"], QPushButton[kind="navActive"] {
     background: transparent; border: none; color: #83908e; font-size: 11px;
+    border-radius: 14px; padding: 5px 8px;
 }
-QPushButton[kind="navActive"] { color: #13866a; background: #e8f7f2; }
+QPushButton[kind="navActive"] { color: #087f69; background: #ddf6ee; font-weight: 800; }
+QPushButton#bottomNavButton:hover { color: #087f69; background: #eff9f6; }
+
+QLabel#mapPageTitle { color: #11231f; font-size: 24px; font-weight: 800; }
+QWebEngineView {
+    background: #ffffff;
+    border: 1px solid #dbe7e3;
+    border-radius: 14px;
+}
+
+QScrollBar:vertical {
+    width: 8px; margin: 2px; background: transparent;
+}
+QScrollBar::handle:vertical {
+    min-height: 36px; background: #bfd3cd; border-radius: 4px;
+}
+QScrollBar::handle:vertical:hover { background: #8db8ac; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
 
 /* 导航页驾车/步行切换按钮：未选中普通描边，选中深绿高亮 */
 QPushButton#modeToggle {
@@ -165,10 +217,10 @@ QLabel#routeMetricsValue {
 }
 
 QProgressBar {
-    min-height: 9px; max-height: 9px; border: none;
-    border-radius: 4px; background: #e3ece9;
+    min-height: 12px; max-height: 12px; border: none;
+    border-radius: 6px; background: #e3ece9;
 }
-QProgressBar::chunk { border-radius: 4px; background: #20b486; }
+QProgressBar::chunk { border-radius: 6px; background: #20b486; }
 
 QLabel#successNotice, QLabel#errorNotice {
     color: white;
@@ -178,3 +230,46 @@ QLabel#successNotice, QLabel#errorNotice {
     font-weight: 600;
 }
 QLabel#errorNotice { background: #9e3f45; }
+
+QDialog#userConfirmDialog { background: transparent; }
+QFrame#confirmCard {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                                stop:0 #f0fff9, stop:0.55 #ffffff, stop:1 #e7f8f3);
+    border: 2px solid #a9e2d2;
+    border-radius: 28px;
+}
+QFrame#confirmCard[dangerous="true"] {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                                stop:0 #fff7f6, stop:0.55 #ffffff, stop:1 #f7eeee);
+    border-color: #efc3c3;
+}
+QLabel[role="dialogIcon"], QLabel[role="dialogDangerIcon"] {
+    color: white; background: #18a67e; border-radius: 29px;
+    font-size: 28px; font-weight: 800;
+}
+QLabel[role="dialogDangerIcon"] { background: #cf5357; }
+QLabel[role="dialogTitle"] { color: #122a24; font-size: 22px; font-weight: 800; }
+QLabel[role="dialogMessage"] { color: #24443c; font-size: 15px; font-weight: 700; }
+QLabel[role="dialogDetail"] { color: #71817d; font-size: 12px; }
+QPushButton[kind="dialogClose"] {
+    color: #365950; background: #e7f4f0; border: none;
+    border-radius: 18px; padding: 0; font-size: 22px;
+}
+QPushButton[kind="dialogClose"]:hover { color: white; background: #159873; }
+QPushButton[kind="dialogPrimary"] {
+    color: white;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0f9872, stop:1 #31c493);
+    border: none; border-radius: 18px; font-size: 15px;
+}
+QPushButton[kind="dialogPrimary"]:hover { background: #117c60; }
+QPushButton[kind="dialogSecondary"] {
+    color: #347162; background: #e3f3ee; border: none;
+    border-radius: 16px; font-size: 14px;
+}
+QPushButton[kind="dialogSecondary"]:hover { background: #d4ebe4; }
+QPushButton[kind="dialogDanger"] {
+    color: white;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #bd454b, stop:1 #e16a65);
+    border: none; border-radius: 18px; font-size: 15px;
+}
+QPushButton[kind="dialogDanger"]:hover { background: #a83d42; }

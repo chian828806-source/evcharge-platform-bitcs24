@@ -30,6 +30,11 @@ public:
                                         QString *errorMessage) const;
     qint64 countByUser(QSqlDatabase &database, qint64 userId, const QString &status,
                        QString *errorMessage) const;
+    QJsonArray listForAdmin(QSqlDatabase &database, const QString &phoneKeyword,
+                            const QString &status, int limit, qint64 offset,
+                            QString *errorMessage) const;
+    qint64 countForAdmin(QSqlDatabase &database, const QString &phoneKeyword,
+                         const QString &status, QString *errorMessage) const;
     std::optional<OrderCreateTarget> findCreateTarget(QSqlDatabase &database,
                                                       qint64 pileId,
                                                       QString *errorMessage) const;

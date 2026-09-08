@@ -19,6 +19,15 @@ bool isPositiveInteger(const QJsonObject &payload, const QString &name)
     return value.isDouble() && integerValue > 0
         && static_cast<double>(integerValue) == value.toDouble();
 }
+
+bool validOrderStatus(const QString &status)
+{
+    return status.isEmpty() || status == QStringLiteral("CREATED")
+        || status == QStringLiteral("CHARGING")
+        || status == QStringLiteral("PENDING_PAYMENT")
+        || status == QStringLiteral("COMPLETED")
+        || status == QStringLiteral("CANCELLED");
+}
 }
 
 AdminHandlerRegistry::AdminHandlerRegistry(DatabaseManager *databaseManager,
@@ -119,5 +128,24 @@ AdminHandlerRegistry::AdminHandlerRegistry(DatabaseManager *databaseManager,
                 return invalidPayload(request, QStringLiteral("userId must be a positive integer"));
             }
             return m_management.setUserFrozen(request, session.principalId, false);
+        });
+    dispatcher->registerHandler(
+        MessageTypes::AdminOrderList, MessageDispatcher::Access::Admin,
+        [this](const RequestMessage &request, const SessionContext &) {
+            const QJsonObject &payload = request.payload;
+            const QJsonValue page = payload.value(QStringLiteral("page"));
+            const QJsonValue pageSize = payload.value(QStringLiteral("pageSize"));
+            const QJsonValue phone = payload.value(QStringLiteral("phoneKeyword"));
+            const QJsonValue status = payload.value(QStringLiteral("status"));
+            if ((!page.isUndefined() && !isPositiveInteger(payload, QStringLiteral("page")))
+                || (!pageSize.isUndefined()
+                    && (!isPositiveInteger(payload, QStringLiteral("pageSize"))
+                        || pageSize.toInt() > 50))
+                || (!phone.isUndefined() && !phone.isString())
+                || (!status.isUndefined() && !status.isString())
+                || !validOrderStatus(status.toString())) {
+                return invalidPayload(request, QStringLiteral("invalid admin order filter"));
+            }
+            return m_management.orderList(request);
         });
 }
