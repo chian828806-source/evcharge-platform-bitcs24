@@ -2,12 +2,20 @@
 QMainWindow, QWidget { background: #f4f7f6; }
 QWidget#loginRoot { background: #eef5f2; }
 QFrame#loginCard, QFrame#metricCard, QFrame#panel { background: white; border: 1px solid #dce8e4; border-radius: 14px; }
+QFrame#panel[variant="orderFilter"] { background: #f9fcfb; border-color: #d5e7e1; }
+QFrame#orderPagination { background: #eef5f3; border: 1px solid #dce8e4; border-radius: 10px; }
 QLabel[role="brand"] { color: #087f69; font-size: 15px; font-weight: 700; }
 QLabel[role="hero"] { color: #102a26; font-size: 28px; font-weight: 700; }
 QLabel[role="pageTitle"] { font-size: 24px; font-weight: 700; }
 QLabel[role="subtitle"], QLabel[role="caption"] { color: #6c7e7a; }
 QLabel[role="metricTitle"] { color: #6c7e7a; font-size: 13px; }
 QLabel[role="metricValue"] { color: #087f69; font-size: 25px; font-weight: 700; }
+QLabel[role="sectionTitle"] { color: #173b34; font-size: 17px; font-weight: 700; }
+QLabel[role="filterTitle"] { color: #35514b; font-size: 14px; font-weight: 700; }
+QLabel[role="fieldLabel"] { color: #536763; font-size: 13px; font-weight: 600; }
+QLabel[role="summaryBadge"] { background: #e2f4ee; color: #087f69; border-radius: 10px; padding: 6px 12px; font-size: 13px; font-weight: 600; }
+QLabel[role="loadState"] { color: #087f69; font-size: 13px; font-weight: 600; }
+QLabel[role="loadState"][error="true"] { color: #b23b35; }
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox { background: white; border: 1px solid #ccdcd7; border-radius: 8px; padding: 8px 10px; min-height: 20px; }
 QLineEdit:focus, QComboBox:focus { border: 1px solid #10a37f; }
 QPushButton { background: #087f69; color: white; border: 0; border-radius: 8px; padding: 9px 16px; font-weight: 600; }
