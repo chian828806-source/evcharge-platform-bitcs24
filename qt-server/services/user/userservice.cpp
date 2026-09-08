@@ -186,7 +186,8 @@ ServiceResult<UserProfile> UserService::uploadAvatar(
 
     const QByteArray content = QByteArray::fromBase64(
         contentBase64.toLatin1(), QByteArray::AbortOnBase64DecodingErrors);
-    constexpr qsizetype maxAvatarBytes = 512 * 1024;
+    // 原始图片最多 1000 KiB；Base64 编码后的 Socket 消息仍低于当前 2 MiB 单帧上限。
+    constexpr qsizetype maxAvatarBytes = 1000 * 1024;
     const bool validPng = content.startsWith("\x89PNG\r\n\x1a\n");
     const bool validJpeg = content.size() >= 3
         && static_cast<unsigned char>(content.at(0)) == 0xff

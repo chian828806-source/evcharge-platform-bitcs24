@@ -997,8 +997,8 @@ void UserWindow::uploadAvatar()
         return;
     }
     QFile file(path);
-    if (!file.open(QIODevice::ReadOnly) || file.size() > 512 * 1024) {
-        showNotice(QStringLiteral("头像无法读取或超过 512 KiB"), true);
+    if (!file.open(QIODevice::ReadOnly) || file.size() > 1000 * 1024) {
+        showNotice(QStringLiteral("头像无法读取或超过 1000 KiB"), true);
         return;
     }
     const QString suffix = QFileInfo(path).suffix().toLower();
