@@ -81,6 +81,104 @@ QString displayMoney(int amountFen)
     return QStringLiteral("¥%1").arg(amountFen / 100.0, 0, 'f', 2);
 }
 
+QString pileTypeText(const QString &type)
+{
+    if (type == QStringLiteral("FAST")) return QStringLiteral("快充");
+    if (type == QStringLiteral("SLOW")) return QStringLiteral("慢充");
+    return type.isEmpty() ? QStringLiteral("未知类型") : type;
+}
+
+QString pileStatusText(const QString &status)
+{
+    static const QHash<QString, QString> labels{
+        {QStringLiteral("AVAILABLE"), QStringLiteral("空闲")},
+        {QStringLiteral("RESERVED"), QStringLiteral("已预约")},
+        {QStringLiteral("CHARGING"), QStringLiteral("充电中")},
+        {QStringLiteral("FAULT"), QStringLiteral("故障")},
+        {QStringLiteral("OFFLINE"), QStringLiteral("离线")},
+        {QStringLiteral("RESTARTING"), QStringLiteral("重启中")}
+    };
+    return labels.value(status, status.isEmpty() ? QStringLiteral("未知状态") : status);
+}
+
+QString orderStatusText(const QString &status)
+{
+    static const QHash<QString, QString> labels{
+        {QStringLiteral("CREATED"), QStringLiteral("待开始")},
+        {QStringLiteral("CHARGING"), QStringLiteral("充电中")},
+        {QStringLiteral("PENDING_PAYMENT"), QStringLiteral("待结算")},
+        {QStringLiteral("COMPLETED"), QStringLiteral("已完成")},
+        {QStringLiteral("CANCELLED"), QStringLiteral("已取消")}
+    };
+    return labels.value(status, status.isEmpty() ? QStringLiteral("未知状态") : status);
+}
+
+bool confirmUserAction(QWidget *parent, const QString &title, const QString &message,
+                       const QString &detail, const QString &confirmText,
+                       bool dangerous = false)
+{
+    QDialog dialog(parent, Qt::Dialog | Qt::FramelessWindowHint);
+    dialog.setObjectName(QStringLiteral("userConfirmDialog"));
+    dialog.setModal(true);
+    dialog.setAttribute(Qt::WA_TranslucentBackground);
+    dialog.setMinimumWidth(390);
+
+    auto *outerLayout = new QVBoxLayout(&dialog);
+    outerLayout->setContentsMargins(18, 18, 18, 18);
+    auto *card = new QFrame(&dialog);
+    card->setObjectName(QStringLiteral("confirmCard"));
+    card->setProperty("dangerous", dangerous);
+    auto *shadow = new QGraphicsDropShadowEffect(card);
+    shadow->setBlurRadius(36);
+    shadow->setOffset(0, 12);
+    shadow->setColor(QColor(15, 44, 37, 70));
+    card->setGraphicsEffect(shadow);
+    outerLayout->addWidget(card);
+
+    auto *layout = new QVBoxLayout(card);
+    layout->setContentsMargins(28, 20, 28, 26);
+    layout->setSpacing(12);
+    auto *topRow = new QHBoxLayout;
+    topRow->addStretch();
+    auto *closeButton = makeButton(QStringLiteral("×"), "dialogClose");
+    closeButton->setFixedSize(36, 36);
+    closeButton->setAccessibleName(QStringLiteral("关闭弹窗"));
+    topRow->addWidget(closeButton);
+    layout->addLayout(topRow);
+
+    auto *icon = makeLabel(dangerous ? QStringLiteral("!") : QStringLiteral("✓"),
+                           dangerous ? "dialogDangerIcon" : "dialogIcon");
+    icon->setAlignment(Qt::AlignCenter);
+    icon->setFixedSize(58, 58);
+    layout->addWidget(icon, 0, Qt::AlignHCenter);
+
+    auto *titleLabel = makeLabel(title, "dialogTitle");
+    titleLabel->setAlignment(Qt::AlignCenter);
+    layout->addWidget(titleLabel);
+    auto *messageLabel = makeLabel(message, "dialogMessage");
+    messageLabel->setAlignment(Qt::AlignCenter);
+    layout->addWidget(messageLabel);
+    auto *detailLabel = makeLabel(detail, "dialogDetail");
+    detailLabel->setAlignment(Qt::AlignCenter);
+    layout->addWidget(detailLabel);
+    layout->addSpacing(8);
+
+    auto *confirmButton = makeButton(confirmText,
+        dangerous ? "dialogDanger" : "dialogPrimary");
+    auto *cancelButton = makeButton(QStringLiteral("暂不操作"), "dialogSecondary");
+    confirmButton->setMinimumHeight(50);
+    cancelButton->setMinimumHeight(46);
+    layout->addWidget(confirmButton);
+    layout->addWidget(cancelButton);
+
+    QObject::connect(closeButton, &QPushButton::clicked, &dialog, &QDialog::reject);
+    QObject::connect(cancelButton, &QPushButton::clicked, &dialog, &QDialog::reject);
+    QObject::connect(confirmButton, &QPushButton::clicked, &dialog, &QDialog::accept);
+    cancelButton->setProperty("kind", "dialogSecondary");
+    cancelButton->setDefault(true);
+    return dialog.exec() == QDialog::Accepted;
+}
+
 } // namespace
 
 UserWindow::UserWindow(QWidget *parent)
@@ -101,10 +199,10 @@ UserWindow::UserWindow(QWidget *parent)
     connectionBar->setObjectName(QStringLiteral("connectionBar"));
     auto *connectionLayout = new QHBoxLayout(connectionBar);
     connectionLayout->setContentsMargins(20, 7, 20, 7);
-    m_connectionLabel = makeLabel(QStringLiteral("● 演示模式 · 后端未连接"), "connection");
+    m_connectionLabel = makeLabel(QStringLiteral("● 正在连接服务…"), "connection");
     connectionLayout->addWidget(m_connectionLabel);
     connectionLayout->addStretch();
-    auto *connectButton = makeButton(QStringLiteral("连接本机服务"), "link");
+    auto *connectButton = makeButton(QStringLiteral("重新连接"), "link");
     connectionLayout->addWidget(connectButton);
     rootLayout->addWidget(connectionBar);
 
@@ -120,11 +218,11 @@ UserWindow::UserWindow(QWidget *parent)
 
     connect(connectButton, &QPushButton::clicked, this, [this]() {
         if (m_socketClient->isConnected()) {
-            m_socketClient->disconnectFromServer();
-        } else {
-            m_connectionLabel->setText(QStringLiteral("● 正在连接 127.0.0.1:18080…"));
-            m_socketClient->connectToServer(QStringLiteral("127.0.0.1"), 18080);
+            showNotice(QStringLiteral("服务连接正常"));
+            return;
         }
+        m_connectionLabel->setText(QStringLiteral("● 正在连接 127.0.0.1:18080…"));
+        m_socketClient->connectToServer(QStringLiteral("127.0.0.1"), 18080);
     });
     connect(m_socketClient, &SocketClient::connected, this,
             [this]() { setConnected(true); });
@@ -136,7 +234,7 @@ UserWindow::UserWindow(QWidget *parent)
                 showNotice(QStringLiteral("连接失败：%1").arg(message), true);
             });
     connect(m_socketClient, &SocketClient::requestTimedOut, this,
-            [this](const QString &requestId, const QString &) {
+            [this](const QString &requestId, const QString &type) {
                 m_requestTypes.remove(requestId);
                 if (requestId == m_loginRequestId) {
                     m_loginRequestId.clear();
@@ -148,10 +246,16 @@ UserWindow::UserWindow(QWidget *parent)
                             QStringLiteral("路线规划超时，请检查网络后重试。"));
                     }
                 }
+                if (type == MessageTypes::StationDetailGet && m_pileListLayout) {
+                    clearLayout(m_pileListLayout);
+                    m_stationDetailSummary->setText(QStringLiteral("站点详情加载超时"));
+                    m_pileListLayout->addWidget(makeLabel(
+                        QStringLiteral("暂时无法获取电桩信息，请返回首页后重试。"), "hint"));
+                }
                 showNotice(QStringLiteral("请求超时，请检查服务后重试"), true);
             });
     connect(m_socketClient, &SocketClient::requestFailed, this,
-            [this](const QString &requestId, const QString &, const QString &message) {
+            [this](const QString &requestId, const QString &type, const QString &message) {
                 if (requestId == m_loginRequestId) {
                     m_loginRequestId.clear();
                 }
@@ -162,6 +266,12 @@ UserWindow::UserWindow(QWidget *parent)
                         m_mapNavigationPage->setLoadError(message);
                     }
                 }
+                if (type == MessageTypes::StationDetailGet && m_pileListLayout) {
+                    clearLayout(m_pileListLayout);
+                    m_stationDetailSummary->setText(QStringLiteral("站点详情加载失败"));
+                    m_pileListLayout->addWidget(makeLabel(
+                        QStringLiteral("暂时无法获取电桩信息，请返回首页后重试。"), "hint"));
+                }
                 showNotice(QStringLiteral("请求失败：%1").arg(message), true);
             });
     connect(m_socketClient, &SocketClient::responseReceived,
@@ -170,6 +280,7 @@ UserWindow::UserWindow(QWidget *parent)
     m_orderPollTimer = new QTimer(this);
     m_orderPollTimer->setInterval(1000);
     connect(m_orderPollTimer, &QTimer::timeout, this, &UserWindow::requestActiveOrder);
+    m_socketClient->connectToServer(QStringLiteral("127.0.0.1"), 18080);
 }
 
 QWidget *UserWindow::buildPageHeader(const QString &eyebrow,
@@ -178,7 +289,7 @@ QWidget *UserWindow::buildPageHeader(const QString &eyebrow,
 {
     auto *header = new QWidget;
     auto *layout = new QVBoxLayout(header);
-    layout->setContentsMargins(4, 20, 4, 12);
+    layout->setContentsMargins(4, 22, 4, 14);
     layout->setSpacing(5);
     layout->addWidget(makeLabel(eyebrow.toUpper(), "eyebrow"));
     layout->addWidget(makeLabel(title, "pageTitle"));
@@ -224,7 +335,7 @@ QWidget *UserWindow::buildLoginPage()
     loginButton->setMinimumHeight(48);
     form->addWidget(loginButton);
     form->addWidget(makeLabel(
-        QStringLiteral("未连接后端时，输入合法手机号即可使用 Mock 数据预览 UI。"), "hint"));
+        QStringLiteral("请保持服务连接；新手机号首次登录会自动注册。"), "hint"));
     layout->addWidget(loginCard);
     layout->addStretch(2);
 
@@ -246,20 +357,22 @@ QWidget *UserWindow::buildHomePage()
     layout->setSpacing(14);
     layout->addWidget(buildPageHeader(QStringLiteral("EVCharge"),
                                       QStringLiteral("附近充电站"),
-                                      QStringLiteral("下午好，用户8000 · 当前位置：甘井子区")));
+                                      QStringLiteral("查询附近站点，查看实时电桩状态")));
 
     auto *locationCard = makeCard();
+    locationCard->setProperty("variant", "search");
     auto *locationLayout = new QVBoxLayout(locationCard);
     locationLayout->setContentsMargins(18, 18, 18, 18);
     locationLayout->setSpacing(10);
-    locationLayout->addWidget(makeLabel(QStringLiteral("模拟当前位置"), "sectionTitle"));
+    locationLayout->addWidget(makeLabel(QStringLiteral("搜索位置"), "sectionTitle"));
     auto *locationRow = new QHBoxLayout;
     auto *districtBox = new QComboBox;
     districtBox->addItems({QStringLiteral("甘井子区"), QStringLiteral("高新园区"),
                            QStringLiteral("沙河口区"), QStringLiteral("中山区")});
-    auto *addressEdit = new QLineEdit(QStringLiteral("软件园路"));
-    addressEdit->setPlaceholderText(QStringLiteral("输入街道或地标"));
-    auto *locateButton = makeButton(QStringLiteral("定位"), "secondary");
+    auto *addressEdit = new QLineEdit(QStringLiteral("黄浦路901号东软软件园A区"));
+    addressEdit->setPlaceholderText(QStringLiteral("输入完整街道、门牌号或地标"));
+    auto *locateButton = makeButton(QStringLiteral("搜索"), "primary");
+    locateButton->setMinimumWidth(76);
     locationRow->addWidget(districtBox);
     locationRow->addWidget(addressEdit, 1);
     locationRow->addWidget(locateButton);
@@ -279,21 +392,22 @@ QWidget *UserWindow::buildHomePage()
 
     pageLayout->addWidget(makeScrollArea(content), 1);
     pageLayout->addWidget(buildBottomNavigation(Home));
-    connect(locateButton, &QPushButton::clicked, this, [this, districtBox]() {
+    connect(locateButton, &QPushButton::clicked, this, [this, districtBox, addressEdit]() {
         if (!m_socketClient->isConnected() || m_sessionId.isEmpty()) {
-            showNotice(QStringLiteral("地址解析接口尚未实现；演示坐标无需联网"), true);
+            showNotice(QStringLiteral("请连接服务并登录后再定位"), true);
             return;
         }
-        const QJsonObject payload{{QStringLiteral("longitude"), 121.538},
-                                  {QStringLiteral("latitude"), 38.889},
-                                  {QStringLiteral("district"), districtBox->currentText()},
-                                  {QStringLiteral("limit"), 20}};
-        sendRequest(MessageTypes::StationListNearby, payload);
-        sendRequest(MessageTypes::PredictionRecommendation,
-                    QJsonObject{{QStringLiteral("longitude"), 121.538},
-                                {QStringLiteral("latitude"), 38.889},
-                                {QStringLiteral("limit"), 5},
-                                {QStringLiteral("horizon"), QStringLiteral("1h")}});
+        const QString address = addressEdit->text().trimmed();
+        if (address.isEmpty()) {
+            showNotice(QStringLiteral("请输入街道或地标"), true);
+            return;
+        }
+        m_locationDistrict = districtBox->currentText();
+        m_originName = m_locationDistrict + QStringLiteral(" · ") + address;
+        sendRequest(MessageTypes::MapGeocode,
+                    QJsonObject{{QStringLiteral("district"), QStringLiteral("大连市")},
+                                {QStringLiteral("address"),
+                                 QStringLiteral("大连市%1").arg(address)}});
     });
     return page;
 }
@@ -305,6 +419,7 @@ QWidget *UserWindow::buildStationCard(const QJsonObject &station)
     const bool recommended = station.value(QStringLiteral("recommended")).toBool();
     const int stationId = station.value(QStringLiteral("stationId")).toInt();
     auto *stationCard = makeCard();
+    stationCard->setProperty("variant", "station");
     auto *layout = new QVBoxLayout(stationCard);
     layout->setContentsMargins(18, 17, 18, 17);
     layout->setSpacing(10);
@@ -328,24 +443,19 @@ QWidget *UserWindow::buildStationCard(const QJsonObject &station)
     layout->addLayout(metrics);
     auto *actions = new QHBoxLayout;
     auto *detailButton = makeButton(QStringLiteral("查看详情"), "secondary");
-    auto *navigationButton = makeButton(QStringLiteral("路线导航"), "ghost");
+    auto *navigationButton = makeButton(QStringLiteral("导航到这里"), "primary");
     actions->addWidget(detailButton, 1);
     actions->addWidget(navigationButton, 1);
     layout->addLayout(actions);
     connect(detailButton, &QPushButton::clicked, this, [this, station, stationId]() {
         m_selectedStation = station;
+        m_stationDetailTitle->setText(station.value(QStringLiteral("name")).toString());
+        m_stationDetailSummary->setText(QStringLiteral("正在获取站点详情…"));
+        clearLayout(m_pileListLayout);
+        m_pileListLayout->addWidget(makeLabel(QStringLiteral("正在加载站内电桩…"), "hint"));
         showPage(StationDetail);
-        if (m_sessionId.startsWith(QStringLiteral("DEMO-"))) {
-            const QJsonArray piles{
-                QJsonObject{{"pileId", 1}, {"pileNo", "P01"}, {"type", "FAST"}, {"powerKw", 60.0}, {"status", "AVAILABLE"}},
-                QJsonObject{{"pileId", 2}, {"pileNo", "P02"}, {"type", "FAST"}, {"powerKw", 60.0}, {"status", "CHARGING"}},
-                QJsonObject{{"pileId", 3}, {"pileNo", "P03"}, {"type", "SLOW"}, {"powerKw", 7.0}, {"status", "AVAILABLE"}}
-            };
-            renderStationDetail(station, piles);
-        } else {
-            sendRequest(MessageTypes::StationDetailGet,
-                        QJsonObject{{QStringLiteral("stationId"), stationId}});
-        }
+        sendRequest(MessageTypes::StationDetailGet,
+                    QJsonObject{{QStringLiteral("stationId"), stationId}});
     });
     connect(navigationButton, &QPushButton::clicked, this, [this, station]() {
         openNavigation(station, Home);
@@ -363,19 +473,29 @@ QWidget *UserWindow::buildStationDetailPage()
     auto *layout = new QVBoxLayout(content);
     layout->setContentsMargins(20, 0, 20, 24);
     layout->setSpacing(13);
+    auto *detailTop = new QHBoxLayout;
+    detailTop->setContentsMargins(0, 16, 0, 0);
+    detailTop->setSpacing(12);
+    auto *backButton = makeButton(QStringLiteral("←"), "icon");
+    backButton->setFixedSize(42, 42);
+    backButton->setToolTip(QStringLiteral("返回附近充电站列表"));
+    backButton->setAccessibleName(QStringLiteral("返回首页"));
     auto *detailHeader = buildPageHeader(QStringLiteral("STATION DETAIL"),
                                          QStringLiteral("充电站详情"));
-    layout->addWidget(detailHeader);
+    detailTop->addWidget(backButton, 0, Qt::AlignTop);
+    detailTop->addWidget(detailHeader, 1);
+    layout->addLayout(detailTop);
     m_stationDetailTitle = makeLabel(QStringLiteral("请选择站点"), "cardTitle");
     layout->addWidget(m_stationDetailTitle);
 
     auto *summaryCard = makeCard();
+    summaryCard->setProperty("variant", "stationHero");
     auto *summaryLayout = new QHBoxLayout(summaryCard);
     summaryLayout->setContentsMargins(18, 16, 18, 16);
     m_stationDetailSummary = makeLabel(QStringLiteral("等待服务端数据"), "metricLarge");
     summaryLayout->addWidget(m_stationDetailSummary);
     summaryLayout->addStretch();
-    auto *navigationButton = makeButton(QStringLiteral("导航"), "secondary");
+    auto *navigationButton = makeButton(QStringLiteral("导航到这里"), "primary");
     summaryLayout->addWidget(navigationButton);
     layout->addWidget(summaryCard);
     layout->addWidget(makeLabel(QStringLiteral("选择充电桩"), "sectionTitle"));
@@ -385,6 +505,8 @@ QWidget *UserWindow::buildStationDetailPage()
     layout->addStretch();
     pageLayout->addWidget(makeScrollArea(content), 1);
     pageLayout->addWidget(buildBottomNavigation(Home));
+    connect(backButton, &QPushButton::clicked, this,
+            [this]() { showPage(Home); });
     connect(navigationButton, &QPushButton::clicked, this, [this]() {
         openNavigation(m_selectedStation, StationDetail);
     });
@@ -397,35 +519,30 @@ QWidget *UserWindow::buildPileCard(const QJsonObject &pile)
     const QString type = pile.value(QStringLiteral("type")).toString();
     const QString status = pile.value(QStringLiteral("status")).toString();
     const int pileId = pile.value(QStringLiteral("pileId")).toInt();
+    const bool available = status == QStringLiteral("AVAILABLE");
     auto *pileCard = makeCard();
+    pileCard->setProperty("variant", "pile");
     auto *layout = new QHBoxLayout(pileCard);
     layout->setContentsMargins(17, 15, 17, 15);
     auto *information = new QVBoxLayout;
-    information->addWidget(makeLabel(number + QStringLiteral(" · ") + type, "cardTitle"));
+    information->addWidget(makeLabel(number + QStringLiteral(" · ") + pileTypeText(type), "cardTitle"));
     information->addWidget(makeLabel(QStringLiteral("%1 kW · %2")
-        .arg(pile.value(QStringLiteral("powerKw")).toDouble(), 0, 'f', 1).arg(status), "caption"));
+        .arg(pile.value(QStringLiteral("powerKw")).toDouble(), 0, 'f', 1)
+        .arg(pileStatusText(status)), available ? "badgeGood" : "badgeNeutral"));
     layout->addLayout(information);
     layout->addStretch();
-    const bool available = status == QStringLiteral("AVAILABLE");
     auto *selectButton = makeButton(available ? QStringLiteral("选择") : QStringLiteral("不可用"),
                                     available ? "primary" : "disabled");
     selectButton->setEnabled(available);
     layout->addWidget(selectButton);
     connect(selectButton, &QPushButton::clicked, this, [this, number, pileId]() {
-        const auto choice = QMessageBox::question(
-            this, QStringLiteral("创建预约"),
-            QStringLiteral("确认选择充电桩 %1？服务端将创建待开始订单。").arg(number));
-        if (choice == QMessageBox::Yes) {
+        if (confirmUserAction(this, QStringLiteral("确认预约充电桩"),
+                              QStringLiteral("选择 %1 开始本次充电？").arg(number),
+                              QStringLiteral("预约成功后将创建待开始订单，你可以在充电页开始或取消。"),
+                              QStringLiteral("确认预约"))) {
             showPage(Charging);
-            if (isDemoMode()) {
-                applyOrder(QJsonObject{{"orderId", 1001}, {"orderNo", "DEMO-ORDER-001"},
-                                       {"stationName", m_selectedStation.value("name")},
-                                       {"pileNo", number}, {"status", "CREATED"},
-                                       {"chargeSeconds", 0}, {"energyKwh", 0.0}, {"amountFen", 0}});
-            } else {
-                sendRequest(MessageTypes::OrderCreate,
-                            QJsonObject{{QStringLiteral("pileId"), pileId}});
-            }
+            sendRequest(MessageTypes::OrderCreate,
+                        QJsonObject{{QStringLiteral("pileId"), pileId}});
         }
     });
     return pileCard;
@@ -446,10 +563,11 @@ QWidget *UserWindow::buildChargingPage()
                                       QStringLiteral("时长、电量和金额均以服务端数据为准")));
 
     auto *orderCard = makeCard();
+    orderCard->setProperty("variant", "orderHero");
     auto *orderLayout = new QVBoxLayout(orderCard);
     orderLayout->setContentsMargins(20, 19, 20, 19);
     auto *orderTop = new QHBoxLayout;
-    orderTop->addWidget(makeLabel(QStringLiteral("软件园智慧充电站"), "cardTitle"));
+    orderTop->addWidget(makeLabel(QStringLiteral("活动订单"), "cardTitle"));
     orderTop->addStretch();
     m_orderStatusLabel = makeLabel(QStringLiteral("待开始"), "badgeWarn");
     orderTop->addWidget(m_orderStatusLabel);
@@ -459,6 +577,7 @@ QWidget *UserWindow::buildChargingPage()
     layout->addWidget(orderCard);
 
     auto *progressCard = makeCard();
+    progressCard->setProperty("variant", "chargeProgress");
     auto *progressLayout = new QVBoxLayout(progressCard);
     progressLayout->setContentsMargins(20, 20, 20, 20);
     progressLayout->setSpacing(15);
@@ -467,54 +586,63 @@ QWidget *UserWindow::buildChargingPage()
     progressLayout->addWidget(m_chargeStatisticsLabel);
     auto *progress = new QProgressBar;
     progress->setRange(0, 100);
-    progress->setValue(38);
+    progress->setValue(0);
     progress->setTextVisible(false);
     progressLayout->addWidget(progress);
     m_orderHintLabel = makeLabel(QString(), "hint");
     progressLayout->addWidget(m_orderHintLabel);
     layout->addWidget(progressCard);
 
-    auto *actions = new QHBoxLayout;
+    auto *actions = new QVBoxLayout;
+    actions->setSpacing(10);
     m_startButton = makeButton(QStringLiteral("开始充电"));
     m_cancelButton = makeButton(QStringLiteral("取消预约"), "dangerGhost");
     m_stopButton = makeButton(QStringLiteral("停止充电"), "danger");
     m_settleButton = makeButton(QStringLiteral("确认结算"));
-    actions->addWidget(m_startButton);
-    actions->addWidget(m_cancelButton);
-    actions->addWidget(m_stopButton);
-    actions->addWidget(m_settleButton);
+    for (QPushButton *action : {m_startButton, m_cancelButton, m_stopButton, m_settleButton}) {
+        action->setMinimumHeight(50);
+        actions->addWidget(action);
+    }
     layout->addLayout(actions);
     layout->addStretch();
     pageLayout->addWidget(makeScrollArea(content), 1);
     pageLayout->addWidget(buildBottomNavigation(Charging));
 
     connect(m_startButton, &QPushButton::clicked, this, [this]() {
-        if (isDemoMode()) setOrderStatus(QStringLiteral("CHARGING"));
-        else sendRequest(MessageTypes::OrderStart,
-                         QJsonObject{{QStringLiteral("orderId"), m_activeOrder.value(QStringLiteral("orderId")).toInt()}});
+        if (confirmUserAction(this, QStringLiteral("开始充电"),
+                              QStringLiteral("确认启动当前充电桩？"),
+                              QStringLiteral("启动后系统将开始记录充电时长、电量和费用。"),
+                              QStringLiteral("开始充电"))) {
+            sendRequest(MessageTypes::OrderStart,
+                        QJsonObject{{QStringLiteral("orderId"), m_activeOrder.value(QStringLiteral("orderId")).toInt()}});
+        }
     });
     connect(m_cancelButton, &QPushButton::clicked, this, [this]() {
-        if (QMessageBox::question(this, QStringLiteral("取消预约"),
-                                  QStringLiteral("确认取消尚未开始的订单？")) == QMessageBox::Yes) {
-            if (isDemoMode()) setOrderStatus(QStringLiteral("CANCELLED"));
-            else sendRequest(MessageTypes::OrderCancel,
-                             QJsonObject{{QStringLiteral("orderId"), m_activeOrder.value(QStringLiteral("orderId")).toInt()}});
+        if (confirmUserAction(this, QStringLiteral("取消预约"),
+                              QStringLiteral("确认取消当前预约？"),
+                              QStringLiteral("订单尚未开始，取消后该充电桩将重新释放。"),
+                              QStringLiteral("取消预约"), true)) {
+            sendRequest(MessageTypes::OrderCancel,
+                        QJsonObject{{QStringLiteral("orderId"), m_activeOrder.value(QStringLiteral("orderId")).toInt()}});
         }
     });
     connect(m_stopButton, &QPushButton::clicked, this, [this]() {
-        if (QMessageBox::question(this, QStringLiteral("停止充电"),
-                                  QStringLiteral("确认停止充电并生成待结算金额？")) == QMessageBox::Yes) {
-            if (isDemoMode()) setOrderStatus(QStringLiteral("PENDING_PAYMENT"));
-            else sendRequest(MessageTypes::OrderStop,
-                             QJsonObject{{QStringLiteral("orderId"), m_activeOrder.value(QStringLiteral("orderId")).toInt()}});
+        if (confirmUserAction(this, QStringLiteral("停止充电"),
+                              QStringLiteral("确认结束本次充电？"),
+                              QStringLiteral("停止后将按实际充电量生成待结算金额，此操作无法撤销。"),
+                              QStringLiteral("停止并结算"), true)) {
+            sendRequest(MessageTypes::OrderStop,
+                        QJsonObject{{QStringLiteral("orderId"), m_activeOrder.value(QStringLiteral("orderId")).toInt()}});
         }
     });
     connect(m_settleButton, &QPushButton::clicked, this, [this]() {
-        if (isDemoMode()) {
-            setOrderStatus(QStringLiteral("COMPLETED"));
-            showNotice(QStringLiteral("Mock 结算完成"));
-        } else sendRequest(MessageTypes::OrderSettle,
-                           QJsonObject{{QStringLiteral("orderId"), m_activeOrder.value(QStringLiteral("orderId")).toInt()}});
+        if (confirmUserAction(this, QStringLiteral("确认结算"),
+                              QStringLiteral("使用钱包余额结算当前订单？"),
+                              QStringLiteral("结算成功后订单将完成，并更新钱包余额与充电记录。"),
+                              QStringLiteral("确认支付"))) {
+            sendRequest(MessageTypes::OrderSettle,
+                        QJsonObject{{QStringLiteral("orderId"), m_activeOrder.value(QStringLiteral("orderId")).toInt()}});
+        }
     });
     setOrderStatus(m_orderStatus);
     return page;
@@ -535,6 +663,7 @@ QWidget *UserWindow::buildProfilePage()
                                       QStringLiteral("账户、钱包与充电记录")));
 
     auto *profileCard = makeCard();
+    profileCard->setProperty("variant", "profile");
     auto *profileLayout = new QHBoxLayout(profileCard);
     profileLayout->setContentsMargins(20, 20, 20, 20);
     m_avatarLabel = makeLabel(QStringLiteral("U"), "avatar");
@@ -542,18 +671,19 @@ QWidget *UserWindow::buildProfilePage()
     m_avatarLabel->setFixedSize(58, 58);
     profileLayout->addWidget(m_avatarLabel);
     auto *identity = new QVBoxLayout;
-    m_nicknameLabel = makeLabel(QStringLiteral("用户8000"), "cardTitle");
+    m_nicknameLabel = makeLabel(QStringLiteral("用户信息加载中"), "cardTitle");
     identity->addWidget(m_nicknameLabel);
     m_profilePhoneLabel = makeLabel(QStringLiteral("尚未登录"), "caption");
     identity->addWidget(m_profilePhoneLabel);
     profileLayout->addLayout(identity, 1);
-    auto *avatarButton = makeButton(QStringLiteral("头像"), "ghost");
-    auto *renameButton = makeButton(QStringLiteral("昵称"), "ghost");
+    auto *avatarButton = makeButton(QStringLiteral("更换头像"), "ghostCompact");
+    auto *renameButton = makeButton(QStringLiteral("修改昵称"), "ghostCompact");
     profileLayout->addWidget(avatarButton);
     profileLayout->addWidget(renameButton);
     layout->addWidget(profileCard);
 
     auto *walletCard = makeCard();
+    walletCard->setProperty("variant", "wallet");
     auto *walletLayout = new QHBoxLayout(walletCard);
     walletLayout->setContentsMargins(20, 19, 20, 19);
     auto *walletInformation = new QVBoxLayout;
@@ -562,7 +692,7 @@ QWidget *UserWindow::buildProfilePage()
     walletInformation->addWidget(m_balanceLabel);
     walletLayout->addLayout(walletInformation);
     walletLayout->addStretch();
-    auto *rechargeButton = makeButton(QStringLiteral("充值"));
+    auto *rechargeButton = makeButton(QStringLiteral("立即充值"));
     walletLayout->addWidget(rechargeButton);
     layout->addWidget(walletCard);
 
@@ -580,8 +710,13 @@ QWidget *UserWindow::buildProfilePage()
     connect(rechargeButton, &QPushButton::clicked, this, &UserWindow::showRechargeDialog);
     connect(avatarButton, &QPushButton::clicked, this, &UserWindow::uploadAvatar);
     connect(logoutButton, &QPushButton::clicked, this, [this]() {
-        m_sessionId.clear();
-        showPage(Login);
+        if (confirmUserAction(this, QStringLiteral("退出登录"),
+                              QStringLiteral("确认退出当前账户？"),
+                              QStringLiteral("退出后需要重新输入手机号登录，当前服务连接不会断开。"),
+                              QStringLiteral("退出登录"), true)) {
+            m_sessionId.clear();
+            showPage(Login);
+        }
     });
     return page;
 }
@@ -590,6 +725,7 @@ QWidget *UserWindow::buildOrderCard(const QString &station, const QString &descr
                                     const QString &amount, const QString &status)
 {
     auto *orderCard = makeCard();
+    orderCard->setProperty("variant", "order");
     auto *layout = new QHBoxLayout(orderCard);
     layout->setContentsMargins(17, 15, 17, 15);
     auto *information = new QVBoxLayout;
@@ -600,7 +736,8 @@ QWidget *UserWindow::buildOrderCard(const QString &station, const QString &descr
     auto *amountLabel = makeLabel(amount, "metric");
     amountLabel->setAlignment(Qt::AlignRight);
     summary->addWidget(amountLabel);
-    auto *statusLabel = makeLabel(status, status == QStringLiteral("待结算")
+    const QString displayStatus = orderStatusText(status);
+    auto *statusLabel = makeLabel(displayStatus, displayStatus == QStringLiteral("待结算")
                                               ? "badgeWarn" : "badgeNeutral");
     statusLabel->setAlignment(Qt::AlignCenter);
     summary->addWidget(statusLabel);
@@ -633,9 +770,10 @@ QWidget *UserWindow::buildBottomNavigation(Page activePage)
         {QStringLiteral("●\n我的"), Profile}
     };
     for (const auto &item : items) {
-        auto *navigationButton = makeButton(
-            item.first, item.second == activePage ? "navActive" : "nav");
-        navigationButton->setMinimumHeight(52);
+        const bool active = item.second == activePage;
+        auto *navigationButton = makeButton(item.first, active ? "navActive" : "nav");
+        navigationButton->setObjectName(QStringLiteral("bottomNavButton"));
+        navigationButton->setMinimumHeight(58);
         layout->addWidget(navigationButton, 1);
         connect(navigationButton, &QPushButton::clicked, this,
                 [this, page = item.second]() { showPage(page); });
@@ -653,7 +791,7 @@ void UserWindow::openNavigation(const QJsonObject &station, Page source)
     const double longitude = station.value(QStringLiteral("longitude")).toDouble();
     const double latitude = station.value(QStringLiteral("latitude")).toDouble();
     const MapRoute route{
-        QStringLiteral("模拟当前位置"), 121.538, 38.889,
+        m_originName, m_originLongitude, m_originLatitude,
         name, station.value(QStringLiteral("address")).toString(), longitude, latitude
     };
     if (!m_mapNavigationPage->setRoute(route)) {
@@ -727,26 +865,16 @@ void UserWindow::attemptLogin()
                    m_loginRequestId.isEmpty());
         return;
     }
-    m_sessionId = QStringLiteral("DEMO-SESSION");
-    m_sessionMode = SessionMode::Demo;
-    loadDemoData();
-    showPage(Home);
-    showNotice(QStringLiteral("已进入演示模式；接入后端后使用真实数据"));
-}
-
-bool UserWindow::isDemoMode() const
-{
-    return m_sessionMode == SessionMode::Demo;
+    showNotice(QStringLiteral("服务尚未连接，请稍后重试"), true);
 }
 
 void UserWindow::setConnected(bool connected)
 {
-    const bool realSessionDisconnected = !connected && m_sessionMode == SessionMode::Real;
     m_connectionLabel->setText(connected
         ? QStringLiteral("● 服务已连接 · 127.0.0.1:18080")
-        : realSessionDisconnected
-            ? QStringLiteral("● 真实会话连接已断开 · 请重新连接后继续")
-            : QStringLiteral("● 演示模式 · 后端未连接"));
+        : m_sessionMode == SessionMode::Real
+            ? QStringLiteral("● 服务连接已断开 · 请重新连接")
+            : QStringLiteral("● 服务未连接 · 点击右侧重试"));
     m_connectionLabel->setProperty("online", connected);
     m_connectionLabel->style()->unpolish(m_connectionLabel);
     m_connectionLabel->style()->polish(m_connectionLabel);
@@ -769,9 +897,8 @@ void UserWindow::setOrderStatus(const QString &status)
     m_cancelButton->setVisible(created);
     m_stopButton->setVisible(charging);
     m_settleButton->setVisible(pendingPayment);
-    const bool canWrite = isDemoMode()
-        || (m_sessionMode == SessionMode::Real && m_socketClient->isConnected()
-            && !m_sessionId.isEmpty());
+    const bool canWrite = m_sessionMode == SessionMode::Real
+        && m_socketClient->isConnected() && !m_sessionId.isEmpty();
     m_startButton->setEnabled(created && canWrite);
     m_cancelButton->setEnabled(created && canWrite);
     m_stopButton->setEnabled(charging && canWrite);
@@ -815,14 +942,8 @@ void UserWindow::showRechargeDialog()
         return;
     }
     const int amountFen = qRound(amountYuan * 100.0);
-    if (m_sessionMode == SessionMode::Real && !m_sessionId.isEmpty()) {
-        sendRequest(MessageTypes::UserRecharge,
-                    QJsonObject{{QStringLiteral("amountFen"), amountFen}});
-    } else {
-        m_balanceFenInFen += amountFen;
-        m_balanceLabel->setText(displayMoney(m_balanceFenInFen));
-        showNotice(QStringLiteral("Mock 充值成功"));
-    }
+    sendRequest(MessageTypes::UserRecharge,
+                QJsonObject{{QStringLiteral("amountFen"), amountFen}});
 }
 
 void UserWindow::showRenameDialog()
@@ -845,13 +966,8 @@ void UserWindow::showRenameDialog()
         showNotice(QStringLiteral("昵称长度应为 2–20 个字符"), true);
         return;
     }
-    if (m_sessionMode == SessionMode::Real && !m_sessionId.isEmpty()) {
-        sendRequest(MessageTypes::UserProfileUpdate,
-                    QJsonObject{{QStringLiteral("nickname"), nickname}});
-    } else {
-        m_nicknameLabel->setText(nickname);
-        showNotice(QStringLiteral("昵称已更新（Mock 数据）"));
-    }
+    sendRequest(MessageTypes::UserProfileUpdate,
+                QJsonObject{{QStringLiteral("nickname"), nickname}});
 }
 
 void UserWindow::uploadAvatar()
@@ -870,18 +986,6 @@ void UserWindow::uploadAvatar()
     const QString mimeType = suffix == QStringLiteral("png")
         ? QStringLiteral("image/png") : QStringLiteral("image/jpeg");
     const QByteArray content = file.readAll();
-    if (isDemoMode()) {
-        QPixmap avatar;
-        if (!avatar.loadFromData(content)) {
-            showNotice(QStringLiteral("头像图片无效"), true);
-            return;
-        }
-        m_avatarLabel->setPixmap(avatar.scaled(m_avatarLabel->size(),
-                                                Qt::KeepAspectRatioByExpanding,
-                                                Qt::SmoothTransformation));
-        showNotice(QStringLiteral("Mock 头像预览已更新"));
-        return;
-    }
     if (m_sessionMode != SessionMode::Real || m_sessionId.isEmpty()) {
         showNotice(QStringLiteral("请先登录后再上传头像"), true);
         return;
@@ -915,40 +1019,22 @@ QString UserWindow::sendRequest(const QString &type, const QJsonObject &payload)
 void UserWindow::requestInitialData()
 {
     sendRequest(MessageTypes::UserProfileGet);
+    // 站点列表来自数据库，不应被第三方地理编码服务的可用性阻断。
+    // 先按默认位置加载真实站点；地理编码成功后会使用新坐标再次刷新。
     sendRequest(MessageTypes::StationListNearby,
-                QJsonObject{{QStringLiteral("longitude"), 121.538},
-                            {QStringLiteral("latitude"), 38.889},
+                QJsonObject{{QStringLiteral("longitude"), m_originLongitude},
+                            {QStringLiteral("latitude"), m_originLatitude},
                             {QStringLiteral("limit"), 20}});
     sendRequest(MessageTypes::PredictionRecommendation,
-                QJsonObject{{QStringLiteral("longitude"), 121.538},
-                            {QStringLiteral("latitude"), 38.889},
+                QJsonObject{{QStringLiteral("longitude"), m_originLongitude},
+                            {QStringLiteral("latitude"), m_originLatitude},
                             {QStringLiteral("limit"), 5},
                             {QStringLiteral("horizon"), QStringLiteral("1h")}});
+    sendRequest(MessageTypes::MapGeocode,
+                QJsonObject{{QStringLiteral("district"), QStringLiteral("大连市")},
+                            {QStringLiteral("address"),
+                             QStringLiteral("大连市甘井子区黄浦路901号东软软件园A区")}});
     requestActiveOrder();
-}
-
-void UserWindow::loadDemoData()
-{
-    const QJsonArray stations{
-        QJsonObject{{"stationId", 1}, {"name", "软件园智慧充电站"}, {"address", "软件园路 8 号"},
-                    {"totalPriceFenPerKwh", 110}, {"availablePileCount", 2}, {"pileCount", 4},
-                    {"distanceKm", 1.25}, {"recommended", true}},
-        QJsonObject{{"stationId", 2}, {"name", "万达广场充电中心"}, {"address", "虹韵路 6 号 B2 层"},
-                    {"totalPriceFenPerKwh", 118}, {"availablePileCount", 5}, {"pileCount", 12},
-                    {"distanceKm", 2.80}},
-        QJsonObject{{"stationId", 3}, {"name", "星海绿色能源站"}, {"address", "中山路 608 号"},
-                    {"totalPriceFenPerKwh", 98}, {"availablePileCount", 1}, {"pileCount", 8},
-                    {"distanceKm", 4.36}}
-    };
-    renderStations(stations);
-    renderOrders(QJsonArray{
-        QJsonObject{{"stationName", "软件园智慧充电站"}, {"createdAt", "今天 16:00"},
-                    {"pileNo", "P01"}, {"energyKwh", 5.0}, {"amountFen", 550},
-                    {"status", "PENDING_PAYMENT"}},
-        QJsonObject{{"stationName", "万达广场充电中心"}, {"createdAt", "08-30 12:24"},
-                    {"pileNo", "A07"}, {"energyKwh", 18.6}, {"amountFen", 2195},
-                    {"status", "COMPLETED"}}
-    });
 }
 
 void UserWindow::requestActiveOrder()
@@ -1109,6 +1195,21 @@ void UserWindow::handleResponse(const QJsonObject &response)
         showPage(Home);
         showNotice(QStringLiteral("登录成功"));
         requestInitialData();
+    } else if (type == MessageTypes::MapGeocode) {
+        m_originLongitude = data.value(QStringLiteral("longitude")).toDouble();
+        m_originLatitude = data.value(QStringLiteral("latitude")).toDouble();
+        const QString formatted = data.value(QStringLiteral("formattedAddress")).toString();
+        if (!formatted.isEmpty()) m_originName = formatted;
+        sendRequest(MessageTypes::StationListNearby,
+                    QJsonObject{{QStringLiteral("longitude"), m_originLongitude},
+                                {QStringLiteral("latitude"), m_originLatitude},
+                                {QStringLiteral("limit"), 20}});
+        sendRequest(MessageTypes::PredictionRecommendation,
+                    QJsonObject{{QStringLiteral("longitude"), m_originLongitude},
+                                {QStringLiteral("latitude"), m_originLatitude},
+                                {QStringLiteral("limit"), 5},
+                                {QStringLiteral("horizon"), QStringLiteral("1h")}});
+        showNotice(QStringLiteral("位置已更新，正在加载附近站点"));
     } else if (type == MessageTypes::MapRoutePlan && m_mapNavigationPage) {
         m_routePlanRequestId.clear();
         const QJsonArray points = data.value(QStringLiteral("polyline")).toArray();
