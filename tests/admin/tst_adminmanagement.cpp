@@ -200,7 +200,7 @@ void AdminManagementTest::createStationAndListPiles()
     QCOMPARE(piles.first().toObject().value(QStringLiteral("stationId")).toInteger(), stationId);
     QVERIFY(!piles.first().toObject().value(QStringLiteral("type")).toString().isEmpty());
     QCOMPARE(piles.first().toObject().value(QStringLiteral("status")).toString(),
-             QStringLiteral("OFFLINE"));
+             QStringLiteral("AVAILABLE"));
 
     QSqlQuery query(m_database);
     query.prepare(QStringLiteral("SELECT price_fen_per_kwh FROM charging_station WHERE id=:id"));

@@ -167,7 +167,7 @@ erDiagram
 - 用户冻结使用 `user.status = FROZEN`；
 - 站点停用使用 `charging_station.status = DISABLED`；
 - 电桩故障、离线、重启通过 `charging_pile.status` 表达；
-- 新建电桩和服务启动时默认为 `OFFLINE`，设备接入并完成握手后才变为 `AVAILABLE`；
+- 新建电桩默认为 `AVAILABLE`；设备主动上报离线或故障时再更新对应状态；
 - 历史订单、充值流水、预测结果和操作日志必须保留，便于统计和答辩演示。
 
 ## 5. 表结构
