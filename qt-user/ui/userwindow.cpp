@@ -771,6 +771,10 @@ QWidget *UserWindow::buildProfilePage()
     ordersButton->setToolTip(QStringLiteral("查看最近的充电与结算记录"));
     ordersButton->setMinimumSize(92, 100);
     featureGrid->addWidget(ordersButton, 0, 0);
+    auto *membershipButton = makeButton(QStringLiteral("◇\n会员中心"), "profileFeature");
+    membershipButton->setToolTip(QStringLiteral("查看会员状态与会员卡"));
+    membershipButton->setMinimumSize(92, 100);
+    featureGrid->addWidget(membershipButton, 0, 1);
     featureGrid->setColumnStretch(0, 0);
     featureGrid->setColumnStretch(1, 1);
     featureGrid->setColumnStretch(2, 1);
@@ -810,6 +814,72 @@ QWidget *UserWindow::buildProfilePage()
         dialog.exec();
         ordersPanel->setVisible(false);
         layout->addWidget(ordersPanel);
+    });
+    connect(membershipButton, &QPushButton::clicked, this, [this]() {
+        QDialog dialog(this);
+        dialog.setWindowTitle(QStringLiteral("会员中心"));
+        dialog.setModal(true);
+        dialog.resize(430, 600);
+        auto *dialogLayout = new QVBoxLayout(&dialog);
+        dialogLayout->setContentsMargins(18, 18, 18, 18);
+        dialogLayout->setSpacing(12);
+        dialogLayout->addWidget(makeLabel(QStringLiteral("会员中心"), "sectionTitle"));
+        dialogLayout->addWidget(makeLabel(QStringLiteral("会员由有效月卡或季卡构成，购买后按有效期享受服务费折扣。"), "caption"));
+        dialogLayout->addWidget(makeLabel(QStringLiteral("折扣规则：只折扣服务费，不改变基础电价。有效服务费 = 原服务费 × 折扣比例；订单金额 = 电量 ×（基础电价 + 折后服务费）。订单按创建时的会员权益结算。"), "hint"));
+
+        auto *statusCard = makeCard();
+        statusCard->setProperty("variant", "membership");
+        auto *statusLayout = new QVBoxLayout(statusCard);
+        statusLayout->setContentsMargins(18, 16, 18, 16);
+        statusLayout->addWidget(makeLabel(QStringLiteral("当前会员状态"), "cardTitle"));
+        statusLayout->addWidget(makeLabel(m_isMember ? QStringLiteral("VIP会员 · 有效") : QStringLiteral("普通用户 · 暂无有效会员"), m_isMember ? "badgeGood" : "caption"));
+        statusLayout->addWidget(makeLabel(QStringLiteral("剩余天数：%1 天").arg(m_isMember ? m_membershipRemainingDays : 0), "caption"));
+        statusLayout->addWidget(makeLabel(QStringLiteral("到期时间：%1").arg(m_isMember ? m_membershipExpiresAt : QStringLiteral("--")), "caption"));
+        dialogLayout->addWidget(statusCard);
+
+        dialogLayout->addWidget(makeLabel(QStringLiteral("会员卡"), "sectionTitle"));
+        auto *products = new QHBoxLayout;
+        QJsonArray productItems = m_membershipProducts;
+        if (productItems.isEmpty()) {
+            productItems = QJsonArray{
+                QJsonObject{{QStringLiteral("productNo"), QStringLiteral("VIP-MONTH")}, {QStringLiteral("name"), QStringLiteral("VIP月卡")}, {QStringLiteral("cardType"), QStringLiteral("MONTH")}, {QStringLiteral("durationDays"), 30}, {QStringLiteral("salePriceFen"), 64800}, {QStringLiteral("serviceFeeDiscountBps"), 8000}},
+                QJsonObject{{QStringLiteral("productNo"), QStringLiteral("VIP-SEASON")}, {QStringLiteral("name"), QStringLiteral("VIP季卡")}, {QStringLiteral("cardType"), QStringLiteral("SEASON")}, {QStringLiteral("durationDays"), 90}, {QStringLiteral("salePriceFen"), 99900}, {QStringLiteral("serviceFeeDiscountBps"), 8000}}
+            };
+        }
+        for (const QJsonValue &productValue : productItems) {
+            const QJsonObject productData = productValue.toObject();
+            const bool month = productData.value(QStringLiteral("cardType")).toString() == QStringLiteral("MONTH");
+            const QString name = productData.value(QStringLiteral("name")).toString();
+            const QString productNo = productData.value(QStringLiteral("productNo")).toString();
+            const int durationDays = productData.value(QStringLiteral("durationDays")).toInt();
+            const qint64 priceFen = productData.value(QStringLiteral("salePriceFen")).toInteger();
+            const int discountBps = productData.value(QStringLiteral("serviceFeeDiscountBps")).toInt(8000);
+            auto *product = makeCard();
+            product->setProperty("variant", "membershipProduct");
+            product->setProperty("cardType", month ? "month" : "season");
+            auto *productLayout = new QVBoxLayout(product);
+            productLayout->setContentsMargins(14, 14, 14, 14);
+            productLayout->addWidget(makeLabel(name, "cardTitle"));
+            productLayout->addWidget(makeLabel(QStringLiteral("有效期 %1 天").arg(durationDays), "caption"));
+            productLayout->addWidget(makeLabel(QStringLiteral("%1 元").arg(priceFen / 100.0, 0, 'f', 2), "metricLarge"));
+            productLayout->addWidget(makeLabel(QStringLiteral("服务费 %1 折 · VIP").arg(discountBps / 1000.0, 0, 'f', 1), "hint"));
+            auto *buy = makeButton(QStringLiteral("购买"), "primary");
+            buy->setProperty("productNo", productNo);
+            productLayout->addWidget(buy);
+            connect(buy, &QPushButton::clicked, &dialog, [this, buy, &dialog]() {
+                const QString productNo = buy->property("productNo").toString();
+                const QString requestId = sendRequest(MessageTypes::MembershipPurchase, {{QStringLiteral("productNo"), productNo}});
+                if (requestId.isEmpty()) showNotice(QStringLiteral("购买请求发送失败"), true);
+                else { buy->setEnabled(false); showNotice(QStringLiteral("正在处理会员购买…")); dialog.accept(); }
+            });
+            products->addWidget(product, 1);
+        }
+        dialogLayout->addLayout(products);
+        dialogLayout->addWidget(makeLabel(QStringLiteral("钱包余额：%1").arg(displayMoney(m_balanceFenInFen)), "metric"));
+        auto *closeButton = makeButton(QStringLiteral("关闭"), "secondary");
+        dialogLayout->addWidget(closeButton);
+        connect(closeButton, &QPushButton::clicked, &dialog, &QDialog::accept);
+        dialog.exec();
     });
     connect(avatarButton, &QPushButton::clicked, this, &UserWindow::uploadAvatar);
     connect(logoutButton, &QPushButton::clicked, this, [this]() {
@@ -943,6 +1013,7 @@ void UserWindow::showPage(Page page)
             requestActiveOrder();
         } else if (page == Profile) {
             sendRequest(MessageTypes::UserProfileGet);
+            sendRequest(MessageTypes::MembershipProductList);
             sendRequest(MessageTypes::UserOrderList,
                         QJsonObject{{QStringLiteral("page"), 1},
                                     {QStringLiteral("pageSize"), 20}});
@@ -1122,6 +1193,7 @@ QString UserWindow::sendRequest(const QString &type, const QJsonObject &payload)
 void UserWindow::requestInitialData()
 {
     sendRequest(MessageTypes::UserProfileGet);
+    sendRequest(MessageTypes::MembershipProductList);
     // 站点列表来自数据库，不应被第三方地理编码服务的可用性阻断。
     // 先按默认位置加载真实站点；地理编码成功后会使用新坐标再次刷新。
     sendRequest(MessageTypes::StationListNearby,
@@ -1184,6 +1256,10 @@ void UserWindow::applyUser(const QJsonObject &user)
     if (m_profileIdLabel) m_profileIdLabel->setText(QStringLiteral("ID：%1").arg(user.value(QStringLiteral("userId")).toInteger()));
     if (m_profileStatusLabel) m_profileStatusLabel->setText(QStringLiteral("账户状态：%1").arg(userStatusText(user.value(QStringLiteral("status")).toString())));
     m_balanceFenInFen = user.value(QStringLiteral("balanceFen")).toInt();
+    m_isMember = user.value(QStringLiteral("isMember")).toBool();
+    m_membershipRemainingDays = user.value(QStringLiteral("membershipRemainingDays")).toInt();
+    m_membershipExpiresAt = user.value(QStringLiteral("membershipExpiresAt")).toString();
+    m_membershipDiscountBps = user.value(QStringLiteral("membershipDiscountBps")).toInt(10000);
     if (m_balanceLabel) m_balanceLabel->setText(displayMoney(m_balanceFenInFen));
 
     const QString avatarPath = user.value(QStringLiteral("avatarPath")).toString();
@@ -1370,6 +1446,8 @@ void UserWindow::handleResponse(const QJsonObject &response)
             plan.polyline.append(QPointF(longitude.toDouble(), latitude.toDouble()));
         }
         m_mapNavigationPage->setRoutePlan(plan);
+    } else if (type == MessageTypes::MembershipProductList) {
+        m_membershipProducts = data.value(QStringLiteral("items")).toArray();
     } else if (type == MessageTypes::UserProfileGet
                || type == MessageTypes::UserProfileUpdate) {
         applyUser(data.value(QStringLiteral("user")).toObject());
@@ -1439,6 +1517,9 @@ void UserWindow::handleResponse(const QJsonObject &response)
         m_balanceFenInFen = data.value(QStringLiteral("balanceFen")).toInt();
         m_balanceLabel->setText(displayMoney(m_balanceFenInFen));
         showNotice(QStringLiteral("充值成功"));
+    } else if (type == MessageTypes::MembershipPurchase) {
+        applyUser(data.value(QStringLiteral("user")).toObject());
+        showNotice(QStringLiteral("VIP购买成功，服务费享受8折"));
     } else if (type == MessageTypes::UserOrderList) {
         renderOrders(data.value(QStringLiteral("items")).toArray());
     } else if (type == MessageTypes::UserAvatarUpload) {

@@ -16,6 +16,9 @@ inline const QString UserAvatarUpload = QStringLiteral("USER_AVATAR_UPLOAD");
 inline const QString UserAvatarGet = QStringLiteral("USER_AVATAR_GET");
 inline const QString UserRecharge = QStringLiteral("USER_RECHARGE");
 inline const QString UserOrderList = QStringLiteral("USER_ORDER_LIST");
+inline const QString MembershipProductList = QStringLiteral("MEMBERSHIP_PRODUCT_LIST");
+inline const QString MembershipStatusGet = QStringLiteral("MEMBERSHIP_STATUS_GET");
+inline const QString MembershipPurchase = QStringLiteral("MEMBERSHIP_PURCHASE");
 
 inline const QString StationListNearby = QStringLiteral("STATION_LIST_NEARBY");
 inline const QString StationDetailGet = QStringLiteral("STATION_DETAIL_GET");

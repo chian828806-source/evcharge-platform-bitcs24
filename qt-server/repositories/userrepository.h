@@ -30,6 +30,8 @@ public:
                               const QString &now, QString *errorMessage) const;
     bool updateLastLogin(QSqlDatabase &database, qint64 userId,
                          const QString &now, QString *errorMessage) const;
+    bool refreshMembership(QSqlDatabase &database, UserProfile *user,
+                           const QString &now, QString *errorMessage) const;
     bool updateNickname(QSqlDatabase &database, qint64 userId,
                         const QString &nickname, const QString &now,
                         QString *errorMessage) const;
@@ -45,6 +47,7 @@ public:
     bool decreaseBalance(QSqlDatabase &database, qint64 userId, qint64 amountFen,
                          const QString &now, bool *deducted,
                          QString *errorMessage) const;
+    QJsonArray membershipProducts(QSqlDatabase &database, QString *errorMessage) const;
     bool hasActiveOrder(QSqlDatabase &database, qint64 userId,
                         bool *hasActiveOrder, QString *errorMessage) const;
 

@@ -410,7 +410,10 @@ ServiceResult<ChargingOrderInfo> OrderService::create(qint64 userId, qint64 pile
     order.pileId = target->pileId;
     order.status = QStringLiteral("CREATED");
     order.priceFenPerKwh = target->priceFenPerKwh;
-    order.serviceFeeFenPerKwh = target->serviceFeeFenPerKwh;
+    order.serviceFeeFenPerKwh = user->isMember
+        ? qRound64(static_cast<double>(target->serviceFeeFenPerKwh)
+                   * user->membershipDiscountBps / 10000.0)
+        : target->serviceFeeFenPerKwh;
     order.createdAt = now;
 
     qint64 orderId = 0;

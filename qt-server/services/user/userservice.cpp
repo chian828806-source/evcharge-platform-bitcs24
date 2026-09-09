@@ -14,6 +14,7 @@
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QSqlDatabase>
+#include <QSqlQuery>
 #include <QUuid>
 
 UserService::UserService(DatabaseManager *databaseManager,
@@ -84,6 +85,13 @@ ServiceResult<UserProfile> UserService::login(const QString &phone)
         }
     }
 
+    if (!m_userRepository->refreshMembership(database, &*user, now,
+                                              &databaseError)) {
+        database.rollback();
+        return ServiceResult<UserProfile>::failure(
+            ErrorCodes::DatabaseError, QStringLiteral("refresh membership failed"));
+    }
+
     if (!m_userRepository->updateLastLogin(database, user->userId, now,
                                            &databaseError)
         || !database.commit()) {
@@ -104,13 +112,27 @@ ServiceResult<UserProfile> UserService::profile(qint64 userId)
             ErrorCodes::DatabaseError, QStringLiteral("database unavailable"));
     }
 
-    const auto user = m_userRepository->findById(database, userId, &databaseError);
+    if (!database.transaction()) {
+        return ServiceResult<UserProfile>::failure(
+            ErrorCodes::DatabaseError, QStringLiteral("cannot start transaction"));
+    }
+    auto user = m_userRepository->findById(database, userId, &databaseError);
     if (!user.has_value()) {
+        database.rollback();
         return ServiceResult<UserProfile>::failure(
             databaseError.isEmpty() ? ErrorCodes::InvalidSession
                                     : ErrorCodes::DatabaseError,
             databaseError.isEmpty() ? QStringLiteral("user no longer exists")
                                     : QStringLiteral("query user failed"));
+    }
+    const QString now = QDateTime::currentDateTime()
+        .toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+    if (!m_userRepository->refreshMembership(database, &*user, now,
+                                              &databaseError)
+        || !database.commit()) {
+        database.rollback();
+        return ServiceResult<UserProfile>::failure(
+            ErrorCodes::DatabaseError, QStringLiteral("refresh membership failed"));
     }
     return ServiceResult<UserProfile>::success(*user);
 }
@@ -372,6 +394,30 @@ ServiceResult<RechargeInfo> UserService::recharge(qint64 userId, qint64 amountFe
             ErrorCodes::DatabaseError, QStringLiteral("recharge transaction failed"));
     }
     return ServiceResult<RechargeInfo>::success(recharge);
+}
+
+ServiceResult<QJsonArray> UserService::membershipProducts()
+{
+    QSqlDatabase database; QString error;
+    if (!openDatabase(&database, &error)) return ServiceResult<QJsonArray>::failure(ErrorCodes::DatabaseError, error);
+    const auto products = m_userRepository->membershipProducts(database, &error);
+    if (!error.isEmpty()) return ServiceResult<QJsonArray>::failure(ErrorCodes::DatabaseError, error);
+    return ServiceResult<QJsonArray>::success(products);
+}
+
+ServiceResult<UserProfile> UserService::purchaseMembership(qint64 userId, const QString &productNo)
+{
+    QSqlDatabase database; QString error;
+    if (!openDatabase(&database, &error) || !database.transaction()) return ServiceResult<UserProfile>::failure(ErrorCodes::DatabaseError, QStringLiteral("database unavailable"));
+    QSqlQuery product(database); product.prepare(QStringLiteral("SELECT id,duration_days,sale_price_fen,service_fee_discount_bps FROM membership_product WHERE product_no=:no AND status='ON_SALE'")); product.bindValue(":no", productNo);
+    if (!product.exec() || !product.next()) { database.rollback(); return ServiceResult<UserProfile>::failure(ErrorCodes::InvalidSocketMessage, QStringLiteral("membership product unavailable")); }
+    const int duration=product.value(1).toInt(); const qint64 price=product.value(2).toLongLong(); const int discount=product.value(3).toInt();
+    const auto user=m_userRepository->findById(database,userId,&error); if(!user){database.rollback();return ServiceResult<UserProfile>::failure(error.isEmpty()?ErrorCodes::InvalidSession:ErrorCodes::DatabaseError,QStringLiteral("user unavailable"));} if(user->status!=QStringLiteral("NORMAL")){database.rollback();return ServiceResult<UserProfile>::failure(ErrorCodes::UserFrozen,QStringLiteral("user is frozen"));}
+    if(user->balanceFen<price){database.rollback();return ServiceResult<UserProfile>::failure(ErrorCodes::InsufficientBalance,QStringLiteral("insufficient balance"));}
+    const QString now=QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")); QDateTime expires=QDateTime::fromString(user->membershipExpiresAt,QStringLiteral("yyyy-MM-dd HH:mm:ss")); const QDateTime nowDt=QDateTime::fromString(now,QStringLiteral("yyyy-MM-dd HH:mm:ss")); if(!expires.isValid()||expires<nowDt)expires=nowDt; expires=expires.addDays(duration); const int days=qMax(0,nowDt.daysTo(expires));
+    QSqlQuery update(database); update.prepare(QStringLiteral("UPDATE user SET balance_fen=balance_fen-:price,is_member=1,membership_remaining_days=:days,membership_expires_at=:expires,membership_discount_bps=:discount,updated_at=:now WHERE id=:id AND balance_fen>=:price")); update.bindValue(":price",price);update.bindValue(":days",days);update.bindValue(":expires",expires.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")));update.bindValue(":discount",discount);update.bindValue(":now",now);update.bindValue(":id",userId); if(!update.exec()||update.numRowsAffected()!=1){database.rollback();return ServiceResult<UserProfile>::failure(ErrorCodes::DatabaseError,QStringLiteral("membership payment failed"));}
+    QSqlQuery purchase(database); purchase.prepare(QStringLiteral("INSERT INTO membership_purchase(purchase_no,user_id,product_id,amount_fen,balance_after_fen,expires_at,created_at) VALUES(:no,:uid,:pid,:amount,(SELECT balance_fen FROM user WHERE id=:uid),:expires,:now)")); purchase.bindValue(":no",QStringLiteral("MP-")+QUuid::createUuid().toString(QUuid::WithoutBraces));purchase.bindValue(":uid",userId);purchase.bindValue(":pid",product.value(0));purchase.bindValue(":amount",price);purchase.bindValue(":expires",expires.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")));purchase.bindValue(":now",now); if(!purchase.exec()||!database.commit()){database.rollback();return ServiceResult<UserProfile>::failure(ErrorCodes::DatabaseError,QStringLiteral("membership purchase record failed"));}
+    QString readError; const auto updated=m_userRepository->findById(database,userId,&readError); if(!updated)return ServiceResult<UserProfile>::failure(ErrorCodes::DatabaseError,readError); return ServiceResult<UserProfile>::success(*updated);
 }
 
 bool UserService::openDatabase(QSqlDatabase *database,

@@ -10,6 +10,7 @@
 #include "models/userprofile.h"
 
 #include <QString>
+#include <QJsonArray>
 
 class DatabaseManager;
 class QSqlDatabase;
@@ -30,6 +31,8 @@ public:
                                             const QString &contentBase64);
     ServiceResult<AvatarContent> avatarContent(qint64 userId);
     ServiceResult<RechargeInfo> recharge(qint64 userId, qint64 amountFen);
+    ServiceResult<UserProfile> purchaseMembership(qint64 userId, const QString &productNo);
+    ServiceResult<QJsonArray> membershipProducts();
 
 private:
     bool openDatabase(QSqlDatabase *database, QString *errorMessage) const;

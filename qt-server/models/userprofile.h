@@ -14,6 +14,10 @@ struct UserProfile
     QString nickname;
     QString avatarPath;
     qint64 balanceFen = 0;
+    bool isMember = false;
+    int membershipRemainingDays = 0;
+    QString membershipExpiresAt;
+    int membershipDiscountBps = 10000;
     QString status;
     QString createdAt;
 
@@ -24,6 +28,10 @@ struct UserProfile
             {QStringLiteral("phone"), phone},
             {QStringLiteral("nickname"), nickname},
             {QStringLiteral("balanceFen"), balanceFen},
+            {QStringLiteral("isMember"), isMember},
+            {QStringLiteral("membershipRemainingDays"), membershipRemainingDays},
+            {QStringLiteral("membershipExpiresAt"), membershipExpiresAt},
+            {QStringLiteral("membershipDiscountBps"), membershipDiscountBps},
             {QStringLiteral("status"), status},
             {QStringLiteral("createdAt"), createdAt}
         };

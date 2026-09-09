@@ -45,4 +45,10 @@ void registerUserHandlers(MessageDispatcher *dispatcher, UserHandler *userHandle
         [userHandler](const RequestMessage &request, const SessionContext &context) {
             return userHandler->recharge(request, context);
         });
+    dispatcher->registerHandler(MessageTypes::MembershipProductList, MessageDispatcher::Access::User,
+        [userHandler](const RequestMessage &request, const SessionContext &context) { return userHandler->membershipProducts(request, context); });
+    dispatcher->registerHandler(MessageTypes::MembershipStatusGet, MessageDispatcher::Access::User,
+        [userHandler](const RequestMessage &request, const SessionContext &context) { return userHandler->membershipStatus(request, context); });
+    dispatcher->registerHandler(MessageTypes::MembershipPurchase, MessageDispatcher::Access::User,
+        [userHandler](const RequestMessage &request, const SessionContext &context) { return userHandler->membershipPurchase(request, context); });
 }

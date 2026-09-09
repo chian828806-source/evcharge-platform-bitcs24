@@ -796,3 +796,6 @@ password = 123456
 - 是否影响 Socket/WebSocket 字段；
 - 是否影响 ML 输入输出；
 - 是否需要迁移脚本。
+# 会员数据补充
+
+用户表的 `is_member` 使用 SQLite INTEGER 0/1 表示 VIP 状态，`membership_remaining_days` 为展示缓存，`membership_expires_at` 为有效期事实字段，`membership_discount_bps` 保存服务费折扣。会员产品和购买流水分别位于 `membership_product` 与 `membership_purchase`。
