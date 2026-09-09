@@ -7,6 +7,7 @@
 
 class QLabel;
 class QLineEdit;
+class EnergyFlowWidget;
 class MapNavigationPage;
 class QPushButton;
 class QStackedWidget;
@@ -48,6 +49,7 @@ private:
     QLabel *m_profilePhoneLabel = nullptr;
     QLabel *m_orderSummaryLabel = nullptr;
     QLabel *m_chargeStatisticsLabel = nullptr;
+    EnergyFlowWidget *m_energyFlow = nullptr;
     QLabel *m_stationDetailTitle = nullptr;
     QLabel *m_stationDetailSummary = nullptr;
     QLabel *m_avatarLabel = nullptr;
