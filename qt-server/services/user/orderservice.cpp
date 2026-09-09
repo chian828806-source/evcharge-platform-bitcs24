@@ -8,6 +8,7 @@
 #include "repositories/userrepository.h"
 #include "shared/protocol/errorcodes.h"
 #include "devices/devicecontrolservice.h"
+#include "services/user/chargingprogress.h"
 
 #include <QDateTime>
 #include <QSet>
@@ -462,14 +463,8 @@ ChargingOrderInfo OrderService::withCurrentProgress(const ChargingOrderInfo &ord
             return order;
         }
     }
+    if (order.status == QStringLiteral("CHARGING")) return chargingProgressAt(order, end);
     ChargingOrderInfo result = order;
-    const qint64 elapsedSeconds = qMax<qint64>(0, start.secsTo(end));
-    result.chargeSeconds = elapsedSeconds;
-    if (order.status == QStringLiteral("CHARGING")) {
-        result.chargeMinutes = static_cast<int>(elapsedSeconds / 60);
-        result.energyKwh = order.powerKw * static_cast<double>(elapsedSeconds) / 3600.0;
-        result.amountFen = qRound64(result.energyKwh
-            * static_cast<double>(order.priceFenPerKwh + order.serviceFeeFenPerKwh));
-    }
+    result.chargeSeconds = qMax<qint64>(0, start.secsTo(end));
     return result;
 }

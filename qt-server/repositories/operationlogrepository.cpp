@@ -4,7 +4,7 @@
 #include <QSqlQuery>
 #include <QVariant>
 
-bool OperationLogRepository::add(qint64 adminId, const QString &action,
+bool OperationLogRepository::add(std::optional<qint64> adminId, const QString &action,
                                  const QString &targetType, qint64 targetId,
                                  const QString &before, const QString &after,
                                  const QString &message, const QString &now) const
@@ -15,7 +15,7 @@ bool OperationLogRepository::add(qint64 adminId, const QString &action,
                                  "before_status, after_status, result, message, created_at) "
                                  "VALUES(:adminId, :action, :targetType, :targetId, :before, :after, "
                                  "'SUCCESS', :message, :now)"));
-    query.bindValue(QStringLiteral(":adminId"), adminId);
+    query.bindValue(QStringLiteral(":adminId"), adminId.has_value() ? QVariant(*adminId) : QVariant());
     query.bindValue(QStringLiteral(":action"), action);
     query.bindValue(QStringLiteral(":targetType"), targetType);
     query.bindValue(QStringLiteral(":targetId"), targetId);
