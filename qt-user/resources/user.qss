@@ -31,7 +31,17 @@ QFrame#card[variant="profile"] { background: #173b34; border: none; }
 QFrame#card[variant="profile"] QLabel[role="cardTitle"] { color: #ffffff; font-size: 17px; }
 QFrame#card[variant="profile"] QLabel[role="caption"] { color: #b8d6ce; }
 QFrame#card[variant="wallet"] { background: #edfaf6; border-color: #d1ede4; }
+QFrame#card[variant="favoriteEntry"] {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 #e5f8f2, stop:1 #f8fffd);
+    border-color: #c8e9df;
+}
 QFrame#card[variant="order"] { background: #fbfdfc; }
+QFrame#card[variant="common"] { background: #ffffff; border-color: #d7ebe5; }
+QFrame#card[variant="membership"] { background: #edfaf6; border-color: #bfe7da; }
+QFrame#card[variant="membershipProduct"] { background: #ffffff; border-color: #d7ebe5; }
+QFrame#card[variant="membershipProduct"][cardType="month"] { background: #f1f3f5; border-color: #d5dbe0; }
+QFrame#card[variant="membershipProduct"][cardType="season"] { background: #fff8df; border-color: #ead79b; }
 QFrame#bottomNavigation { background: #ffffff; border-top: 1px solid #dce9e5; }
 QToolTip {
     color: #f8fffd; background: #173f36; border: 1px solid #2b5d50;
@@ -108,6 +118,17 @@ QLabel[role="avatar"][hasAvatar="true"] {
     background: #effbf6;
     border: 3px solid #35b989;
 }
+QLabel[role="profileFeatureIcon"] {
+    color: #087f69; background: #ddf6ee; border-radius: 24px;
+    font-size: 24px; font-weight: 800;
+}
+QPushButton[kind="profileFeature"] {
+    min-height: 96px; max-height: 108px; min-width: 0;
+    padding: 8px 4px; color: #4c5f70; background: transparent; border: none;
+    font-size: 13px; font-weight: 600; line-height: 1.5;
+}
+QPushButton[kind="profileFeature"]:first-line { color: #168cf0; font-size: 30px; }
+QPushButton[kind="profileFeature"]:hover { background: #eff8ff; border-radius: 12px; }
 QLabel[role="badgeGood"] {
     color: #08765c; background: #dff7ed; border-radius: 9px;
     padding: 4px 8px; font-size: 10px; font-weight: 700;
@@ -170,6 +191,31 @@ QPushButton[kind="icon"] {
     padding: 0; color: #173b34; background: #ffffff;
     border: 1px solid #d6e5e0; border-radius: 21px; font-size: 20px;
 }
+QLabel[role="favoriteIcon"] {
+    color: #ffffff; background: #18a67e; border-radius: 21px;
+    font-size: 22px; font-weight: 800;
+}
+QPushButton[kind="favoriteIcon"], QPushButton[kind="favoriteIconActive"] {
+    min-width: 38px; max-width: 38px; min-height: 38px; max-height: 38px;
+    padding: 0; border-radius: 19px; font-size: 21px;
+    color: #16866c; background: #f3fbf8; border: 1px solid #c9e9df;
+}
+QPushButton[kind="favoriteIcon"]:hover {
+    color: #0e7059; background: #e4f6f0; border-color: #74c6ad;
+}
+QPushButton[kind="favoriteIconActive"] {
+    color: #ffffff; background: #18a67e; border: 1px solid #18a67e;
+}
+QPushButton[kind="favoriteIconActive"]:hover { background: #117c60; }
+QPushButton[kind="favorite"], QPushButton[kind="favoriteActive"] {
+    min-width: 88px; padding: 0 14px;
+    color: #16866c; background: #f3fbf8; border: 1px solid #c9e9df;
+}
+QPushButton[kind="favorite"]:hover { background: #e4f6f0; border-color: #74c6ad; }
+QPushButton[kind="favoriteActive"] {
+    color: #ffffff; background: #18a67e; border-color: #18a67e;
+}
+QPushButton[kind="favoriteActive"]:hover { background: #117c60; }
 QPushButton[kind="mapMode"] {
     color: #43635b;
     background: #ffffff;

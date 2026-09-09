@@ -1,6 +1,8 @@
 # 功能：把用户端Handler源码加入qmake工程。
 HEADERS += \
     $$REPO_ROOT/qt-server/handlers/user/orderhandler.h \
+    $$REPO_ROOT/qt-server/handlers/user/favoritehandler.h \
+    $$REPO_ROOT/qt-server/handlers/user/registerfavoritehandlers.h \
     $$REPO_ROOT/qt-server/handlers/user/registerorderhandlers.h \
     $$REPO_ROOT/qt-server/handlers/user/registerstationhandlers.h \
     $$REPO_ROOT/qt-server/handlers/user/registeruserhandlers.h \
@@ -10,6 +12,8 @@ HEADERS += \
 
 SOURCES += \
     $$REPO_ROOT/qt-server/handlers/user/orderhandler.cpp \
+    $$REPO_ROOT/qt-server/handlers/user/favoritehandler.cpp \
+    $$REPO_ROOT/qt-server/handlers/user/registerfavoritehandlers.cpp \
     $$REPO_ROOT/qt-server/handlers/user/registerorderhandlers.cpp \
     $$REPO_ROOT/qt-server/handlers/user/registerstationhandlers.cpp \
     $$REPO_ROOT/qt-server/handlers/user/registeruserhandlers.cpp \

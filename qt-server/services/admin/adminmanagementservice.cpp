@@ -7,6 +7,7 @@
 #include "devices/devicecontrolservice.h"
 #include <QDateTime>
 #include <QSqlError>
+#include <QSqlQuery>
 #include <QTimer>
 
 namespace {
@@ -80,6 +81,45 @@ ResponseMessage AdminManagementService::orderList(const RequestMessage &request)
     return ResponseMessage::success(request.requestId,
         {{QStringLiteral("items"), items}, {QStringLiteral("page"), page},
          {QStringLiteral("pageSize"), pageSize}, {QStringLiteral("total"), total}});
+}
+
+ResponseMessage AdminManagementService::issueCoupon(const RequestMessage &request,
+                                                      qint64 adminId) const
+{
+    QSqlDatabase database; QString error;
+    if (!databaseFor(m_databaseManager, &database, &error)) return databaseError(request, error);
+    const qint64 userId = static_cast<qint64>(request.payload.value(QStringLiteral("userId")).toDouble());
+    if (m_userRepository.statusForAdmin(database, userId, &error).isEmpty()) {
+        return error.isEmpty()
+            ? ResponseMessage::error(request.requestId, ErrorCodes::InvalidPhone, QStringLiteral("user not found"))
+            : databaseError(request, error);
+    }
+    const QString now = nowText();
+    if (!database.transaction()) return databaseError(request, database.lastError().text());
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral("INSERT INTO coupon(user_id, discount_rate, status, issued_by, issued_at) VALUES(:userId, 80, 'AVAILABLE', :adminId, :now)"));
+    query.bindValue(QStringLiteral(":userId"), userId);
+    query.bindValue(QStringLiteral(":adminId"), adminId);
+    query.bindValue(QStringLiteral(":now"), now);
+    if (!query.exec()) {
+        database.rollback();
+        return databaseError(request, query.lastError().text());
+    }
+    const qint64 couponId = query.lastInsertId().toLongLong();
+    OperationLogRepository logRepository(database);
+    if (!logRepository.add(adminId, QStringLiteral("COUPON_ISSUE"),
+                           QStringLiteral("USER"), userId, {}, {},
+                           QStringLiteral("下放八折优惠券"), now)
+        || !database.commit()) {
+        const QString message = logRepository.lastError() + database.lastError().text();
+        database.rollback();
+        return databaseError(request, message);
+    }
+    return ResponseMessage::success(request.requestId,
+        {{QStringLiteral("couponId"), couponId},
+         {QStringLiteral("userId"), userId}, {QStringLiteral("discountRate"), 80},
+         {QStringLiteral("status"), QStringLiteral("AVAILABLE")},
+         {QStringLiteral("issuedAt"), now}});
 }
 
 ResponseMessage AdminManagementService::restartPile(const RequestMessage &request,

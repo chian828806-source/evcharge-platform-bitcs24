@@ -88,6 +88,7 @@ signals:
     void refreshRequested();
     void searchRequested(const QString &phoneKeyword);
     void statusChangeRequested(qint64 userId, bool freeze);
+    void couponIssueRequested(qint64 userId);
 private:
     QLineEdit *m_search = nullptr;
     QTableWidget *m_table = nullptr;

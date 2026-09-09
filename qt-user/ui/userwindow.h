@@ -3,8 +3,11 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QHash>
+#include <QSet>
 #include <QMainWindow>
+#include <QPointer>
 
+class QDialog;
 class QLabel;
 class QLineEdit;
 class MapNavigationPage;
@@ -33,6 +36,7 @@ private:
         StationDetail,
         Charging,
         Profile,
+        Favorites,
         Navigation
     };
 
@@ -53,10 +57,13 @@ private:
     StationSheet *m_stationSheet = nullptr;
     QSplitter *m_homeSplitter = nullptr;
     QLabel *m_profilePhoneLabel = nullptr;
+    QLabel *m_profileIdLabel = nullptr;
+    QLabel *m_profileStatusLabel = nullptr;
     QLabel *m_orderSummaryLabel = nullptr;
     QLabel *m_chargeStatisticsLabel = nullptr;
     QLabel *m_stationDetailTitle = nullptr;
     QLabel *m_stationDetailSummary = nullptr;
+    QPushButton *m_stationFavoriteButton = nullptr;
     QLabel *m_avatarLabel = nullptr;
     QLineEdit *m_phoneEdit = nullptr;
     QPushButton *m_startButton = nullptr;
@@ -77,22 +84,35 @@ private:
     QJsonArray m_nearbyStations;
     QJsonArray m_recommendedStations;
     QJsonArray m_displayStations;
+    QJsonArray m_favoriteStations;
+    QJsonArray m_membershipProducts;
     QVBoxLayout *m_stationListLayout = nullptr;
     QVBoxLayout *m_pileListLayout = nullptr;
     QVBoxLayout *m_orderListLayout = nullptr;
+    QPointer<QDialog> m_ordersDialog;
+    QVBoxLayout *m_favoriteListLayout = nullptr;
     QTimer *m_orderPollTimer = nullptr;
     QTimer *m_promotionTimer = nullptr;
+    QTimer *m_couponPollTimer = nullptr;
     QHash<int, QWidget *> m_stationCards;
     int m_balanceFenInFen = 0;
     int m_selectedHomeStationId = -1;
     int m_homeSheetStartHeight = 0;
     bool m_homeSheetInitialized = false;
     int m_promotionSecondsRemaining = 0;
+    QJsonArray m_coupons;
+    QSet<qint64> m_knownCouponIds;
+    bool m_couponSnapshotReady = false;
+    bool m_isMember = false;
+    int m_membershipRemainingDays = 0;
+    int m_membershipDiscountBps = 10000;
+    QString m_membershipExpiresAt;
     double m_originLongitude = 121.538;
     double m_originLatitude = 38.889;
     QString m_originName = QStringLiteral("默认位置 · 甘井子区");
     QString m_locationDistrict = QStringLiteral("甘井子区");
     Page m_navigationSource = Home;
+    Page m_stationDetailSource = Home;
 
     QWidget *buildLoginPage();
     QWidget *buildPromotionPage();
@@ -100,6 +120,7 @@ private:
     QWidget *buildStationDetailPage();
     QWidget *buildChargingPage();
     QWidget *buildProfilePage();
+    QWidget *buildFavoritesPage();
     QWidget *buildNavigationPage();
     QWidget *buildPageHeader(const QString &eyebrow, const QString &title,
                              const QString &subtitle = {});
@@ -121,9 +142,12 @@ private:
     void showNotice(const QString &message, bool error = false);
     void showRechargeDialog();
     void showRenameDialog();
+    void showCouponDialog();
     void uploadAvatar();
     QString sendRequest(const QString &type, const QJsonObject &payload = {});
     void requestInitialData();
+    void requestFavoriteList();
+    void toggleFavorite(int stationId);
     void requestActiveOrder();
     void applyUser(const QJsonObject &user);
     void requestAvatar(const QString &avatarPath);
@@ -135,6 +159,8 @@ private:
     void snapHomeSheet();
     void renderStationDetail(const QJsonObject &station, const QJsonArray &piles);
     void renderOrders(const QJsonArray &orders);
+    void renderFavorites(const QJsonArray &stations);
+    void applyFavoriteState(int stationId, bool isFavorite);
     void clearLayout(QVBoxLayout *layout);
     void handleResponse(const QJsonObject &response);
 };

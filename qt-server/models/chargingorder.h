@@ -26,6 +26,8 @@ struct ChargingOrderInfo
     qint64 chargeSeconds = 0;
     double energyKwh = 0.0;
     qint64 amountFen = 0;
+    qint64 couponId = 0;
+    int discountRate = 100;
     QString createdAt;
 
     QJsonObject toJson() const
@@ -45,6 +47,8 @@ struct ChargingOrderInfo
             {QStringLiteral("chargeSeconds"), chargeSeconds},
             {QStringLiteral("energyKwh"), energyKwh},
             {QStringLiteral("amountFen"), amountFen},
+            {QStringLiteral("couponId"), couponId > 0 ? QJsonValue(couponId) : QJsonValue(QJsonValue::Null)},
+            {QStringLiteral("discountRate"), discountRate},
             {QStringLiteral("createdAt"), createdAt}
         };
         json.insert(QStringLiteral("stationName"), stationName.isEmpty()

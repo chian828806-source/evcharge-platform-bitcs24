@@ -21,6 +21,11 @@ void registerOrderHandlers(MessageDispatcher *dispatcher, OrderHandler *orderHan
             return orderHandler->list(request, context);
         });
     dispatcher->registerHandler(
+        MessageTypes::UserCouponList, MessageDispatcher::Access::User,
+        [orderHandler](const RequestMessage &request, const SessionContext &context) {
+            return orderHandler->couponList(request, context);
+        });
+    dispatcher->registerHandler(
         MessageTypes::OrderCreate, MessageDispatcher::Access::User,
         [orderHandler](const RequestMessage &request, const SessionContext &context) {
             return orderHandler->create(request, context);

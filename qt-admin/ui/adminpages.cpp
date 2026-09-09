@@ -568,10 +568,10 @@ QString UserPage::phoneKeyword() const { return m_search->text().trimmed(); }
 void UserPage::setUsers(const QJsonObject &data)
 {
     const QJsonArray users = data.value(QStringLiteral("users")).toArray();
-    m_table->clear(); m_table->clearSpans(); m_table->setRowCount(users.size()); m_table->setColumnCount(7);
-    m_table->setHorizontalHeaderLabels({QStringLiteral("ID"), QStringLiteral("手机号"), QStringLiteral("昵称"), QStringLiteral("余额"), QStringLiteral("注册时间"), QStringLiteral("状态"), QStringLiteral("操作")});
+    m_table->clear(); m_table->clearSpans(); m_table->setRowCount(users.size()); m_table->setColumnCount(8);
+    m_table->setHorizontalHeaderLabels({QStringLiteral("ID"), QStringLiteral("手机号"), QStringLiteral("昵称"), QStringLiteral("余额"), QStringLiteral("注册时间"), QStringLiteral("状态"), QStringLiteral("下放优惠券"), QStringLiteral("账户操作")});
     if (users.isEmpty()) {
-        showEmptyState(m_table, 7, m_search->text().trimmed().isEmpty()
+        showEmptyState(m_table, 8, m_search->text().trimmed().isEmpty()
             ? QStringLiteral("暂无用户") : QStringLiteral("未找到匹配用户"));
         return;
     }
@@ -584,13 +584,17 @@ void UserPage::setUsers(const QJsonObject &data)
                             : tableItem(values.at(column), column == 0 || column == 3));
         }
         const bool frozen = user.value(QStringLiteral("status")).toString() == QStringLiteral("FROZEN");
-        auto *change = tableActionButton(m_table, row, 6,
+        const qint64 userId = user.value(QStringLiteral("userId")).toInteger();
+        auto *coupon = tableActionButton(m_table, row, 6, QStringLiteral("下放优惠券"));
+        coupon->setEnabled(!m_actionBusy);
+        connect(coupon, &QToolButton::clicked, this, [this, userId]() { emit couponIssueRequested(userId); });
+        auto *change = tableActionButton(m_table, row, 7,
             frozen ? QStringLiteral("解冻") : QStringLiteral("冻结"));
         change->setEnabled(!m_actionBusy);
-        const qint64 userId = user.value(QStringLiteral("userId")).toInteger();
         connect(change, &QToolButton::clicked, this, [this, userId, frozen]() { emit statusChangeRequested(userId, !frozen); });
     }
     configureActionColumn(m_table, 6);
+    configureActionColumn(m_table, 7);
 }
 
 void UserPage::setActionBusy(bool busy)

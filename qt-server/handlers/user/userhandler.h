@@ -30,10 +30,14 @@ public:
                                  const SessionContext &context);
     ResponseMessage recharge(const RequestMessage &request,
                              const SessionContext &context);
+    ResponseMessage membershipProducts(const RequestMessage &request, const SessionContext &context);
+    ResponseMessage membershipStatus(const RequestMessage &request, const SessionContext &context);
+    ResponseMessage membershipPurchase(const RequestMessage &request, const SessionContext &context);
 
 private:
     UserService *m_userService = nullptr;
     SessionManager *m_sessionManager = nullptr;
     // V1以进程内缓存保证同一用户重复提交同一requestId时不会重复充值。
     QHash<QString, ResponseMessage> m_rechargeResponses;
+    QHash<QString, ResponseMessage> m_membershipResponses;
 };

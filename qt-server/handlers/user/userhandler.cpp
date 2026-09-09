@@ -185,3 +185,23 @@ ResponseMessage UserHandler::recharge(const RequestMessage &request,
     m_rechargeResponses.insert(cacheKey, response);
     return response;
 }
+
+ResponseMessage UserHandler::membershipProducts(const RequestMessage &request, const SessionContext &)
+{
+    if (!m_userService) return ResponseMessage::error(request.requestId, ErrorCodes::InternalError, QStringLiteral("user module is unavailable"));
+    const auto result=m_userService->membershipProducts(); if(!result.ok)return ResponseMessage::error(request.requestId,result.code,result.message);
+    return ResponseMessage::success(request.requestId, {{QStringLiteral("items"), result.value}});
+}
+
+ResponseMessage UserHandler::membershipStatus(const RequestMessage &request, const SessionContext &context)
+{ return profileGet(request, context); }
+
+ResponseMessage UserHandler::membershipPurchase(const RequestMessage &request, const SessionContext &context)
+{
+    const QString productNo=request.payload.value(QStringLiteral("productNo")).toString().trimmed();
+    if(productNo.isEmpty())return ResponseMessage::error(request.requestId,ErrorCodes::InvalidSocketMessage,QStringLiteral("productNo is required"));
+    if(!m_userService)return ResponseMessage::error(request.requestId,ErrorCodes::InternalError,QStringLiteral("user module is unavailable"));
+    const QString cacheKey=QString::number(context.principalId)+QLatin1Char(':')+request.requestId; const auto cached=m_membershipResponses.constFind(cacheKey); if(cached!=m_membershipResponses.cend())return *cached;
+    const auto result=m_userService->purchaseMembership(context.principalId,productNo); if(!result.ok)return ResponseMessage::error(request.requestId,result.code,result.message);
+    const auto response=ResponseMessage::success(request.requestId,{{QStringLiteral("user"),result.value.toJson()}}); m_membershipResponses.insert(cacheKey,response); return response;
+}

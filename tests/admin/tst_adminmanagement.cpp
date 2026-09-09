@@ -26,6 +26,7 @@ private slots:
     void createStationAndListPiles();
     void restartAvailablePile();
     void listOrdersForAdmin();
+    void issueCouponForUser();
     void chargingFaultStopsOrderAndWritesSystemLog();
     void reservedFaultCancelsOrder();
     void chargingOfflineIsIdempotent();
@@ -72,7 +73,11 @@ void AdminManagementTest::initTestCase()
         "user_id INTEGER, station_id INTEGER, pile_id INTEGER, status TEXT, "
         "price_fen_per_kwh INTEGER, service_fee_fen_per_kwh INTEGER, start_at TEXT, end_at TEXT, "
         "charge_minutes INTEGER DEFAULT 0, energy_kwh REAL DEFAULT 0, amount_fen INTEGER DEFAULT 0, cancelled_at TEXT, cancel_reason TEXT, "
-        "created_at TEXT, updated_at TEXT)")));
+        "created_at TEXT, updated_at TEXT, coupon_id INTEGER, discount_rate INTEGER DEFAULT 100)")));
+    QVERIFY(query.exec(QStringLiteral(
+        "CREATE TABLE coupon(id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, "
+        "discount_rate INTEGER DEFAULT 80, status TEXT DEFAULT 'AVAILABLE', order_id INTEGER, "
+        "issued_by INTEGER, issued_at TEXT, used_at TEXT)")));
     QVERIFY(query.exec(QStringLiteral(
         "INSERT INTO user VALUES(1, '13800138000', '测试用户', 10000, 'NORMAL', "
         "'2026-09-02 00:00:00', '2026-09-02 00:00:00')")));
@@ -103,7 +108,7 @@ static qint64 addDeviceOrder(QSqlDatabase &db, const QString &pileStatus, const 
 void AdminManagementTest::chargingFaultStopsOrderAndWritesSystemLog()
 { const qint64 pile=addDeviceOrder(m_database,QStringLiteral("CHARGING"),QStringLiteral("CHARGING"));m_deviceControl->handleFault(pile,QStringLiteral("TEMP_HIGH"),QStringLiteral("hot"));QSqlQuery q(m_database);q.prepare(QStringLiteral("SELECT o.status,o.energy_kwh,o.amount_fen,p.status,p.current_order_id FROM charging_order o JOIN charging_pile p ON p.id=o.pile_id WHERE p.id=:p"));q.bindValue(QStringLiteral(":p"),pile);QVERIFY(q.exec());QVERIFY(q.next());QCOMPARE(q.value(0).toString(),QStringLiteral("PENDING_PAYMENT"));QVERIFY(q.value(1).toDouble()>0);QVERIFY(q.value(2).toLongLong()>0);QCOMPARE(q.value(3).toString(),QStringLiteral("FAULT"));QVERIFY(q.value(4).isNull());q.prepare(QStringLiteral("SELECT admin_id FROM operation_log WHERE target_id=:p AND action='DEVICE_FAULT'"));q.bindValue(QStringLiteral(":p"),pile);QVERIFY(q.exec());QVERIFY(q.next());QVERIFY(q.value(0).isNull()); }
 void AdminManagementTest::reservedFaultCancelsOrder()
-{ const qint64 pile=addDeviceOrder(m_database,QStringLiteral("RESERVED"),QStringLiteral("CREATED"));m_deviceControl->handleFault(pile,QStringLiteral("TEMP_HIGH"),QStringLiteral("hot"));QSqlQuery q(m_database);q.prepare(QStringLiteral("SELECT o.status,o.cancel_reason,p.status,p.current_order_id FROM charging_order o JOIN charging_pile p ON p.id=o.pile_id WHERE p.id=:p"));q.bindValue(QStringLiteral(":p"),pile);QVERIFY(q.exec());QVERIFY(q.next());QCOMPARE(q.value(0).toString(),QStringLiteral("CANCELLED"));QCOMPARE(q.value(1).toString(),QStringLiteral("设备故障自动取消"));QCOMPARE(q.value(2).toString(),QStringLiteral("FAULT"));QVERIFY(q.value(3).isNull()); }
+{ const qint64 pile=addDeviceOrder(m_database,QStringLiteral("RESERVED"),QStringLiteral("CREATED"));QSqlQuery q(m_database);q.prepare(QStringLiteral("SELECT current_order_id FROM charging_pile WHERE id=:p"));q.bindValue(QStringLiteral(":p"),pile);QVERIFY(q.exec());QVERIFY(q.next());const qint64 order=q.value(0).toLongLong();q.prepare(QStringLiteral("INSERT INTO coupon(user_id,status,order_id,issued_at) VALUES(1,'LOCKED',:orderId,'2026-01-01 00:00:00')"));q.bindValue(QStringLiteral(":orderId"),order);QVERIFY(q.exec());const qint64 coupon=q.lastInsertId().toLongLong();q.prepare(QStringLiteral("UPDATE charging_order SET coupon_id=:couponId WHERE id=:orderId"));q.bindValue(QStringLiteral(":couponId"),coupon);q.bindValue(QStringLiteral(":orderId"),order);QVERIFY(q.exec());m_deviceControl->handleFault(pile,QStringLiteral("TEMP_HIGH"),QStringLiteral("hot"));q.prepare(QStringLiteral("SELECT o.status,o.cancel_reason,p.status,p.current_order_id,c.status,c.order_id FROM charging_order o JOIN charging_pile p ON p.id=o.pile_id JOIN coupon c ON c.id=o.coupon_id WHERE p.id=:p"));q.bindValue(QStringLiteral(":p"),pile);QVERIFY(q.exec());QVERIFY(q.next());QCOMPARE(q.value(0).toString(),QStringLiteral("CANCELLED"));QCOMPARE(q.value(1).toString(),QStringLiteral("设备故障自动取消"));QCOMPARE(q.value(2).toString(),QStringLiteral("FAULT"));QVERIFY(q.value(3).isNull());QCOMPARE(q.value(4).toString(),QStringLiteral("AVAILABLE"));QVERIFY(q.value(5).isNull()); }
 void AdminManagementTest::chargingOfflineIsIdempotent()
 { const qint64 pile=addDeviceOrder(m_database,QStringLiteral("CHARGING"),QStringLiteral("CHARGING"));m_deviceControl->handleOffline(pile);m_deviceControl->handleOffline(pile);QSqlQuery q(m_database);q.prepare(QStringLiteral("SELECT o.status,o.energy_kwh,p.status FROM charging_order o JOIN charging_pile p ON p.id=o.pile_id WHERE p.id=:p"));q.bindValue(QStringLiteral(":p"),pile);QVERIFY(q.exec());QVERIFY(q.next());QCOMPARE(q.value(0).toString(),QStringLiteral("PENDING_PAYMENT"));QVERIFY(q.value(1).toDouble()>0);QCOMPARE(q.value(2).toString(),QStringLiteral("OFFLINE")); }
 void AdminManagementTest::reconnectRestoresOnlyUnoccupiedOfflinePile()
@@ -194,6 +199,8 @@ void AdminManagementTest::createStationAndListPiles()
     QCOMPARE(piles.size(), 2);
     QCOMPARE(piles.first().toObject().value(QStringLiteral("stationId")).toInteger(), stationId);
     QVERIFY(!piles.first().toObject().value(QStringLiteral("type")).toString().isEmpty());
+    QCOMPARE(piles.first().toObject().value(QStringLiteral("status")).toString(),
+             QStringLiteral("OFFLINE"));
 
     QSqlQuery query(m_database);
     query.prepare(QStringLiteral("SELECT price_fen_per_kwh FROM charging_station WHERE id=:id"));
@@ -250,6 +257,23 @@ void AdminManagementTest::listOrdersForAdmin()
     QCOMPARE(order.value(QStringLiteral("orderNo")).toString(), QStringLiteral("O-ADMIN-1"));
     QCOMPARE(order.value(QStringLiteral("userPhone")).toString(), QStringLiteral("13800138000"));
     QCOMPARE(order.value(QStringLiteral("userNickname")).toString(), QStringLiteral("测试用户"));
+}
+
+void AdminManagementTest::issueCouponForUser()
+{
+    const RequestMessage issue{
+        QStringLiteral("TEST-COUPON-ISSUE"), QStringLiteral("ADMIN_COUPON_ISSUE"),
+        QStringLiteral("S-ADMIN"), {{QStringLiteral("userId"), 1}}};
+    const ResponseMessage response = m_service->issueCoupon(issue, 9);
+    QCOMPARE(response.code, ErrorCodes::Success);
+    QCOMPARE(response.data.value(QStringLiteral("discountRate")).toInt(), 80);
+    QSqlQuery query(m_database);
+    QVERIFY(query.exec(QStringLiteral(
+        "SELECT user_id, discount_rate, status FROM coupon ORDER BY id DESC LIMIT 1")));
+    QVERIFY(query.next());
+    QCOMPARE(query.value(0).toLongLong(), 1);
+    QCOMPARE(query.value(1).toInt(), 80);
+    QCOMPARE(query.value(2).toString(), QStringLiteral("AVAILABLE"));
 }
 
 QTEST_MAIN(AdminManagementTest)

@@ -28,7 +28,7 @@ StationHandler::StationHandler(StationService *stationService)
 }
 
 ResponseMessage StationHandler::listNearby(const RequestMessage &request,
-                                           const SessionContext &)
+                                           const SessionContext &context)
 {
     const QJsonValue longitudeValue = request.payload.value(QStringLiteral("longitude"));
     const QJsonValue latitudeValue = request.payload.value(QStringLiteral("latitude"));
@@ -61,7 +61,8 @@ ResponseMessage StationHandler::listNearby(const RequestMessage &request,
     }
 
     const auto result = m_stationService->listNearby(
-        longitudeValue.toDouble(), latitudeValue.toDouble(), district, limit);
+        longitudeValue.toDouble(), latitudeValue.toDouble(), district, limit,
+        context.principalId);
     if (!result.ok) {
         return ResponseMessage::error(request.requestId, result.code, result.message);
     }
@@ -75,7 +76,7 @@ ResponseMessage StationHandler::listNearby(const RequestMessage &request,
 }
 
 ResponseMessage StationHandler::detailGet(const RequestMessage &request,
-                                          const SessionContext &)
+                                          const SessionContext &context)
 {
     const QJsonValue stationIdValue = request.payload.value(QStringLiteral("stationId"));
     if (!stationIdValue.isDouble() || !isInteger(stationIdValue.toDouble())
@@ -89,7 +90,7 @@ ResponseMessage StationHandler::detailGet(const RequestMessage &request,
     }
 
     const auto result = m_stationService->detail(
-        static_cast<qint64>(stationIdValue.toDouble()));
+        static_cast<qint64>(stationIdValue.toDouble()), context.principalId);
     if (!result.ok) {
         return ResponseMessage::error(request.requestId, result.code, result.message);
     }
@@ -104,7 +105,7 @@ ResponseMessage StationHandler::detailGet(const RequestMessage &request,
 }
 
 ResponseMessage StationHandler::recommendation(const RequestMessage &request,
-                                               const SessionContext &)
+                                               const SessionContext &context)
 {
     const QJsonValue longitudeValue = request.payload.value(QStringLiteral("longitude"));
     const QJsonValue latitudeValue = request.payload.value(QStringLiteral("latitude"));
@@ -133,7 +134,8 @@ ResponseMessage StationHandler::recommendation(const RequestMessage &request,
                                       QStringLiteral("station module is unavailable"));
     }
     const auto result = m_stationService->recommendations(
-        longitudeValue.toDouble(), latitudeValue.toDouble(), limit, horizon);
+        longitudeValue.toDouble(), latitudeValue.toDouble(), limit, horizon,
+        context.principalId);
     if (!result.ok) {
         return ResponseMessage::error(request.requestId, result.code, result.message);
     }

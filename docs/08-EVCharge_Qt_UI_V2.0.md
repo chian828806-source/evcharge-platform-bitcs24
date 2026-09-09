@@ -284,7 +284,7 @@ Dashboard 电桩状态统计口径固定为：
 | --- | --- | --- | --- |
 | 查询区 | 手机号关键词 + 查询按钮 | 手机号模糊搜索 | ADMIN_USER_LIST |
 | 数据表格 | 用户 ID、手机号、昵称、余额、注册时间、状态 | 查看用户信息 | ADMIN_USER_LIST |
-| 操作列 | 冻结 / 解冻 | 修改用户状态 | ADMIN_USER_FREEZE / ADMIN_USER_UNFREEZE |
+| 操作列 | 下放优惠券、冻结 / 解冻 | 下放一张八折券或修改用户状态 | ADMIN_COUPON_ISSUE / ADMIN_USER_FREEZE / ADMIN_USER_UNFREEZE |
 | 提示区 | 操作结果 | 显示成功或失败原因 | code/message |
 
 表格查询过程使用 Loading；无匹配用户时显示 Empty State；冻结/解冻提交过程中对应按钮进入 Submitting / Disabled 状态。

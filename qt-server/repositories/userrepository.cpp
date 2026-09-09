@@ -6,14 +6,39 @@
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QVariant>
+#include <QDateTime>
+#include <QtMath>
+#include <QUuid>
+
+namespace {
+
+QString userSelectSql(QSqlDatabase &database)
+{
+    QSqlQuery columns(database);
+    bool hasMembershipColumns = false;
+    if (columns.exec(QStringLiteral("PRAGMA table_info(user)"))) {
+        while (columns.next()) {
+            const QString name = columns.value(1).toString();
+            if (name == QStringLiteral("is_member")) {
+                hasMembershipColumns = true;
+                break;
+            }
+        }
+    }
+    const QString membership = hasMembershipColumns
+        ? QStringLiteral("is_member, membership_remaining_days, membership_expires_at, membership_discount_bps")
+        : QStringLiteral("0 AS is_member, 0 AS membership_remaining_days, NULL AS membership_expires_at, 10000 AS membership_discount_bps");
+    return QStringLiteral("SELECT id, phone, nickname, avatar_path, balance_fen, %1, status, created_at FROM user")
+        .arg(membership);
+}
+
+}
 
 std::optional<UserProfile> UserRepository::findByPhone(
     QSqlDatabase &database, const QString &phone, QString *errorMessage) const
 {
     QSqlQuery query(database);
-    query.prepare(QStringLiteral(
-        "SELECT id, phone, nickname, avatar_path, balance_fen, status, created_at "
-        "FROM user WHERE phone = :phone"));
+    query.prepare(userSelectSql(database) + QStringLiteral(" WHERE phone = :phone"));
     query.bindValue(QStringLiteral(":phone"), phone);
 
     if (!query.exec()) {
@@ -32,9 +57,7 @@ std::optional<UserProfile> UserRepository::findById(
     QSqlDatabase &database, qint64 userId, QString *errorMessage) const
 {
     QSqlQuery query(database);
-    query.prepare(QStringLiteral(
-        "SELECT id, phone, nickname, avatar_path, balance_fen, status, created_at "
-        "FROM user WHERE id = :userId"));
+    query.prepare(userSelectSql(database) + QStringLiteral(" WHERE id = :userId"));
     query.bindValue(QStringLiteral(":userId"), userId);
 
     if (!query.exec()) {
@@ -91,6 +114,54 @@ bool UserRepository::updateLastLogin(QSqlDatabase &database, qint64 userId,
         *errorMessage = query.lastError().text();
     }
     return false;
+}
+
+bool UserRepository::refreshMembership(QSqlDatabase &database, UserProfile *user,
+                                       const QString &now, QString *errorMessage) const
+{
+    if (!user) {
+        if (errorMessage) *errorMessage = QStringLiteral("user is required");
+        return false;
+    }
+
+    const QDateTime nowDt = QDateTime::fromString(
+        now, QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+    const QDateTime expires = QDateTime::fromString(
+        user->membershipExpiresAt, QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+    const bool active = nowDt.isValid() && expires.isValid() && expires > nowDt;
+    const int remainingDays = active
+        ? qMax(1, qCeil(nowDt.secsTo(expires) / 86400.0)) : 0;
+    const QString expiresAt = active
+        ? expires.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")) : QString();
+    const int discountBps = active
+        ? qBound(0, user->membershipDiscountBps, 10000) : 10000;
+
+    if (user->isMember != active || user->membershipRemainingDays != remainingDays
+        || user->membershipExpiresAt != expiresAt
+        || user->membershipDiscountBps != discountBps) {
+        QSqlQuery query(database);
+        query.prepare(QStringLiteral(
+            "UPDATE user SET is_member=:isMember, membership_remaining_days=:days, "
+            "membership_expires_at=:expiresAt, membership_discount_bps=:discount, "
+            "updated_at=:now WHERE id=:userId"));
+        query.bindValue(QStringLiteral(":isMember"), active ? 1 : 0);
+        query.bindValue(QStringLiteral(":days"), remainingDays);
+        query.bindValue(QStringLiteral(":expiresAt"),
+                        expiresAt.isEmpty() ? QVariant() : expiresAt);
+        query.bindValue(QStringLiteral(":discount"), discountBps);
+        query.bindValue(QStringLiteral(":now"), now);
+        query.bindValue(QStringLiteral(":userId"), user->userId);
+        if (!query.exec() || query.numRowsAffected() != 1) {
+            if (errorMessage) *errorMessage = query.lastError().text();
+            return false;
+        }
+    }
+
+    user->isMember = active;
+    user->membershipRemainingDays = remainingDays;
+    user->membershipExpiresAt = expiresAt;
+    user->membershipDiscountBps = discountBps;
+    return true;
 }
 
 bool UserRepository::updateNickname(QSqlDatabase &database, qint64 userId,
@@ -328,7 +399,23 @@ UserProfile UserRepository::mapUser(const QSqlQuery &query)
     user.nickname = query.value(2).toString();
     user.avatarPath = query.value(3).toString();
     user.balanceFen = query.value(4).toLongLong();
-    user.status = query.value(5).toString();
-    user.createdAt = query.value(6).toString();
+    user.isMember = query.value(5).toInt() != 0;
+    user.membershipRemainingDays = query.value(6).toInt();
+    user.membershipExpiresAt = query.value(7).toString();
+    user.membershipDiscountBps = query.value(8).toInt();
+    user.status = query.value(9).toString();
+    user.createdAt = query.value(10).toString();
     return user;
+}
+
+QJsonArray UserRepository::membershipProducts(QSqlDatabase &database, QString *errorMessage) const
+{
+    QSqlQuery query(database);
+    if (!query.exec(QStringLiteral("SELECT id, product_no, name, card_type, duration_days, sale_price_fen, service_fee_discount_bps FROM membership_product WHERE status='ON_SALE' ORDER BY duration_days"))) {
+        if (errorMessage) *errorMessage = query.lastError().text();
+        return {};
+    }
+    QJsonArray result;
+    while (query.next()) result.append(QJsonObject{{QStringLiteral("productId"), query.value(0).toLongLong()}, {QStringLiteral("productNo"), query.value(1).toString()}, {QStringLiteral("name"), query.value(2).toString()}, {QStringLiteral("cardType"), query.value(3).toString()}, {QStringLiteral("durationDays"), query.value(4).toInt()}, {QStringLiteral("salePriceFen"), query.value(5).toLongLong()}, {QStringLiteral("serviceFeeDiscountBps"), query.value(6).toInt()}});
+    return result;
 }

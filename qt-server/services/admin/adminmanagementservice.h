@@ -22,6 +22,7 @@ public:
     ResponseMessage createStation(const RequestMessage &request, qint64 adminId) const;
     ResponseMessage userList(const RequestMessage &request) const;
     ResponseMessage orderList(const RequestMessage &request) const;
+    ResponseMessage issueCoupon(const RequestMessage &request, qint64 adminId) const;
     ResponseMessage setUserFrozen(const RequestMessage &request, qint64 adminId,
                                   bool frozen) const;
 
