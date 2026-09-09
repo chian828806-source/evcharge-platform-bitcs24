@@ -1,8 +1,10 @@
 # 东软电动汽车充电桩应用管理平台
 
-本项目是计科小学期一周开发项目。当前仓库已具备可运行的 Backend V1 Demo：
-Qt 用户端和管理端通过同一个 Qt/C++ Socket Server 访问 SQLite；其余 UI、
-Web 大屏和 ML 集成仍按各模块文档持续迭代。
+本项目是计科小学期一周开发项目。当前 `develop` 已具备可运行的集成 Demo：
+Qt 用户端和管理端通过同一个 Qt/C++ Socket Server 访问 SQLite；服务端同时
+提供独立的 Device Simulator TCP 网关和 Dashboard WebSocket 端点。用户头像、
+地图导航、用户/管理端核心流程、设备心跳/遥测/故障恢复和基础自动化回归均已接入。
+ML 自动训练与生产级设备接入仍按各模块文档持续迭代。
 
 根据当前评审结论，项目主技术路线调整为：
 
@@ -12,7 +14,7 @@ Web 大屏和 ML 集成仍按各模块文档持续迭代。
 - 数据库：QtSql + SQLite，Qt 驱动名为 `QSQLITE`；
 - 通信：Socket；
 - Web 大屏通信：WebSocket；
-- 主程序：多线程；
+- 主程序：Qt 事件循环、信号槽与异步地图回调；
 - 管理端图表：QChart；
 - 导航：腾讯地图 Web API + QWebEngineView；
 - 大屏：Web + ECharts；
@@ -55,9 +57,10 @@ Python ML 使用历史数据预测
 - 使用一个 `QTcpServer` 同时接收 Qt 用户端和 Qt 管理端连接；
 - 处理登录、站点、电桩、订单、充值、结算等核心业务；
 - 通过 QtSql 的 `QSQLITE` 驱动读写 SQLite；
-- 使用多线程处理连接、业务、充电计时、数据库写入和 WebSocket 推送；
+- 使用 Qt 事件循环处理连接、充电计时、数据库写入和 WebSocket 推送；
 - 向 Web 大屏提供 WebSocket 数据服务；
-- 支持管理员登录、站点管理、电桩管理、用户管理、冻结/解冻、手机号模糊查询和远程重启模拟对应的服务端业务。
+- 支持管理员登录、站点/电桩/用户/订单管理、冻结/解冻、远程重启，以及
+  Device Simulator 的连接、心跳、遥测、故障与 ACK 处理。
 
 ### 2.3 Qt 管理端
 
@@ -85,20 +88,23 @@ ML 模块保留为基本功能，负责基于固定演示数据和服务端导�
 
 ### 2.7 远程重启模拟
 
-必做范围只要求管理员发送远程重启指令、系统返回处理结果并更新状态或日志。完整设备网关、心跳、遥测和串口协议作为扩展内容，不作为核心业务通信的替代。
+设备侧以独立的 JSON Lines Simulator 协议接入服务端，不替代用户端和管理端的
+TCP 业务协议。服务端维护受管电桩在线状态、最近心跳与遥测；`OFFLINE` 电桩在
+合法 `DEVICE_HELLO` 且无活动订单时恢复为 `AVAILABLE`，`FAULT` 不会因重连自动清除，
+仍须由管理员远程重启等正式流程恢复。数据库状态始终是业务状态权威。
 
 ## 3. 总体架构
 
 ```mermaid
 flowchart TB
     User[Qt 用户端<br/>Linux + Qt + C++]
-    Server[Qt/C++ 服务端<br/>QTcpServer + 业务服务 + SQLite + 多线程]
+    Server[Qt/C++ 服务端<br/>业务 TCP + Device TCP + WebSocket + SQLite]
     Admin[Qt 管理端<br/>管理界面 + QChart + QTcpSocket]
     DB[(SQLite<br/>QtSql / QSQLITE)]
     Web[Web 大屏<br/>HTML/CSS/JS + ECharts]
     ML[Python 机器学习模块<br/>负荷/空闲桩/高峰预测]
     Map[腾讯地图 Web API<br/>QWebEngineView]
-    Device[远程重启模拟<br/>设备扩展 Optional]
+    Device[Qt Device Simulator<br/>独立 JSON Lines TCP]
 
     User <-->|TCP Socket<br/>用户业务消息| Server
     Admin <-->|TCP Socket<br/>管理业务消息| Server
@@ -109,8 +115,8 @@ flowchart TB
     User -->|导航展示| Map
     Server -->|地址解析/地图相关调用| Map
     Admin -->|远程重启请求| Server
-    Server -->|ADMIN_PILE_RESTART<br/>状态更新/操作日志| Device
-    Device -->|模拟结果| Server
+    Server <-->|18082：HELLO / 心跳 / 遥测 / ACK| Device
+    Admin -->|ADMIN_PILE_RESTART| Server
 ```
 
 ## 4. 仓库结构
@@ -126,6 +132,7 @@ evcharge-platform/
 │   ├── init_data.sql       # 演示种子数据
 │   ├── simulation/         # CARY 数据导入与 ML-history 工具
 │   └── evcharge_cary_simulation.db
+├── qt-device-simulator/    # 独立设备协议模拟器
 ├── web-dashboard/
 ├── ml/
 ├── docs/
@@ -153,10 +160,29 @@ evcharge-platform/
 | `docs/05-GIT-WORKFLOW.md` | Git、Review、集成规范 |
 | `docs/06-AGENT-GUIDE.md` | Agent 协作约束 |
 | `docs/07-DEVICE-PROTOCOL.md` | 远程重启模拟与扩展设备协议 |
-| `docs/10-SERVER-BACKEND-V1-DEMO.md` | Backend V1 Demo 架构、验证与演进记录 |
+| `docs/09-USER-BACKEND-DESIGN.md` | 用户、头像、钱包、地图、订单与推荐实现设计 |
+| `docs/10-SERVER-BACKEND-V1-DEMO.md` | 当前统一服务端的组成、运行和验证说明 |
 
 ## 6. 当前待确认事项
 
-- 多线程是否必须直接使用 pthread，还是 `QThread` 即可。
+- 后续是否需要为耗时 ML 或批量任务引入独立 `QThread`。
 - ML 是否有老师提供的统一数据集或最低精度要求。
 - 团队成员角色 PM / TL / PRL / SCML / PE 的最终负责人。
+
+## 7. 本机/虚拟机快速启动
+
+首次运行先用 `database/schema.sql` 与 `database/init_data.sql` 初始化
+`database/evcharge.db`。Linux Qt 6 环境可分别构建或使用顶层工程构建。服务端必须最先启动：
+
+```bash
+qmake6 evcharge-platform.pro
+make -j2
+
+./qt-server/evcharge-qt-server --database "$PWD/database/evcharge.db"
+```
+
+默认端口为：业务 TCP `18080`（User/Admin）、Dashboard WebSocket
+`ws://<host>:18081/dashboard`、Device TCP `18082`。随后启动 `qt-admin`、`qt-user`
+和 `qt-device-simulator` 对应的可执行文件；三者与服务端位于同一台机器时均使用
+`127.0.0.1`。Qt User 的地图页依赖 Qt WebEngine 运行时，Ubuntu 上应安装
+`libqt6webenginecore6-bin`。

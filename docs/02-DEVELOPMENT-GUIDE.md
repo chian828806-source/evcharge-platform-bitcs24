@@ -3,7 +3,7 @@
 ## 1. 通用原则
 
 1. 实现必须能追踪到 SRS 需求编号。
-2. 优先完成 Qt/C++、Socket、SQLite、多线程主线。
+2. 优先完成 Qt/C++、Socket、SQLite 和事件驱动主线。
 3. 不引入 Spring Boot、MySQL、REST 作为主架构。
 4. 不修改公共契约，契约包括 Socket 消息、WebSocket 大屏消息、SQLite 表结构、状态枚举和统计口径。
 5. 不重构无关模块。
@@ -24,8 +24,8 @@ qt-server/
 ├── repositories/              # 共用数据访问
 ├── database/                  # 共用连接、事务和数据库线程
 ├── models/                    # 共用领域数据
-├── workers/                   # 共用后台任务
-├── adapters/                  # 地图、头像、ML 等外部能力
+├── map/                       # 腾讯地图异步适配
+├── devices/                   # 独立设备网关、设备会话和状态控制
 └── common/                    # 通用结果和校验类型
 
 qt-admin/
@@ -155,7 +155,9 @@ SocketServer / ClientSession
 
 Qt 用户端和 Qt 管理端业务页面不得直接操作 `QTcpSocket`。
 
-Socket 消息统一使用 JSON Lines 或长度前缀格式，具体见 `docs/03-API.md`。
+User/Admin 业务 TCP 与 Device TCP 当前均使用 JSON Lines：每行一个 JSON 对象；
+WebSocket 大屏使用文本 JSON 帧。不得为单个客户端私自改为长度前缀或其他私有格式，
+具体契约见 `docs/03-API.md` 和 `docs/07-DEVICE-PROTOCOL.md`。
 
 ## 6. SQLite 与金额
 
@@ -181,15 +183,16 @@ yyyy-MM-dd HH:mm:ss
 
 所有模块统一使用本地时间，演示阶段不处理复杂时区。
 
-## 8. 多线程规范
+## 8. 事件循环与未来多线程规范
 
-UI 线程不得执行阻塞 Socket、数据库写入、充电计时或长时间 ML 调用。
+当前服务端使用 Qt 事件循环处理连接、定时器和异步回调；UI 线程与 `readyRead`
+回调不得执行阻塞 Socket、长事务、充电计时循环或长时间 ML 调用。
 
-SQLite 多线程规则：
+若后续引入多线程，SQLite 规则如下：
 
 - 不跨线程共享同一个 `QSqlDatabase` 连接；
 - 每个数据库线程创建自己的连接名；
-- 写操作集中到 Database Worker 或通过队列串行执行；
+- 写操作通过明确的线程归属或队列串行执行；
 - 失败时返回明确错误码。
 
 ## 9. 错误处理
@@ -208,7 +211,9 @@ SQLite 多线程规则：
 
 ## 10. 头像与文件
 
-头像由用户端选择图片并传给 Qt/C++ 服务端。服务端保存文件，SQLite 保存相对路径。必须限制文件类型、大小和保存目录。
+头像由用户端选择图片并传给 Qt/C++ 服务端。服务端只接受 PNG/JPEG、最大 `1000 KiB`，
+保存文件而 SQLite 仅保存相对路径。`USER_AVATAR_GET` 只允许有效 User Session 读取本人
+头像的 Base64 内容；必须限制文件类型、大小和保存目录，且不得暴露绝对路径。
 
 ## 11. Web 大屏
 

@@ -4,10 +4,11 @@
 
 ## 1. 架构原则
 
-1. Qt/C++、SQLite、Socket 和多线程是项目主线。
+1. Qt/C++、SQLite、Socket 和 Qt 事件驱动是项目主线。
 2. Qt 用户端作为业务客户端，只通过 Socket 与 Qt/C++ 服务端通信。
 3. Qt 管理端作为独立管理客户端，只通过 Socket 与 Qt/C++ 服务端通信。
-4. Qt/C++ 服务端承担 Socket 服务、业务处理、数据库访问、WebSocket 大屏数据服务和远程重启模拟，不承担管理界面职责。
+4. Qt/C++ 服务端承担业务 TCP、独立 Device TCP、业务处理、数据库访问和 Dashboard
+   WebSocket 数据服务，不承担管理界面职责。
 5. SQLite 是主业务数据库，通过 QtSql 的 `QSQLITE` 驱动访问。
 6. Web 大屏通过 WebSocket 与 Qt/C++ 服务端交换展示数据。
 7. Spring Boot、MySQL 和 REST 不作为 V1 主架构。
@@ -22,7 +23,7 @@
 - SQLite Database
 - Web Dashboard
 - Python ML Module
-- Remote Restart Simulation
+- Qt Device Simulator
 
 系统外部依赖：
 
@@ -35,14 +36,14 @@
 
 ```text
 Qt 用户端（QTcpSocket） ─┐
-                         ├── TCP Socket ── Qt/C++ 服务端
-Qt 管理端（QTcpSocket） ─┘                 （QTcpServer + 业务服务 + SQLite + 多线程）
-                                           │
-                                           ├── QtSql + SQLite（QSQLITE）
-                                           ├── WebSocket ── Web + ECharts 大屏
-                                           ├── 腾讯地图 Web API
-                                           ├── Python 机器学习预测模块
-                                           └── 远程重启模拟
+                         ├── 业务 TCP :18080 ── SocketServer ─┐
+Qt 管理端（QTcpSocket） ─┘                                   │
+                                                               ├── MessageDispatcher / SessionManager
+Qt Device Simulator ── 设备 TCP :18082 ── DeviceGatewayServer ├── Handler → Service → Repository
+                                                               ├── QtSql + SQLite（QSQLITE）
+Web + ECharts ── WebSocket :18081/dashboard ──────────────────┤
+                                                               ├── 腾讯地图 Web API（异步适配）
+                                                               └── Prediction 导入/查询
 ```
 
 ## 4. 模块职责
@@ -66,7 +67,9 @@ Qt 管理端（QTcpSocket） ─┘                 （QTcpServer + 业务服务
 
 ### 4.3 Qt/C++ 服务端
 
-负责：
+服务端的唯一组合根是 `qt-server/main.cpp`。它创建一份 `DatabaseManager`、
+`SessionManager`、`MessageDispatcher`、业务 `SocketServer`、`DeviceRegistry`、
+`DeviceControlService`、`DeviceGatewayServer` 与 `DashboardWebSocketServer`。负责：
 
 - `QTcpServer` 连接管理；
 - Socket 消息解析和响应；
@@ -75,10 +78,10 @@ Qt 管理端（QTcpSocket） ─┘                 （QTcpServer + 业务服务
 - QtSql / SQLite 数据访问；
 - 管理员登录；
 - 营收、状态和趋势统计；
-- 远程重启模拟；
+- 设备会话、心跳超时、遥测缓存、故障、重连和远程重启 ACK；
 - WebSocket 大屏数据服务；
 - ML 数据导入导出；
-- 多线程任务调度。
+- 事件驱动的定时任务与异步回调调度。
 
 ### 4.4 SQLite 数据库
 
@@ -92,23 +95,23 @@ Qt 管理端（QTcpSocket） ─┘                 （QTcpServer + 业务服务
 
 只读取固定演示数据或 Qt/C++ 服务端导出的 CSV/JSON，输出负荷、空闲桩和高峰时段预测 JSON。ML 不直接访问 SQLite，结果由服务端校验后导入。
 
-### 4.7 远程重启模拟
+### 4.7 Device Simulator 与设备网关
 
-必做范围是管理端通过 Socket 发起重启请求，服务端处理指令、更新状态和记录日志。完整设备协议为扩展内容。
+设备协议是与 User/Admin TCP 会话隔离的 JSON Lines TCP 通道，默认端口 `18082`，
+当前用于 Qt Device Simulator，不是 OCPP，也没有生产级 TLS 或设备认证。`DEVICE_HELLO`
+完成后服务端才把电桩视为当前进程受管设备；心跳、遥测、故障状态与 `DEVICE_ACK` 由
+`DeviceSession`、`DeviceRegistry` 和 `DeviceControlService` 协作处理。
+
+服务端数据库状态是业务权威：受管 `OFFLINE` 电桩在合法 HELLO 且无活动订单时恢复
+`AVAILABLE`；`FAULT` 不会因重连自动清除，必须经管理员正式重启流程恢复。详细消息和
+状态规则见 `docs/07-DEVICE-PROTOCOL.md`。
 
 ## 5. 多线程模型
 
-Qt/C++ 服务端至少应划分：
-
-- Socket Accept / Read Thread：处理连接和消息读取；
-- Business Worker：执行业务逻辑；
-- Charging Timer Worker：维护充电计时和电量计算；
-- Database Worker：协调 SQLite 写操作；
-- Dashboard WebSocket Worker：维护大屏连接和推送。
-
-Qt 管理端至少应保持 UI 线程不阻塞，耗时 Socket 请求通过信号槽或异步回调更新界面。
-
-如老师要求 pthread，应在后续实现中补充 pthread 示例；否则优先使用 Qt 原生 `QThread`。
+当前实现以单个 Qt 事件循环、非阻塞 `QTcpSocket`/`QWebSocket` 信号槽和异步地图回调
+驱动；它没有把 Socket、数据库和 Dashboard 固化为独立 Worker 线程。耗时计算或外部
+调用不得阻塞 `readyRead` 回调。未来若引入 `QThread`，每个线程必须创建自己的
+`QSqlDatabase` 连接，且 `QTcpSocket`、`QWebSocket`、`QSqlDatabase` 不能跨线程直接使用。
 
 ### 5.1 通信模块结构
 
@@ -133,15 +136,19 @@ qt-server/network
   ├── SessionManager
   ├── MessageDispatcher
   └── DashboardWebSocketServer
+
+qt-server/devices
+  ├── DeviceGatewayServer / DeviceSession
+  ├── DeviceRegistry
+  └── DeviceControlService
 ~~~
 
 shared/protocol是公共代码，不是业务Service。它不能访问UI、Service或SQLite。
 
 ### 5.2 通信线程边界
 
-- Socket线程负责连接、字节收发、分帧和消息投递；
-- Business Worker负责业务规则；
-- Database Worker或Repository所属线程负责SQLite；
+- 当前事件循环负责连接、字节收发、分帧、投递和定时心跳检查；
+- Handler/Service 负责业务规则，Repository 负责 SQLite 访问；
 - WebSocket服务负责订阅关系和推送，不自行统计数据；
 - Qt 用户端和 Qt 管理端 UI 线程只响应信号并更新界面；
 - 跨线程通过Qt信号槽或线程安全队列传递普通数据；

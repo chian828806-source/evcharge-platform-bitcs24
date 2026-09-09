@@ -16,6 +16,8 @@ qt-server/
 ├── handlers/
 │   ├── user/                       # USER/STATION/ORDER routes
 │   └── admin/                      # ADMIN routes
+├── devices/                         # Device gateway, sessions and control
+├── map/                             # asynchronous Tencent Map adapter
 ├── models/                         # shared user, station and order models
 ├── network/                        # SocketServer, Dispatcher, SessionManager, WebSocket
 ├── repositories/                   # shared parameterized SQL repositories
@@ -30,7 +32,9 @@ qt-server/
 `MessageDispatcher`, and TCP `SocketServer`. `UserBackendRegistry` and
 `AdminHandlerRegistry` register their isolated handlers on that same
 dispatcher. The dashboard WebSocket server is a separate protocol endpoint,
-not another business SocketServer or Dispatcher.
+not another business SocketServer or Dispatcher. `DeviceGatewayServer` is a
+second, isolated TCP endpoint for simulator JSON Lines traffic; it does not
+create User/Admin sessions or bypass the database-authoritative business state.
 
 ## 3. Dependency Rules
 
@@ -59,14 +63,19 @@ session unless noted otherwise:
 | `USER_LOGIN` | Public |
 | `USER_PROFILE_GET` | User |
 | `USER_PROFILE_UPDATE` | User |
+| `USER_AVATAR_UPLOAD` / `USER_AVATAR_GET` | User |
+| `USER_RECHARGE` / `USER_ORDER_LIST` | User |
 | `STATION_LIST_NEARBY` | User |
 | `STATION_DETAIL_GET` | User |
+| `MAP_GEOCODE` / `MAP_ROUTE_PLAN` | User |
 | `ORDER_ACTIVE_CHECK` | User |
 | `ORDER_CREATE` | User |
 | `ORDER_CANCEL` | User |
 | `ORDER_START` | User |
 | `ORDER_STOP` | User |
 | `ORDER_SETTLE` | User |
+| `PREDICTION_LIST` | Any authenticated session |
+| `PREDICTION_RECOMMENDATION` | User |
 
 ## 5. Implemented Admin APIs
 
@@ -76,7 +85,8 @@ The following routes are registered by `AdminHandlerRegistry`; only
 `ADMIN_LOGIN`, `ADMIN_REVENUE_SUMMARY`, `ADMIN_REVENUE_TREND`,
 `ADMIN_PILE_STATUS_SUMMARY`, `ADMIN_PILE_LIST`, `ADMIN_PILE_RESTART`,
 `ADMIN_STATION_LIST`, `ADMIN_STATION_CREATE`, `ADMIN_USER_LIST`,
-`ADMIN_USER_FREEZE`, and `ADMIN_USER_UNFREEZE`.
+`ADMIN_USER_FREEZE`, `ADMIN_USER_UNFREEZE`, and `ADMIN_ORDER_LIST`.
+`PREDICTION_WARNING` and `PREDICTION_IMPORT` are also registered with Admin access.
 
 ## 6. Shared Infrastructure
 
@@ -90,6 +100,8 @@ The following routes are registered by `AdminHandlerRegistry`; only
   `PileRepository`, `OrderRepository`, and `OperationLogRepository`.
 - `common/`: shared password hashing; User and Admin do not carry duplicate
   password helpers.
+- `devices/`: `DeviceGatewayServer`, `DeviceSession`, `DeviceRegistry`, and
+  `DeviceControlService`; only completed HELLO sessions are managed.
 
 ## 7. Database Access Rules
 
@@ -102,8 +114,8 @@ and pile restart state changes. A failure rolls back the active transaction.
 ## 8. Known Limitations / TODO
 
 - ML batch JSON is imported through Admin/internal-only `PREDICTION_IMPORT`; automatic ML process invocation remains a follow-up. `PREDICTION_RECOMMENDATION` remains a User Backend station recommendation interface.
-- Full Web dashboard data publishing
-- Charging simulation and a background-worker abstraction
+- Production-grade device authentication/TLS or OCPP support
+- ML process orchestration and production scheduling
 - Advanced authorization, concurrency, and connection-pool work
 - Complete repository/model cleanup and automated integration coverage
 
@@ -166,9 +178,11 @@ release/evcharge-qt-server.exe --database ../database/evcharge.db
 Initialize the selected SQLite file with `database/schema.sql` before startup.
 When no `--database` is supplied, the server walks upward from its launch and
 executable directories to locate the repository-root `database/evcharge.db`.
-It verifies the 12-table database contract before listening. TCP uses `18080`
-by default and the dashboard WebSocket uses `18081` at `/dashboard`. Use
-`--tcp-port` and `--websocket-port` to override the ports.
+It verifies the 12-table database contract before listening. User/Admin TCP
+uses `18080`, Dashboard WebSocket uses `18081` at `/dashboard`, and Device TCP
+uses `18082` by default. Use `--tcp-port`, `--websocket-port`, and
+`--device-port` to override them. The User application additionally requires
+the Qt WebEngine runtime; Ubuntu packages must include `libqt6webenginecore6-bin`.
 
 ## 10. Smoke Test Checklist
 
@@ -177,5 +191,7 @@ by default and the dashboard WebSocket uses `18081` at `/dashboard`. Use
 - [x] `ORDER_CREATE → START → STOP → SETTLE`
 - [x] Admin login, revenue summary/trend, user list, pile list and restart
 - [x] One SocketServer/DatabaseManager with both handler registries
+- [x] Device HELLO, heartbeat, telemetry, fault/offline handling and restart ACK
+- [x] User avatar recovery, recharge, order history, Tencent Map request routes
 - [x] Freeze rejects order start; frozen charging user can stop and settle
 - [x] Settlement updates order, balance, `current_order_id`, pile totals and revenue
