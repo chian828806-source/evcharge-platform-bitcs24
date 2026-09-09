@@ -735,8 +735,10 @@ QWidget *UserWindow::buildProfilePage()
     profileLayout->addLayout(identity, 1);
     auto *profileActions = new QVBoxLayout;
     auto *avatarButton = makeButton(QStringLiteral("更换头像"), "ghostCompact");
+    auto *removeAvatarButton = makeButton(QStringLiteral("移除头像"), "ghostCompact");
     auto *renameButton = makeButton(QStringLiteral("修改昵称"), "ghostCompact");
     profileActions->addWidget(avatarButton);
+    profileActions->addWidget(removeAvatarButton);
     profileActions->addWidget(renameButton);
     profileLayout->addLayout(profileActions);
     layout->addWidget(profileCard);
@@ -777,12 +779,6 @@ QWidget *UserWindow::buildProfilePage()
     featureGrid->setColumnStretch(3, 1);
     commonLayout->addLayout(featureGrid);
     layout->addWidget(commonCard);
-    m_orderListLayout = new QVBoxLayout;
-    m_orderListLayout->setSpacing(12);
-    auto *ordersPanel = new QWidget;
-    ordersPanel->setLayout(m_orderListLayout);
-    ordersPanel->setVisible(false);
-    layout->addWidget(ordersPanel);
     auto *logoutButton = makeButton(QStringLiteral("退出登录"), "dangerGhost");
     layout->addWidget(logoutButton);
     layout->addStretch();
@@ -791,27 +787,52 @@ QWidget *UserWindow::buildProfilePage()
 
     connect(renameButton, &QPushButton::clicked, this, &UserWindow::showRenameDialog);
     connect(rechargeButton, &QPushButton::clicked, this, &UserWindow::showRechargeDialog);
-    connect(ordersButton, &QPushButton::clicked, this, [this, layout, ordersPanel]() {
-        QDialog dialog(this);
-        dialog.setWindowTitle(QStringLiteral("我的订单"));
-        dialog.setModal(true);
-        dialog.resize(430, 560);
-        auto *dialogLayout = new QVBoxLayout(&dialog);
+    connect(ordersButton, &QPushButton::clicked, this, [this]() {
+        if (m_ordersDialog) {
+            m_ordersDialog->raise();
+            m_ordersDialog->activateWindow();
+            return;
+        }
+        auto *dialog = new QDialog(this);
+        m_ordersDialog = dialog;
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        dialog->setWindowTitle(QStringLiteral("我的订单"));
+        dialog->setModal(true);
+        dialog->resize(430, 560);
+        auto *dialogLayout = new QVBoxLayout(dialog);
         dialogLayout->setContentsMargins(18, 18, 18, 18);
         auto *title = makeLabel(QStringLiteral("最近订单"), "sectionTitle");
         dialogLayout->addWidget(title);
         auto *hint = makeLabel(QStringLiteral("查看最近的充电与结算记录"), "caption");
         dialogLayout->addWidget(hint);
-        ordersPanel->setVisible(true);
-        dialogLayout->addWidget(ordersPanel, 1);
+        auto *ordersScroll = new QScrollArea(dialog);
+        ordersScroll->setWidgetResizable(true);
+        auto *ordersContent = new QWidget(ordersScroll);
+        m_orderListLayout = new QVBoxLayout(ordersContent);
+        m_orderListLayout->setSpacing(12);
+        ordersScroll->setWidget(ordersContent);
+        dialogLayout->addWidget(ordersScroll, 1);
         auto *closeButton = makeButton(QStringLiteral("关闭"), "secondary");
         dialogLayout->addWidget(closeButton);
-        connect(closeButton, &QPushButton::clicked, &dialog, &QDialog::accept);
-        dialog.exec();
-        ordersPanel->setVisible(false);
-        layout->addWidget(ordersPanel);
+        connect(closeButton, &QPushButton::clicked, dialog, &QDialog::close);
+        connect(dialog, &QObject::destroyed, this, [this]() {
+            m_ordersDialog = nullptr;
+            m_orderListLayout = nullptr;
+        });
+        dialog->open();
+        sendRequest(MessageTypes::UserOrderList,
+                    QJsonObject{{QStringLiteral("page"), 1},
+                                {QStringLiteral("pageSize"), 20}});
     });
     connect(avatarButton, &QPushButton::clicked, this, &UserWindow::uploadAvatar);
+    connect(removeAvatarButton, &QPushButton::clicked, this, [this]() {
+        if (confirmUserAction(this, QStringLiteral("移除头像"),
+                              QStringLiteral("确认移除当前头像？"),
+                              QStringLiteral("移除后将恢复为默认头像，但可随时重新上传。"),
+                              QStringLiteral("确认移除"), true)) {
+            sendRequest(MessageTypes::UserAvatarRemove);
+        }
+    });
     connect(logoutButton, &QPushButton::clicked, this, [this]() {
         if (confirmUserAction(this, QStringLiteral("退出登录"),
                               QStringLiteral("确认退出当前账户？"),
@@ -1272,6 +1293,7 @@ void UserWindow::renderStationDetail(const QJsonObject &station, const QJsonArra
 
 void UserWindow::renderOrders(const QJsonArray &orders)
 {
+    if (!m_orderListLayout) return;
     clearLayout(m_orderListLayout);
     if (orders.isEmpty()) {
         m_orderListLayout->addWidget(makeLabel(QStringLiteral("暂无订单记录"), "hint"));
@@ -1372,7 +1394,7 @@ void UserWindow::handleResponse(const QJsonObject &response)
         m_mapNavigationPage->setRoutePlan(plan);
     } else if (type == MessageTypes::UserProfileGet
                || type == MessageTypes::UserProfileUpdate) {
-        applyUser(data.value(QStringLiteral("user")).toObject());
+        applyUser(data.value(QStringLiteral("user")).   toObject());
         if (type == MessageTypes::UserProfileUpdate) showNotice(QStringLiteral("昵称已更新"));
     } else if (type == MessageTypes::UserAvatarGet) {
         // 只接受当前头像路径对应的响应，避免旧请求覆盖刚上传的新头像。
@@ -1444,5 +1466,8 @@ void UserWindow::handleResponse(const QJsonObject &response)
     } else if (type == MessageTypes::UserAvatarUpload) {
         applyUser(data.value(QStringLiteral("user")).toObject());
         showNotice(QStringLiteral("头像上传成功"));
+    } else if (type == MessageTypes::UserAvatarRemove) {
+        applyUser(data.value(QStringLiteral("user")).toObject());
+        showNotice(QStringLiteral("头像已移除"));
     }
 }

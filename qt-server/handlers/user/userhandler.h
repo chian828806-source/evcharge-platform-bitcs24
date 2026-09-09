@@ -26,6 +26,8 @@ public:
                                  const SessionContext &context);
     ResponseMessage avatarGet(const RequestMessage &request,
                               const SessionContext &context);
+    ResponseMessage avatarRemove(const RequestMessage &request,
+                                 const SessionContext &context);
     ResponseMessage recharge(const RequestMessage &request,
                              const SessionContext &context);
 

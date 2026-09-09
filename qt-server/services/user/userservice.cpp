@@ -329,6 +329,61 @@ ServiceResult<AvatarContent> UserService::avatarContent(qint64 userId)
     return ServiceResult<AvatarContent>::success(result);
 }
 
+ServiceResult<UserProfile> UserService::removeAvatar(qint64 userId)
+{
+    QSqlDatabase database;
+    QString databaseError;
+    if (!openDatabase(&database, &databaseError) || !database.transaction()) {
+        return ServiceResult<UserProfile>::failure(
+            ErrorCodes::DatabaseError, QStringLiteral("database unavailable"));
+    }
+
+    const auto user = m_userRepository->findById(database, userId, &databaseError);
+    if (!user.has_value() || user->status != QStringLiteral("NORMAL")) {
+        database.rollback();
+        return ServiceResult<UserProfile>::failure(
+            user.has_value() ? ErrorCodes::UserFrozen
+                             : (databaseError.isEmpty() ? ErrorCodes::InvalidSession
+                                                        : ErrorCodes::DatabaseError),
+            user.has_value() ? QStringLiteral("user is frozen")
+                             : QStringLiteral("user is unavailable"));
+    }
+    if (user->avatarPath.isEmpty()) {
+        database.rollback();
+        return ServiceResult<UserProfile>::success(*user);
+    }
+    if (!user->avatarPath.startsWith(QStringLiteral("avatars/"))) {
+        database.rollback();
+        return ServiceResult<UserProfile>::failure(
+            ErrorCodes::InternalError, QStringLiteral("invalid avatar path"));
+    }
+
+    const QString fileName = QFileInfo(user->avatarPath).fileName();
+    if (fileName.isEmpty()) {
+        database.rollback();
+        return ServiceResult<UserProfile>::failure(
+            ErrorCodes::InternalError, QStringLiteral("invalid avatar file"));
+    }
+    const QString now = QDateTime::currentDateTime()
+        .toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+    if (!m_userRepository->updateAvatarPath(database, userId, QString(), now,
+                                            &databaseError)) {
+        database.rollback();
+        return ServiceResult<UserProfile>::failure(
+            ErrorCodes::DatabaseError, QStringLiteral("remove avatar failed"));
+    }
+    const auto updatedUser = m_userRepository->findById(database, userId, &databaseError);
+    if (!updatedUser.has_value() || !database.commit()) {
+        database.rollback();
+        return ServiceResult<UserProfile>::failure(
+            ErrorCodes::DatabaseError, QStringLiteral("read updated user failed"));
+    }
+
+    // 数据库先提交，保证头像不再对外可见；文件清理失败只会留下无引用文件，不影响结果。
+    QFile::remove(QDir(m_avatarDirectory).filePath(fileName));
+    return ServiceResult<UserProfile>::success(*updatedUser);
+}
+
 ServiceResult<RechargeInfo> UserService::recharge(qint64 userId, qint64 amountFen)
 {
     constexpr qint64 maxRechargeFen = 100000000;

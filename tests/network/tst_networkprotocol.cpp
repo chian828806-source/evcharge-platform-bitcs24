@@ -193,8 +193,8 @@ void testSessionAndDispatcherBoundaries()
 void testKnownMessageRegistry()
 {
     // 数量变化意味着公共文档与代码可能发生漏登或私自扩展。
-    check(MessageTypes::tcpTypes().size() == 33,
-          QStringLiteral("all 33 documented TCP message types are registered"));
+    check(MessageTypes::tcpTypes().size() == 34,
+          QStringLiteral("all 34 documented TCP message types are registered"));
     check(MessageTypes::dashboardTopics().size() == 4,
           QStringLiteral("all four dashboard topics are registered"));
 }
@@ -510,6 +510,23 @@ void testUserProfileWalletOrdersAndRecommendations()
                      == QStringLiteral("image/png")
               && receivedAvatar == png,
           QStringLiteral("avatar get returns only the session user's stored image"));
+
+    RequestMessage avatarRemoveRequest{
+        QStringLiteral("REQ-AVATAR-REMOVE"), MessageTypes::UserAvatarRemove, sessionId, {}
+    };
+    const ResponseMessage avatarRemoveResponse = dispatcher.dispatch(avatarRemoveRequest);
+    RequestMessage avatarGetAfterRemoveRequest{
+        QStringLiteral("REQ-AVATAR-GET-AFTER-REMOVE"), MessageTypes::UserAvatarGet, sessionId, {}
+    };
+    const ResponseMessage avatarGetAfterRemoveResponse =
+        dispatcher.dispatch(avatarGetAfterRemoveRequest);
+    check(avatarRemoveResponse.code == ErrorCodes::Success
+              && avatarRemoveResponse.data.value(QStringLiteral("user")).toObject()
+                     .value(QStringLiteral("avatarPath")).isNull()
+              && !QFileInfo::exists(avatarDirectory.filePath(QFileInfo(avatarPath).fileName()))
+              && avatarGetAfterRemoveResponse.code == ErrorCodes::Success
+              && !avatarGetAfterRemoveResponse.data.value(QStringLiteral("hasAvatar")).toBool(),
+          QStringLiteral("avatar remove clears the profile path and restores default avatar"));
 
     RequestMessage rechargeRequest{
         QStringLiteral("REQ-RECHARGE"), MessageTypes::UserRecharge, sessionId,

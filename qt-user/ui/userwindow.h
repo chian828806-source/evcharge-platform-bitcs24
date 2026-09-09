@@ -4,7 +4,9 @@
 #include <QJsonObject>
 #include <QHash>
 #include <QMainWindow>
+#include <QPointer>
 
+class QDialog;
 class QLabel;
 class QLineEdit;
 class MapNavigationPage;
@@ -74,6 +76,7 @@ private:
     QVBoxLayout *m_stationListLayout = nullptr;
     QVBoxLayout *m_pileListLayout = nullptr;
     QVBoxLayout *m_orderListLayout = nullptr;
+    QPointer<QDialog> m_ordersDialog;
     QTimer *m_orderPollTimer = nullptr;
     int m_balanceFenInFen = 0;
     double m_originLongitude = 121.538;

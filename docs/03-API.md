@@ -82,6 +82,7 @@ USER_PROFILE_GET
 USER_PROFILE_UPDATE
 USER_AVATAR_UPLOAD
 USER_AVATAR_GET
+USER_AVATAR_REMOVE
 USER_RECHARGE
 USER_ORDER_LIST
 ```
@@ -262,11 +263,12 @@ Response:
 | `ORDER_SETTLE` | `orderId: integer`，必须大于 `0`。 | `order`、`balanceFen`。成功时在一个事务中扣减余额、完成订单并更新电桩累计统计；已完成订单重复请求不重复扣款。 | `4003` Session 无效，`4103` 余额不足，`4104` 订单状态非法，`4401` 订单 ID 非法，`5001` 事务失败。 |
 | `USER_AVATAR_UPLOAD` | `fileName: string`、`mimeType: string`、`contentBase64: string`。仅接受扩展名与 MIME 一致的 PNG 或 JPEG，Base64 解码后的原文件最大 1000 KiB。 | `avatarPath`、`user`；`avatarPath` 为如 `avatars/user-<id>-<uuid>.png` 的相对路径。 | `4002` 用户冻结，`4003` Session 无效，`4401` 文件名、MIME 或文件内容非法，`5001` 数据库失败，`5002` 文件目录或保存失败。 |
 | `USER_AVATAR_GET` | 空对象。只读取当前 Session 所属用户的头像。 | 无头像时为 `hasAvatar: false`；有头像时为 `hasAvatar: true`、`avatarPath`、`mimeType`、`contentBase64`。 | `4003` Session 无效，`5001` 查询失败，`5002` 头像文件不可用或内容非法。 |
+| `USER_AVATAR_REMOVE` | 空对象。只移除当前 Session 所属用户的头像。 | 更新后的 `user`，其 `avatarPath` 为 `null`。没有头像时同样成功，便于客户端重复点击演示。 | `4002` 用户冻结，`4003` Session 无效，`5001` 数据库失败，`5002` 头像路径非法。 |
 | `USER_RECHARGE` | `amountFen: integer`，范围为 `1` 至 `100000000`。 | `rechargeId`、`recordNo`、`amountFen`、`balanceFen`、`createdAt`。 | `4002` 用户冻结，`4003` Session 无效，`4401` 金额不是正整数或超出范围，`5001` 余额与充值流水事务失败。 |
 | `USER_ORDER_LIST` | 可选 `page: integer`（默认 `1`）、`pageSize: integer`（默认 `20`，最大 `50`）、`status: string`。`status` 只允许 `CREATED`、`CHARGING`、`PENDING_PAYMENT`、`COMPLETED`、`CANCELLED`。 | `items`、`page`、`pageSize`、`total`。`items` 按 `createdAt DESC, orderId DESC` 排序，每项为订单对象。 | `4003` Session 无效，`4401` 分页或状态筛选非法，`5001` 查询失败。 |
 | `PREDICTION_RECOMMENDATION` | `longitude: number`、`latitude: number`；可选 `limit: integer`（默认 `5`，范围 `1` 至 `20`）、`horizon: string`（默认 `1h`，可选 `1h`、`6h`、`24h`）。 | `stations`。每项为站点对象，并额外含 `recommended: true`、`predictedLoad`、`predictedAvailablePileCount`、`recommendationReason`。结果按预测负荷升序、距离升序、预测空闲桩数降序排列。无合格推荐时返回空数组。 | `4003` Session 无效，`4401` 坐标、数量或预测窗口非法，`5001` 站点或预测数据查询失败，`5002` 推荐模块未装配。 |
 
-以上为 18 个用户可调用接口。`PREDICTION_LIST` 由 Prediction Registry 提供，
+以上为 19 个用户可调用接口。`PREDICTION_LIST` 由 Prediction Registry 提供，
 不属于当前用户 UI 的必需页面能力。`MAP_GEOCODE` 和 `MAP_ROUTE_PLAN` 均已注册为
 异步 Handler：未配置地图 Key、网络超时或地图服务拒绝请求时返回 `5002`，不会阻塞
 Socket 读取线程。
@@ -279,6 +281,7 @@ Socket 读取线程。
 - `items` 中的订单对象包含 `orderId`、`orderNo`、`userId`、`stationId`、`stationName`、`pileId`、`pileNo`、`powerKw`、`status`、`priceFenPerKwh`、`serviceFeeFenPerKwh`、`totalPriceFenPerKwh`、`startAt`、`endAt`、`chargeMinutes`、`chargeSeconds`、`energyKwh`、`amountFen`、`createdAt`。`chargeSeconds` 是从 `startAt` 到当前时刻（充电中）或 `endAt`（已停止）的精确秒数；`chargeMinutes` 保持兼容的截断分钟。允许为 `null` 的文本字段以 `null` 返回。
 - `USER_RECHARGE` 的重复请求在同一服务进程内以 `userId + requestId` 去重；相同用户以相同 `requestId` 重试时，服务端返回首次成功响应，不会重复增加余额。服务重启后的跨进程幂等尚未实现。
 - `USER_AVATAR_UPLOAD` 保存文件后，数据库只保存相对路径并在响应中返回更新后的 `user`。`USER_AVATAR_GET` 只允许有效 User Session 读取本人的头像，返回 Base64 图片内容；不得暴露服务端绝对路径，也不得通过 `avatarPath` 读取其他用户文件。
+- `USER_AVATAR_REMOVE` 只允许有效 User Session 移除本人的头像。服务端先在事务中清空数据库路径，再尽力清理头像文件；文件清理偶发失败只会留下无引用文件，不会让数据库继续引用已删除的头像。
 
 ### 12.1.2 `MAP_GEOCODE` 已确认契约
 
