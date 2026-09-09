@@ -8,12 +8,16 @@ REPO_ROOT = $$clean_path($$PWD/..)
 SOURCES += \
     $$PWD/main.cpp \
     $$PWD/ui/userwindow.cpp \
+    $$PWD/ui/stationsheet.cpp \
     $$PWD/map/mapnavigationpage.cpp \
+    $$PWD/map/stationmapwidget.cpp \
     $$PWD/network/socketclient.cpp
 
 HEADERS += \
     $$PWD/ui/userwindow.h \
+    $$PWD/ui/stationsheet.h \
     $$PWD/map/mapnavigationpage.h \
+    $$PWD/map/stationmapwidget.h \
     $$PWD/network/socketclient.h
 
 RESOURCES += $$PWD/resources/user-resources.qrc

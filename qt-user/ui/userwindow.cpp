@@ -1,8 +1,10 @@
 #include "userwindow.h"
 
 #include "map/mapnavigationpage.h"
+#include "map/stationmapwidget.h"
 #include "network/socketclient.h"
 #include "shared/protocol/messagetypes.h"
+#include "ui/stationsheet.h"
 
 #include <QColor>
 #include <QByteArray>
@@ -22,6 +24,7 @@
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QMetaObject>
+#include <QMouseEvent>
 #include <QPair>
 #include <QPixmap>
 #include <QProgressBar>
@@ -31,12 +34,16 @@
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
 #include <QScrollArea>
+#include <QSplitter>
 #include <QStackedWidget>
+#include <QSet>
 #include <QStringList>
 #include <QStyle>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QtMath>
+
+#include <functional>
 
 namespace {
 
@@ -62,6 +69,35 @@ QFrame *makeCard()
 {
     auto *result = new QFrame;
     result->setObjectName(QStringLiteral("card"));
+    auto *shadow = new QGraphicsDropShadowEffect(result);
+    shadow->setBlurRadius(20);
+    shadow->setOffset(0, 6);
+    shadow->setColor(QColor(15, 23, 42, 25));
+    result->setGraphicsEffect(shadow);
+    return result;
+}
+
+class ClickableStationCard final : public QFrame
+{
+public:
+    std::function<void()> activated;
+
+protected:
+    void mouseReleaseEvent(QMouseEvent *event) override
+    {
+        QFrame::mouseReleaseEvent(event);
+        if (event->button() == Qt::LeftButton && rect().contains(event->pos())
+            && activated) {
+            activated();
+        }
+    }
+};
+
+ClickableStationCard *makeClickableStationCard()
+{
+    auto *result = new ClickableStationCard;
+    result->setObjectName(QStringLiteral("card"));
+    result->setCursor(Qt::PointingHandCursor);
     auto *shadow = new QGraphicsDropShadowEffect(result);
     shadow->setBlurRadius(20);
     shadow->setOffset(0, 6);
@@ -380,6 +416,21 @@ QWidget *UserWindow::buildHomePage()
     pageLayout->setContentsMargins(0, 0, 0, 0);
     pageLayout->setSpacing(0);
 
+    m_homeSplitter = new QSplitter(Qt::Vertical, page);
+    m_homeSplitter->setObjectName(QStringLiteral("homeMapSplitter"));
+    m_homeSplitter->setChildrenCollapsible(true);
+    m_homeSplitter->setCollapsible(0, true);
+    m_homeSplitter->setHandleWidth(0);
+
+    m_stationMap = new StationMapWidget(m_homeSplitter);
+    m_stationSheet = new StationSheet(m_homeSplitter);
+    m_homeSplitter->addWidget(m_stationMap);
+    m_homeSplitter->addWidget(m_stationSheet);
+    m_homeSplitter->setStretchFactor(0, 1);
+    m_homeSplitter->setStretchFactor(1, 1);
+    pageLayout->addWidget(m_homeSplitter, 1);
+    pageLayout->addWidget(buildBottomNavigation(Home));
+
     auto *content = new QWidget;
     auto *layout = new QVBoxLayout(content);
     layout->setContentsMargins(20, 0, 20, 24);
@@ -431,8 +482,9 @@ QWidget *UserWindow::buildHomePage()
     m_stationListLayout->addWidget(makeLabel(QStringLiteral("登录后加载服务端站点数据"), "hint"));
     layout->addStretch();
 
-    pageLayout->addWidget(makeScrollArea(content), 1);
-    pageLayout->addWidget(buildBottomNavigation(Home));
+    m_stationSheet->setContent(content);
+    m_stationMap->setOrigin(m_originName, m_originLongitude, m_originLatitude);
+
     const auto sendLocation = [this](const QString &district, const QString &address) {
         if (!m_socketClient->isConnected() || m_sessionId.isEmpty()) {
             showNotice(QStringLiteral("请连接服务并登录后再定位"), true);
@@ -456,6 +508,21 @@ QWidget *UserWindow::buildHomePage()
         const QString district = districtBox->currentData().toString().section(QLatin1Char('|'), 0, 0);
         sendLocation(district, addressEdit->text().trimmed());
     });
+    connect(m_stationMap, &StationMapWidget::stationSelected,
+            this, &UserWindow::selectHomeStation);
+    connect(m_stationSheet, &StationSheet::dragStarted, this, [this]() {
+        m_homeSheetStartHeight = m_stationSheet ? m_stationSheet->height() : 0;
+    });
+    connect(m_stationSheet, &StationSheet::dragMoved, this, [this](int deltaY) {
+        setHomeSheetHeight(m_homeSheetStartHeight - deltaY);
+    });
+    connect(m_stationSheet, &StationSheet::dragReleased,
+            this, &UserWindow::snapHomeSheet);
+    QTimer::singleShot(0, page, [this]() {
+        if (m_homeSplitter) {
+            setHomeSheetHeight(m_homeSplitter->height() / 2);
+        }
+    });
     return page;
 }
 
@@ -465,8 +532,10 @@ QWidget *UserWindow::buildStationCard(const QJsonObject &station)
     const QString address = station.value(QStringLiteral("address")).toString();
     const bool recommended = station.value(QStringLiteral("recommended")).toBool();
     const int stationId = station.value(QStringLiteral("stationId")).toInt();
-    auto *stationCard = makeCard();
+    auto *stationCard = makeClickableStationCard();
     stationCard->setProperty("variant", "station");
+    stationCard->setProperty("selected", stationId == m_selectedHomeStationId);
+    stationCard->setToolTip(QStringLiteral("点击在地图中选中此站点"));
     auto *layout = new QVBoxLayout(stationCard);
     layout->setContentsMargins(18, 17, 18, 17);
     layout->setSpacing(10);
@@ -494,7 +563,10 @@ QWidget *UserWindow::buildStationCard(const QJsonObject &station)
     actions->addWidget(detailButton, 1);
     actions->addWidget(navigationButton, 1);
     layout->addLayout(actions);
+    stationCard->activated = [this, stationId]() { selectHomeStation(stationId); };
+    m_stationCards.insert(stationId, stationCard);
     connect(detailButton, &QPushButton::clicked, this, [this, station, stationId]() {
+        selectHomeStation(stationId);
         m_selectedStation = station;
         m_stationDetailTitle->setText(station.value(QStringLiteral("name")).toString());
         m_stationDetailSummary->setText(QStringLiteral("正在获取站点详情…"));
@@ -504,7 +576,8 @@ QWidget *UserWindow::buildStationCard(const QJsonObject &station)
         sendRequest(MessageTypes::StationDetailGet,
                     QJsonObject{{QStringLiteral("stationId"), stationId}});
     });
-    connect(navigationButton, &QPushButton::clicked, this, [this, station]() {
+    connect(navigationButton, &QPushButton::clicked, this, [this, station, stationId]() {
+        selectHomeStation(stationId);
         openNavigation(station, Home);
     });
     return stationCard;
@@ -892,6 +965,14 @@ void UserWindow::requestRoutePlan(const MapRoute &route, bool driving)
 void UserWindow::showPage(Page page)
 {
     m_pages->setCurrentIndex(static_cast<int>(page));
+    if (page == Home && !m_homeSheetInitialized && m_homeSplitter) {
+        QTimer::singleShot(0, this, [this]() {
+            if (m_homeSplitter && m_homeSplitter->height() > 0) {
+                setHomeSheetHeight(m_homeSplitter->height() / 2);
+                m_homeSheetInitialized = true;
+            }
+        });
+    }
     if (m_sessionMode == SessionMode::Real && !m_sessionId.isEmpty()
         && m_socketClient->isConnected()) {
         if (page == Charging) {
@@ -1197,6 +1278,23 @@ void UserWindow::applyOrder(const QJsonObject &order)
 
 void UserWindow::renderStations(const QJsonArray &stations)
 {
+    m_displayStations = stations;
+    bool selectedStillVisible = false;
+    for (const QJsonValue &value : m_displayStations) {
+        if (value.toObject().value(QStringLiteral("stationId")).toInt()
+            == m_selectedHomeStationId) {
+            selectedStillVisible = true;
+            break;
+        }
+    }
+    if (!selectedStillVisible) {
+        m_selectedHomeStationId = -1;
+    }
+    if (m_stationMap) {
+        m_stationMap->setSelectedStation(m_selectedHomeStationId);
+        m_stationMap->setStations(m_displayStations);
+    }
+    m_stationCards.clear();
     clearLayout(m_stationListLayout);
     if (stations.isEmpty()) {
         m_stationListLayout->addWidget(makeLabel(QStringLiteral("当前没有可展示的充电站"), "hint"));
@@ -1205,6 +1303,64 @@ void UserWindow::renderStations(const QJsonArray &stations)
     for (const QJsonValue &value : stations) {
         m_stationListLayout->addWidget(buildStationCard(value.toObject()));
     }
+}
+
+void UserWindow::selectHomeStation(int stationId)
+{
+    bool exists = false;
+    for (const QJsonValue &value : m_displayStations) {
+        if (value.toObject().value(QStringLiteral("stationId")).toInt() == stationId) {
+            exists = true;
+            break;
+        }
+    }
+    if (!exists) {
+        return;
+    }
+    m_selectedHomeStationId = stationId;
+    if (m_stationMap) {
+        m_stationMap->setSelectedStation(stationId);
+    }
+    for (auto it = m_stationCards.begin(); it != m_stationCards.end(); ++it) {
+        QWidget *card = it.value();
+        if (!card) {
+            continue;
+        }
+        card->setProperty("selected", it.key() == stationId);
+        card->style()->unpolish(card);
+        card->style()->polish(card);
+    }
+    if (m_stationSheet) {
+        m_stationSheet->ensureWidgetVisible(m_stationCards.value(stationId));
+    }
+}
+
+void UserWindow::setHomeSheetHeight(int sheetHeight)
+{
+    if (!m_homeSplitter) {
+        return;
+    }
+    const int totalHeight = m_homeSplitter->height();
+    if (totalHeight <= 0) {
+        return;
+    }
+    const int minimumSheetHeight = qMin(210, totalHeight);
+    const int targetHeight = qBound(minimumSheetHeight, sheetHeight, totalHeight);
+    m_homeSplitter->setSizes({qMax(0, totalHeight - targetHeight), targetHeight});
+}
+
+void UserWindow::snapHomeSheet()
+{
+    if (!m_homeSplitter || !m_stationSheet) {
+        return;
+    }
+    const int totalHeight = m_homeSplitter->height();
+    if (totalHeight <= 0) {
+        return;
+    }
+    const int halfHeight = qMax(qMin(210, totalHeight), totalHeight / 2);
+    const int threshold = (halfHeight + totalHeight) / 2;
+    setHomeSheetHeight(m_stationSheet->height() >= threshold ? totalHeight : halfHeight);
 }
 
 void UserWindow::renderStationDetail(const QJsonObject &station, const QJsonArray &piles)
@@ -1296,6 +1452,9 @@ void UserWindow::handleResponse(const QJsonObject &response)
         m_originLatitude = data.value(QStringLiteral("latitude")).toDouble();
         const QString formatted = data.value(QStringLiteral("formattedAddress")).toString();
         if (!formatted.isEmpty()) m_originName = formatted;
+        if (m_stationMap) {
+            m_stationMap->setOrigin(m_originName, m_originLongitude, m_originLatitude);
+        }
         sendRequest(MessageTypes::StationListNearby,
                     QJsonObject{{QStringLiteral("longitude"), m_originLongitude},
                                 {QStringLiteral("latitude"), m_originLatitude},

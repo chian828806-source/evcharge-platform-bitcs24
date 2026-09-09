@@ -17,6 +17,11 @@ QFrame#connectionBar { background: #102b26; border: none; }
 QFrame#card { background: #ffffff; border: 1px solid #e1ebe8; border-radius: 18px; }
 QFrame#card[variant="search"] { background: #f9fffd; border-color: #d7ebe5; }
 QFrame#card[variant="station"] { border-left: 4px solid #20b486; }
+QFrame#card[variant="station"][selected="true"] {
+    background: #ecfaf5;
+    border: 2px solid #1aa57d;
+    border-left: 5px solid #159873;
+}
 QFrame#card[variant="stationHero"] { background: #eaf9f4; border-color: #cbeadf; }
 QFrame#card[variant="pile"] { background: #fbfdfc; }
 QFrame#card[variant="orderHero"] { background: #173b34; border: none; }
@@ -37,6 +42,28 @@ QFrame#mapPlaceholder {
     border: 1px dashed #9bbab1;
     border-radius: 16px;
     min-height: 300px;
+}
+QWidget#stationMapWidget { background: #dceee8; }
+QLabel#stationMapStatus {
+    color: #467067;
+    background: #eef8f5;
+    border-top: 1px solid #d2e6df;
+    padding: 5px 12px;
+    font-size: 10px;
+}
+QFrame#stationSheet {
+    background: #f4f7f8;
+    border-top: 1px solid #d7e6e1;
+}
+QWidget#stationSheetGrip {
+    background: #ffffff;
+    border-top-left-radius: 20px;
+    border-top-right-radius: 20px;
+}
+QFrame#stationSheetGripBar {
+    background: #afc8c0;
+    border: none;
+    border-radius: 3px;
 }
 
 QLabel[role="connection"] { color: #c6ded8; font-size: 11px; }

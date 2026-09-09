@@ -9,10 +9,13 @@ class QLabel;
 class QLineEdit;
 class MapNavigationPage;
 class QPushButton;
+class QSplitter;
 class QStackedWidget;
 class QVBoxLayout;
 class QTimer;
 class SocketClient;
+class StationMapWidget;
+class StationSheet;
 struct MapRoute;
 
 class UserWindow final : public QMainWindow
@@ -45,6 +48,9 @@ private:
     QLabel *m_balanceLabel = nullptr;
     QLabel *m_nicknameLabel = nullptr;
     MapNavigationPage *m_mapNavigationPage = nullptr;
+    StationMapWidget *m_stationMap = nullptr;
+    StationSheet *m_stationSheet = nullptr;
+    QSplitter *m_homeSplitter = nullptr;
     QLabel *m_profilePhoneLabel = nullptr;
     QLabel *m_orderSummaryLabel = nullptr;
     QLabel *m_chargeStatisticsLabel = nullptr;
@@ -69,11 +75,16 @@ private:
     QJsonObject m_selectedStation;
     QJsonArray m_nearbyStations;
     QJsonArray m_recommendedStations;
+    QJsonArray m_displayStations;
     QVBoxLayout *m_stationListLayout = nullptr;
     QVBoxLayout *m_pileListLayout = nullptr;
     QVBoxLayout *m_orderListLayout = nullptr;
     QTimer *m_orderPollTimer = nullptr;
+    QHash<int, QWidget *> m_stationCards;
     int m_balanceFenInFen = 0;
+    int m_selectedHomeStationId = -1;
+    int m_homeSheetStartHeight = 0;
+    bool m_homeSheetInitialized = false;
     double m_originLongitude = 121.538;
     double m_originLatitude = 38.889;
     QString m_originName = QStringLiteral("默认位置 · 甘井子区");
@@ -112,6 +123,9 @@ private:
     void resetAvatar();
     void applyOrder(const QJsonObject &order);
     void renderStations(const QJsonArray &stations);
+    void selectHomeStation(int stationId);
+    void setHomeSheetHeight(int sheetHeight);
+    void snapHomeSheet();
     void renderStationDetail(const QJsonObject &station, const QJsonArray &piles);
     void renderOrders(const QJsonArray &orders);
     void clearLayout(QVBoxLayout *layout);
