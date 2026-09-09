@@ -1,8 +1,10 @@
 #include "userwindow.h"
 
 #include "map/mapnavigationpage.h"
+#include "map/stationmapwidget.h"
 #include "network/socketclient.h"
 #include "shared/protocol/messagetypes.h"
+#include "ui/stationsheet.h"
 
 #include <QColor>
 #include <QByteArray>
@@ -14,6 +16,7 @@
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QFrame>
+#include <QGridLayout>
 #include <QGraphicsDropShadowEffect>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -22,6 +25,7 @@
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QMetaObject>
+#include <QMouseEvent>
 #include <QPair>
 #include <QPixmap>
 #include <QProgressBar>
@@ -30,14 +34,19 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
+#include <QResizeEvent>
 #include <QScrollArea>
+#include <QSplitter>
 #include <QSizePolicy>
 #include <QStackedWidget>
+#include <QSet>
 #include <QStringList>
 #include <QStyle>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QtMath>
+
+#include <functional>
 
 namespace {
 
@@ -63,6 +72,69 @@ QFrame *makeCard()
 {
     auto *result = new QFrame;
     result->setObjectName(QStringLiteral("card"));
+    auto *shadow = new QGraphicsDropShadowEffect(result);
+    shadow->setBlurRadius(20);
+    shadow->setOffset(0, 6);
+    shadow->setColor(QColor(15, 23, 42, 25));
+    result->setGraphicsEffect(shadow);
+    return result;
+}
+
+class ClickableStationCard final : public QFrame
+{
+public:
+    std::function<void()> activated;
+
+protected:
+    void mouseReleaseEvent(QMouseEvent *event) override
+    {
+        QFrame::mouseReleaseEvent(event);
+        if (event->button() == Qt::LeftButton && rect().contains(event->pos())
+            && activated) {
+            activated();
+        }
+    }
+};
+
+class ScaledPixmapLabel final : public QLabel
+{
+public:
+    explicit ScaledPixmapLabel(QWidget *parent = nullptr)
+        : QLabel(parent)
+    {
+        setAlignment(Qt::AlignCenter);
+    }
+
+    void setSourcePixmap(const QPixmap &pixmap)
+    {
+        m_sourcePixmap = pixmap;
+        updateScaledPixmap();
+    }
+
+protected:
+    void resizeEvent(QResizeEvent *event) override
+    {
+        QLabel::resizeEvent(event);
+        updateScaledPixmap();
+    }
+
+private:
+    QPixmap m_sourcePixmap;
+
+    void updateScaledPixmap()
+    {
+        if (!m_sourcePixmap.isNull() && size().isValid()) {
+            setPixmap(m_sourcePixmap.scaled(size(), Qt::KeepAspectRatio,
+                                            Qt::SmoothTransformation));
+        }
+    }
+};
+
+ClickableStationCard *makeClickableStationCard()
+{
+    auto *result = new ClickableStationCard;
+    result->setObjectName(QStringLiteral("card"));
+    result->setCursor(Qt::PointingHandCursor);
     auto *shadow = new QGraphicsDropShadowEffect(result);
     shadow->setBlurRadius(20);
     shadow->setOffset(0, 6);
@@ -237,6 +309,7 @@ UserWindow::UserWindow(QWidget *parent)
 
     m_pages = new QStackedWidget;
     m_pages->addWidget(buildLoginPage());
+    m_pages->addWidget(buildPromotionPage());
     m_pages->addWidget(buildHomePage());
     m_pages->addWidget(buildStationDetailPage());
     m_pages->addWidget(buildChargingPage());
@@ -328,6 +401,16 @@ UserWindow::UserWindow(QWidget *parent)
     m_orderPollTimer = new QTimer(this);
     m_orderPollTimer->setInterval(1000);
     connect(m_orderPollTimer, &QTimer::timeout, this, &UserWindow::requestActiveOrder);
+    m_promotionTimer = new QTimer(this);
+    m_promotionTimer->setInterval(1000);
+    connect(m_promotionTimer, &QTimer::timeout, this, [this]() {
+        --m_promotionSecondsRemaining;
+        if (m_promotionSecondsRemaining <= 0) {
+            finishPromotion();
+            return;
+        }
+        updatePromotionSkipText();
+    });
     m_couponPollTimer = new QTimer(this);
     m_couponPollTimer->setInterval(5000);
     connect(m_couponPollTimer, &QTimer::timeout, this, [this]() {
@@ -397,12 +480,47 @@ QWidget *UserWindow::buildLoginPage()
     return page;
 }
 
+QWidget *UserWindow::buildPromotionPage()
+{
+    auto *page = new QWidget;
+    page->setObjectName(QStringLiteral("promotionPage"));
+    auto *layout = new QGridLayout(page);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+
+    auto *image = new ScaledPixmapLabel(page);
+    image->setObjectName(QStringLiteral("promotionImage"));
+    image->setSourcePixmap(QPixmap(QStringLiteral(":/images/promotion-ad.png")));
+    layout->addWidget(image, 0, 0);
+
+    auto *skipButton = makeButton(QStringLiteral("跳过 3s"), "promotionSkip");
+    skipButton->setMinimumSize(78, 34);
+    layout->addWidget(skipButton, 0, 0, Qt::AlignTop | Qt::AlignRight);
+    connect(skipButton, &QPushButton::clicked, this, &UserWindow::finishPromotion);
+    return page;
+}
+
 QWidget *UserWindow::buildHomePage()
 {
     auto *page = new QWidget;
     auto *pageLayout = new QVBoxLayout(page);
     pageLayout->setContentsMargins(0, 0, 0, 0);
     pageLayout->setSpacing(0);
+
+    m_homeSplitter = new QSplitter(Qt::Vertical, page);
+    m_homeSplitter->setObjectName(QStringLiteral("homeMapSplitter"));
+    m_homeSplitter->setChildrenCollapsible(true);
+    m_homeSplitter->setCollapsible(0, true);
+    m_homeSplitter->setHandleWidth(0);
+
+    m_stationMap = new StationMapWidget(m_homeSplitter);
+    m_stationSheet = new StationSheet(m_homeSplitter);
+    m_homeSplitter->addWidget(m_stationMap);
+    m_homeSplitter->addWidget(m_stationSheet);
+    m_homeSplitter->setStretchFactor(0, 1);
+    m_homeSplitter->setStretchFactor(1, 1);
+    pageLayout->addWidget(m_homeSplitter, 1);
+    pageLayout->addWidget(buildBottomNavigation(Home));
 
     auto *content = new QWidget;
     auto *layout = new QVBoxLayout(content);
@@ -455,8 +573,9 @@ QWidget *UserWindow::buildHomePage()
     m_stationListLayout->addWidget(makeLabel(QStringLiteral("登录后加载服务端站点数据"), "hint"));
     layout->addStretch();
 
-    pageLayout->addWidget(makeScrollArea(content), 1);
-    pageLayout->addWidget(buildBottomNavigation(Home));
+    m_stationSheet->setContent(content);
+    m_stationMap->setOrigin(m_originName, m_originLongitude, m_originLatitude);
+
     const auto sendLocation = [this](const QString &district, const QString &address) {
         if (!m_socketClient->isConnected() || m_sessionId.isEmpty()) {
             showNotice(QStringLiteral("请连接服务并登录后再定位"), true);
@@ -480,6 +599,21 @@ QWidget *UserWindow::buildHomePage()
         const QString district = districtBox->currentData().toString().section(QLatin1Char('|'), 0, 0);
         sendLocation(district, addressEdit->text().trimmed());
     });
+    connect(m_stationMap, &StationMapWidget::stationSelected,
+            this, &UserWindow::selectHomeStation);
+    connect(m_stationSheet, &StationSheet::dragStarted, this, [this]() {
+        m_homeSheetStartHeight = m_stationSheet ? m_stationSheet->height() : 0;
+    });
+    connect(m_stationSheet, &StationSheet::dragMoved, this, [this](int deltaY) {
+        setHomeSheetHeight(m_homeSheetStartHeight - deltaY);
+    });
+    connect(m_stationSheet, &StationSheet::dragReleased,
+            this, &UserWindow::snapHomeSheet);
+    QTimer::singleShot(0, page, [this]() {
+        if (m_homeSplitter) {
+            setHomeSheetHeight(m_homeSplitter->height() / 2);
+        }
+    });
     return page;
 }
 
@@ -492,8 +626,10 @@ QWidget *UserWindow::buildStationCard(const QJsonObject &station)
         == QStringLiteral("DISABLED");
     const int stationId = station.value(QStringLiteral("stationId")).toInt();
     const bool isFavorite = station.value(QStringLiteral("isFavorite")).toBool();
-    auto *stationCard = makeCard();
+    auto *stationCard = makeClickableStationCard();
     stationCard->setProperty("variant", "station");
+    stationCard->setProperty("selected", stationId == m_selectedHomeStationId);
+    stationCard->setToolTip(QStringLiteral("点击在地图中选中此站点"));
     auto *layout = new QVBoxLayout(stationCard);
     layout->setContentsMargins(18, 17, 18, 17);
     layout->setSpacing(10);
@@ -530,7 +666,10 @@ QWidget *UserWindow::buildStationCard(const QJsonObject &station)
     actions->addWidget(detailButton, 1);
     actions->addWidget(navigationButton, 1);
     layout->addLayout(actions);
+    stationCard->activated = [this, stationId]() { selectHomeStation(stationId); };
+    m_stationCards.insert(stationId, stationCard);
     connect(detailButton, &QPushButton::clicked, this, [this, station, stationId]() {
+        selectHomeStation(stationId);
         m_selectedStation = station;
         m_stationDetailSource = m_pages->currentIndex() == static_cast<int>(Favorites)
             ? Favorites : Home;
@@ -542,7 +681,8 @@ QWidget *UserWindow::buildStationCard(const QJsonObject &station)
         sendRequest(MessageTypes::StationDetailGet,
                     QJsonObject{{QStringLiteral("stationId"), stationId}});
     });
-    connect(navigationButton, &QPushButton::clicked, this, [this, station]() {
+    connect(navigationButton, &QPushButton::clicked, this, [this, station, stationId]() {
+        selectHomeStation(stationId);
         const Page source = m_pages->currentIndex() == static_cast<int>(Favorites)
             ? Favorites : Home;
         openNavigation(station, source);
@@ -642,7 +782,8 @@ QWidget *UserWindow::buildPileCard(const QJsonObject &pile)
             for (const QJsonValue &value : m_coupons) {
                 const QJsonObject coupon = value.toObject();
                 if (coupon.value(QStringLiteral("status")).toString() == QStringLiteral("AVAILABLE")) {
-                    availableCouponId = coupon.value(QStringLiteral("couponId")).toInteger();
+                    availableCouponId = static_cast<qint64>(
+                        coupon.value(QStringLiteral("couponId")).toDouble());
                     break;
                 }
             }
@@ -936,7 +1077,8 @@ QWidget *UserWindow::buildProfilePage()
             const QString name = productData.value(QStringLiteral("name")).toString();
             const QString productNo = productData.value(QStringLiteral("productNo")).toString();
             const int durationDays = productData.value(QStringLiteral("durationDays")).toInt();
-            const qint64 priceFen = productData.value(QStringLiteral("salePriceFen")).toInteger();
+            const qint64 priceFen = static_cast<qint64>(
+                productData.value(QStringLiteral("salePriceFen")).toDouble());
             const int discountBps = productData.value(QStringLiteral("serviceFeeDiscountBps")).toInt(8000);
             auto *product = makeCard();
             product->setProperty("variant", "membershipProduct");
@@ -1150,7 +1292,18 @@ void UserWindow::requestRoutePlan(const MapRoute &route, bool driving)
 
 void UserWindow::showPage(Page page)
 {
+    if (page != Promotion && m_promotionTimer) {
+        m_promotionTimer->stop();
+    }
     m_pages->setCurrentIndex(static_cast<int>(page));
+    if (page == Home && !m_homeSheetInitialized && m_homeSplitter) {
+        QTimer::singleShot(0, this, [this]() {
+            if (m_homeSplitter && m_homeSplitter->height() > 0) {
+                setHomeSheetHeight(m_homeSplitter->height() / 2);
+                m_homeSheetInitialized = true;
+            }
+        });
+    }
     if (m_sessionMode == SessionMode::Real && !m_sessionId.isEmpty()
         && m_socketClient->isConnected()) {
         if (page == Charging) {
@@ -1303,7 +1456,7 @@ void UserWindow::showCouponDialog()
             const QString statusName = status == QStringLiteral("AVAILABLE") ? QStringLiteral("可使用")
                 : status == QStringLiteral("LOCKED") ? QStringLiteral("订单已选用") : QStringLiteral("已使用");
             layout->addWidget(makeLabel(QStringLiteral("八折优惠券 #%1　%2\n下发时间：%3")
-                .arg(coupon.value(QStringLiteral("couponId")).toInteger())
+                .arg(static_cast<qint64>(coupon.value(QStringLiteral("couponId")).toDouble()))
                 .arg(statusName, coupon.value(QStringLiteral("issuedAt")).toString()), "caption"));
         }
     }
@@ -1454,7 +1607,8 @@ void UserWindow::applyUser(const QJsonObject &user)
             ? phone.left(3) + QStringLiteral("****") + phone.right(4) : phone;
         m_profilePhoneLabel->setText(QStringLiteral("手机号：") + masked);
     }
-    if (m_profileIdLabel) m_profileIdLabel->setText(QStringLiteral("ID：%1").arg(user.value(QStringLiteral("userId")).toInteger()));
+    if (m_profileIdLabel) m_profileIdLabel->setText(QStringLiteral("ID：%1").arg(
+        static_cast<qint64>(user.value(QStringLiteral("userId")).toDouble())));
     if (m_profileStatusLabel) m_profileStatusLabel->setText(QStringLiteral("账户状态：%1").arg(userStatusText(user.value(QStringLiteral("status")).toString())));
     m_balanceFenInFen = user.value(QStringLiteral("balanceFen")).toInt();
     m_isMember = user.value(QStringLiteral("isMember")).toBool();
@@ -1534,6 +1688,23 @@ void UserWindow::applyOrder(const QJsonObject &order)
 
 void UserWindow::renderStations(const QJsonArray &stations)
 {
+    m_displayStations = stations;
+    bool selectedStillVisible = false;
+    for (const QJsonValue &value : m_displayStations) {
+        if (value.toObject().value(QStringLiteral("stationId")).toInt()
+            == m_selectedHomeStationId) {
+            selectedStillVisible = true;
+            break;
+        }
+    }
+    if (!selectedStillVisible) {
+        m_selectedHomeStationId = -1;
+    }
+    if (m_stationMap) {
+        m_stationMap->setSelectedStation(m_selectedHomeStationId);
+        m_stationMap->setStations(m_displayStations);
+    }
+    m_stationCards.clear();
     clearLayout(m_stationListLayout);
     if (stations.isEmpty()) {
         m_stationListLayout->addWidget(makeLabel(QStringLiteral("当前没有可展示的充电站"), "hint"));
@@ -1542,6 +1713,92 @@ void UserWindow::renderStations(const QJsonArray &stations)
     for (const QJsonValue &value : stations) {
         m_stationListLayout->addWidget(buildStationCard(value.toObject()));
     }
+}
+
+void UserWindow::showPromotion()
+{
+    m_promotionSecondsRemaining = 3;
+    updatePromotionSkipText();
+    showPage(Promotion);
+    if (m_promotionTimer) {
+        m_promotionTimer->start();
+    }
+}
+
+void UserWindow::finishPromotion()
+{
+    if (m_promotionTimer) {
+        m_promotionTimer->stop();
+    }
+    if (m_pages->currentIndex() == static_cast<int>(Promotion)) {
+        showPage(Home);
+    }
+}
+
+void UserWindow::updatePromotionSkipText()
+{
+    const auto *promotionPage = m_pages->widget(static_cast<int>(Promotion));
+    if (const auto skipButton = promotionPage->findChild<QPushButton *>()) {
+        skipButton->setText(QStringLiteral("跳过 %1s").arg(m_promotionSecondsRemaining));
+    }
+}
+
+void UserWindow::selectHomeStation(int stationId)
+{
+    bool exists = false;
+    for (const QJsonValue &value : m_displayStations) {
+        if (value.toObject().value(QStringLiteral("stationId")).toInt() == stationId) {
+            exists = true;
+            break;
+        }
+    }
+    if (!exists) {
+        return;
+    }
+    m_selectedHomeStationId = stationId;
+    if (m_stationMap) {
+        m_stationMap->setSelectedStation(stationId);
+    }
+    for (auto it = m_stationCards.begin(); it != m_stationCards.end(); ++it) {
+        QWidget *card = it.value();
+        if (!card) {
+            continue;
+        }
+        card->setProperty("selected", it.key() == stationId);
+        card->style()->unpolish(card);
+        card->style()->polish(card);
+    }
+    if (m_stationSheet) {
+        m_stationSheet->ensureWidgetVisible(m_stationCards.value(stationId));
+    }
+}
+
+void UserWindow::setHomeSheetHeight(int sheetHeight)
+{
+    if (!m_homeSplitter) {
+        return;
+    }
+    const int totalHeight = m_homeSplitter->height();
+    if (totalHeight <= 0) {
+        return;
+    }
+    const int minimumSheetHeight = qMin(210, totalHeight);
+    const int targetHeight = qBound(minimumSheetHeight, sheetHeight, totalHeight);
+    m_homeSplitter->setSizes({qMax(0, totalHeight - targetHeight), targetHeight});
+}
+
+void UserWindow::snapHomeSheet()
+{
+    if (!m_homeSplitter || !m_stationSheet) {
+        return;
+    }
+    const int totalHeight = m_homeSplitter->height();
+    if (totalHeight <= 0) {
+        return;
+    }
+    const int halfHeight = qMax(qMin(210, totalHeight), totalHeight / 2);
+    const int threshold = (halfHeight + totalHeight) / 2;
+    setHomeSheetHeight(m_stationSheet->height() >= threshold ? totalHeight : halfHeight);
 }
 
 void UserWindow::renderStationDetail(const QJsonObject &station, const QJsonArray &piles)
@@ -1711,14 +1968,17 @@ void UserWindow::handleResponse(const QJsonObject &response)
         m_knownCouponIds.clear();
         if (m_couponPollTimer) m_couponPollTimer->start();
         applyUser(data.value(QStringLiteral("user")).toObject());
-        showPage(Home);
-        showNotice(QStringLiteral("登录成功"));
         requestInitialData();
+        showPromotion();
+        showNotice(QStringLiteral("登录成功"));
     } else if (type == MessageTypes::MapGeocode) {
         m_originLongitude = data.value(QStringLiteral("longitude")).toDouble();
         m_originLatitude = data.value(QStringLiteral("latitude")).toDouble();
         const QString formatted = data.value(QStringLiteral("formattedAddress")).toString();
         if (!formatted.isEmpty()) m_originName = formatted;
+        if (m_stationMap) {
+            m_stationMap->setOrigin(m_originName, m_originLongitude, m_originLatitude);
+        }
         sendRequest(MessageTypes::StationListNearby,
                     QJsonObject{{QStringLiteral("longitude"), m_originLongitude},
                                 {QStringLiteral("latitude"), m_originLatitude},
@@ -1837,7 +2097,8 @@ void UserWindow::handleResponse(const QJsonObject &response)
         bool receivedNewCoupon = false;
         for (const QJsonValue &value : coupons) {
             const QJsonObject coupon = value.toObject();
-            const qint64 id = coupon.value(QStringLiteral("couponId")).toInteger();
+            const qint64 id = static_cast<qint64>(
+                coupon.value(QStringLiteral("couponId")).toDouble());
             currentIds.insert(id);
             if (m_couponSnapshotReady && !m_knownCouponIds.contains(id)) receivedNewCoupon = true;
         }

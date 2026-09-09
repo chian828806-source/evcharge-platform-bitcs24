@@ -12,10 +12,13 @@ class QLabel;
 class QLineEdit;
 class MapNavigationPage;
 class QPushButton;
+class QSplitter;
 class QStackedWidget;
 class QVBoxLayout;
 class QTimer;
 class SocketClient;
+class StationMapWidget;
+class StationSheet;
 struct MapRoute;
 
 class UserWindow final : public QMainWindow
@@ -28,6 +31,7 @@ public:
 private:
     enum Page {
         Login,
+        Promotion,
         Home,
         StationDetail,
         Charging,
@@ -49,6 +53,9 @@ private:
     QLabel *m_balanceLabel = nullptr;
     QLabel *m_nicknameLabel = nullptr;
     MapNavigationPage *m_mapNavigationPage = nullptr;
+    StationMapWidget *m_stationMap = nullptr;
+    StationSheet *m_stationSheet = nullptr;
+    QSplitter *m_homeSplitter = nullptr;
     QLabel *m_profilePhoneLabel = nullptr;
     QLabel *m_profileIdLabel = nullptr;
     QLabel *m_profileStatusLabel = nullptr;
@@ -76,6 +83,7 @@ private:
     QJsonObject m_selectedStation;
     QJsonArray m_nearbyStations;
     QJsonArray m_recommendedStations;
+    QJsonArray m_displayStations;
     QJsonArray m_favoriteStations;
     QJsonArray m_membershipProducts;
     QVBoxLayout *m_stationListLayout = nullptr;
@@ -84,11 +92,17 @@ private:
     QPointer<QDialog> m_ordersDialog;
     QVBoxLayout *m_favoriteListLayout = nullptr;
     QTimer *m_orderPollTimer = nullptr;
+    QTimer *m_promotionTimer = nullptr;
     QTimer *m_couponPollTimer = nullptr;
+    QHash<int, QWidget *> m_stationCards;
+    int m_balanceFenInFen = 0;
+    int m_selectedHomeStationId = -1;
+    int m_homeSheetStartHeight = 0;
+    bool m_homeSheetInitialized = false;
+    int m_promotionSecondsRemaining = 0;
     QJsonArray m_coupons;
     QSet<qint64> m_knownCouponIds;
     bool m_couponSnapshotReady = false;
-    int m_balanceFenInFen = 0;
     bool m_isMember = false;
     int m_membershipRemainingDays = 0;
     int m_membershipDiscountBps = 10000;
@@ -101,6 +115,7 @@ private:
     Page m_stationDetailSource = Home;
 
     QWidget *buildLoginPage();
+    QWidget *buildPromotionPage();
     QWidget *buildHomePage();
     QWidget *buildStationDetailPage();
     QWidget *buildChargingPage();
@@ -116,6 +131,9 @@ private:
                             const QString &amount, const QString &status);
 
     void showPage(Page page);
+    void showPromotion();
+    void finishPromotion();
+    void updatePromotionSkipText();
     void openNavigation(const QJsonObject &station, Page source);
     void requestRoutePlan(const MapRoute &route, bool driving);
     void attemptLogin();
@@ -136,6 +154,9 @@ private:
     void resetAvatar();
     void applyOrder(const QJsonObject &order);
     void renderStations(const QJsonArray &stations);
+    void selectHomeStation(int stationId);
+    void setHomeSheetHeight(int sheetHeight);
+    void snapHomeSheet();
     void renderStationDetail(const QJsonObject &station, const QJsonArray &piles);
     void renderOrders(const QJsonArray &orders);
     void renderFavorites(const QJsonArray &stations);

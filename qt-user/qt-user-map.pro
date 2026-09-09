@@ -7,5 +7,10 @@ TARGET = evcharge-user-map
 REPO_ROOT = $$clean_path($$PWD/..)
 INCLUDEPATH += $$REPO_ROOT
 
-HEADERS += $$PWD/map/mapnavigationpage.h
-SOURCES += $$PWD/map/mapnavigationpage.cpp
+HEADERS += \
+    $$PWD/map/mapnavigationpage.h \
+    $$PWD/map/stationmapwidget.h
+
+SOURCES += \
+    $$PWD/map/mapnavigationpage.cpp \
+    $$PWD/map/stationmapwidget.cpp

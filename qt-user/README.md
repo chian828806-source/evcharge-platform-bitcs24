@@ -14,6 +14,8 @@
 | resources/ | 用户端统一 QSS 样式 |
 | qt-user.pro | 可运行的 Qt Widgets 用户端工程 |
 | map/mapnavigationpage.h/.cpp | U06 地图导航组件；使用 QWebEngineView 和腾讯 JavaScript API GL 展示可拖动、可缩放的真实地图与服务端路线 |
+| map/stationmapwidget.h/.cpp | U02 首页地图组件；展示模拟当前位置、附近站点图钉和站点选中状态 |
+| ui/stationsheet.h/.cpp | U02 站点列表抽屉；顶部把手支持鼠标/触摸拖动，并在半屏与全屏间吸附 |
 | qt-user-map.pro | 地图导航组件独立静态库工程（供单独编译或复用） |
 
 ## UI V1 页面
@@ -21,7 +23,8 @@
 | 编号 | 页面 | 当前状态 |
 | --- | --- | --- |
 | U01 | 手机号登录 | 已接入 `USER_LOGIN`、格式校验和 Session 保存 |
-| U02 | 首页/附近充电站 | 已接入附近站点和智能推荐列表 |
+| U01A | 登录活动页 | 登录成功后展示本地活动图 3 秒；右上角可随时跳过，期间首页数据在后台加载 |
+| U02 | 首页/附近充电站 | 已接入附近站点、智能推荐列表、可交互地图和可拖动站点抽屉 |
 | U03 | 充电站详情 | 已接入站点详情、电桩状态和选桩下单 |
 | U04 | 当前充电/订单处理 | 已接入活动订单轮询、开始、停止、取消和结算 |
 | U05 | 我的 | 已接入资料、昵称、头像上传、钱包充值和订单列表 |
@@ -62,6 +65,10 @@ U06 使用两类职责不同的配置：服务端通过 `TENCENT_MAP_KEY`（以�
 登录成功后，页面所属的Session对象应保存服务端返回的sessionId；之后的受保护请求都传入该值。
 
 ## 地图页接入
+
+首页 U02 的 `StationMapWidget` 使用同一个 `TENCENT_MAP_JS_KEY` 展示模拟当前位置和
+服务端返回的附近站点坐标；点击地图图钉会高亮相应列表卡片。首页的 `StationSheet` 仅在
+顶部把手区域处理鼠标/触摸拖动，地图仍可独立平移和缩放。
 
 首页 U02 或站点详情 U03 创建 `MapRoute` 并调用 `MapNavigationPage::setRoute()`；
 页面通过 `retryRequested(route, mode)` 向上层发送 `MAP_ROUTE_PLAN`，再调用
