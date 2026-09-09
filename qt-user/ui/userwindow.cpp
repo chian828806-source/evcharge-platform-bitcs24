@@ -767,35 +767,45 @@ QWidget *UserWindow::buildProfilePage()
     pageLayout->setSpacing(0);
     auto *content = new QWidget;
     auto *layout = new QVBoxLayout(content);
-    layout->setContentsMargins(20, 0, 20, 24);
+    layout->setContentsMargins(20, 18, 20, 24);
     layout->setSpacing(14);
     auto *profileCard = makeCard();
     profileCard->setProperty("variant", "profile");
-    auto *profileLayout = new QHBoxLayout(profileCard);
-    profileLayout->setContentsMargins(20, 20, 20, 20);
+    auto *profileLayout = new QVBoxLayout(profileCard);
+    profileLayout->setContentsMargins(20, 18, 20, 18);
+    profileLayout->setSpacing(14);
+    auto *profileTop = new QHBoxLayout;
+    profileTop->setSpacing(15);
     m_avatarLabel = makeLabel(QStringLiteral("U"), "avatar");
     m_avatarLabel->setAlignment(Qt::AlignCenter);
     m_avatarLabel->setFixedSize(66, 66);
     m_avatarLabel->setProperty("hasAvatar", false);
-    profileLayout->addWidget(m_avatarLabel);
+    m_avatarLabel->setProperty("vip", false);
+    profileTop->addWidget(m_avatarLabel, 0, Qt::AlignTop);
     auto *identity = new QVBoxLayout;
+    identity->setSpacing(5);
     m_nicknameLabel = makeLabel(QStringLiteral("用户信息加载中"), "cardTitle");
     identity->addWidget(m_nicknameLabel);
+    auto *identityMeta = new QHBoxLayout;
+    identityMeta->setSpacing(14);
     m_profileIdLabel = makeLabel(QStringLiteral("ID：--"), "caption");
-    identity->addWidget(m_profileIdLabel);
+    identityMeta->addWidget(m_profileIdLabel);
     m_profilePhoneLabel = makeLabel(QStringLiteral("尚未登录"), "caption");
-    identity->addWidget(m_profilePhoneLabel);
+    identityMeta->addWidget(m_profilePhoneLabel);
+    identityMeta->addStretch();
+    identity->addLayout(identityMeta);
     m_profileStatusLabel = makeLabel(QStringLiteral("账户状态：--"), "badgeGood");
-    m_profileStatusLabel->setMaximumWidth(120);
     identity->addWidget(m_profileStatusLabel, 0, Qt::AlignLeft);
-    profileLayout->addLayout(identity, 1);
-    auto *profileActions = new QVBoxLayout;
+    profileTop->addLayout(identity, 1);
+    profileLayout->addLayout(profileTop);
+    auto *profileActions = new QHBoxLayout;
+    profileActions->setSpacing(8);
     auto *avatarButton = makeButton(QStringLiteral("更换头像"), "ghostCompact");
     auto *removeAvatarButton = makeButton(QStringLiteral("移除头像"), "ghostCompact");
     auto *renameButton = makeButton(QStringLiteral("修改昵称"), "ghostCompact");
-    profileActions->addWidget(avatarButton);
-    profileActions->addWidget(removeAvatarButton);
-    profileActions->addWidget(renameButton);
+    profileActions->addWidget(avatarButton, 1);
+    profileActions->addWidget(removeAvatarButton, 1);
+    profileActions->addWidget(renameButton, 1);
     profileLayout->addLayout(profileActions);
     layout->addWidget(profileCard);
 
@@ -892,10 +902,10 @@ QWidget *UserWindow::buildProfilePage()
         QDialog dialog(this);
         dialog.setWindowTitle(QStringLiteral("会员中心"));
         dialog.setModal(true);
-        dialog.resize(430, 600);
+        dialog.resize(430, 640);
         auto *dialogLayout = new QVBoxLayout(&dialog);
         dialogLayout->setContentsMargins(18, 18, 18, 18);
-        dialogLayout->setSpacing(12);
+        dialogLayout->setSpacing(9);
         dialogLayout->addWidget(makeLabel(QStringLiteral("会员中心"), "sectionTitle"));
         dialogLayout->addWidget(makeLabel(QStringLiteral("会员由有效月卡或季卡构成，购买后按有效期享受服务费折扣。"), "caption"));
         dialogLayout->addWidget(makeLabel(QStringLiteral("折扣规则：只折扣服务费，不改变基础电价。有效服务费 = 原服务费 × 折扣比例；订单金额 = 电量 ×（基础电价 + 折后服务费）。订单按创建时的会员权益结算。"), "hint"));
@@ -912,6 +922,7 @@ QWidget *UserWindow::buildProfilePage()
 
         dialogLayout->addWidget(makeLabel(QStringLiteral("会员卡"), "sectionTitle"));
         auto *products = new QHBoxLayout;
+        products->setSpacing(12);
         QJsonArray productItems = m_membershipProducts;
         if (productItems.isEmpty()) {
             productItems = QJsonArray{
@@ -930,13 +941,18 @@ QWidget *UserWindow::buildProfilePage()
             auto *product = makeCard();
             product->setProperty("variant", "membershipProduct");
             product->setProperty("cardType", month ? "month" : "season");
+            product->setMinimumHeight(184);
             auto *productLayout = new QVBoxLayout(product);
-            productLayout->setContentsMargins(14, 14, 14, 14);
+            productLayout->setContentsMargins(14, 14, 14, 12);
+            productLayout->setSpacing(6);
             productLayout->addWidget(makeLabel(name, "cardTitle"));
             productLayout->addWidget(makeLabel(QStringLiteral("有效期 %1 天").arg(durationDays), "caption"));
             productLayout->addWidget(makeLabel(QStringLiteral("%1 元").arg(priceFen / 100.0, 0, 'f', 2), "metricLarge"));
-            productLayout->addWidget(makeLabel(QStringLiteral("服务费 %1 折 · VIP").arg(discountBps / 1000.0, 0, 'f', 1), "hint"));
+            productLayout->addWidget(makeLabel(QStringLiteral("服务费 %1 折").arg(
+                discountBps / 1000.0, 0, 'f', 1), "caption"));
+            productLayout->addStretch();
             auto *buy = makeButton(QStringLiteral("购买"), "primary");
+            buy->setFixedHeight(38);
             buy->setProperty("productNo", productNo);
             productLayout->addWidget(buy);
             connect(buy, &QPushButton::clicked, &dialog, [this, buy, &dialog]() {
@@ -1446,6 +1462,20 @@ void UserWindow::applyUser(const QJsonObject &user)
     m_membershipExpiresAt = user.value(QStringLiteral("membershipExpiresAt")).toString();
     m_membershipDiscountBps = user.value(QStringLiteral("membershipDiscountBps")).toInt(10000);
     if (m_balanceLabel) m_balanceLabel->setText(displayMoney(m_balanceFenInFen));
+    if (m_avatarLabel) {
+        m_avatarLabel->setProperty("vip", m_isMember);
+        if (m_isMember) {
+            auto *vipGlow = new QGraphicsDropShadowEffect(m_avatarLabel);
+            vipGlow->setBlurRadius(22);
+            vipGlow->setOffset(0, 0);
+            vipGlow->setColor(QColor(255, 207, 82, 210));
+            m_avatarLabel->setGraphicsEffect(vipGlow);
+        } else {
+            m_avatarLabel->setGraphicsEffect(nullptr);
+        }
+        m_avatarLabel->style()->unpolish(m_avatarLabel);
+        m_avatarLabel->style()->polish(m_avatarLabel);
+    }
 
     const QString avatarPath = user.value(QStringLiteral("avatarPath")).toString();
     if (avatarPath != m_avatarPath) {

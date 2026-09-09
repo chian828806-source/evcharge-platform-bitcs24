@@ -91,6 +91,15 @@ QLabel[role="avatar"][hasAvatar="true"] {
     background: #effbf6;
     border: 3px solid #35b989;
 }
+QLabel[role="avatar"][vip="true"] {
+    color: #4b3500;
+    background: #fff4c8;
+    border: 3px solid #ffd166;
+}
+QLabel[role="avatar"][hasAvatar="true"][vip="true"] {
+    background: #fffdf4;
+    border-color: #ffd166;
+}
 QLabel[role="profileFeatureIcon"] {
     color: #087f69; background: #ddf6ee; border-radius: 24px;
     font-size: 24px; font-weight: 800;
@@ -156,7 +165,7 @@ QPushButton[kind="link"] {
 }
 QPushButton[kind="ghostCompact"] {
     color: #d9efe9; background: #244b43; border: 1px solid #3a665c;
-    min-height: 34px; padding: 0 11px; font-size: 11px;
+    min-height: 36px; padding: 0 8px; font-size: 12px; font-weight: 700;
 }
 QPushButton[kind="ghostCompact"]:hover { background: #2e5c52; border-color: #65a895; }
 QPushButton[kind="icon"] {
