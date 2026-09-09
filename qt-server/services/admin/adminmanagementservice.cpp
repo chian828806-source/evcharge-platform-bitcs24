@@ -3,6 +3,8 @@
 #include "repositories/operationlogrepository.h"
 #include "repositories/pilerepository.h"
 #include "shared/protocol/errorcodes.h"
+#include "devices/deviceregistry.h"
+#include "devices/devicecontrolservice.h"
 #include <QDateTime>
 #include <QSqlError>
 #include <QTimer>
@@ -15,8 +17,9 @@ bool databaseFor(DatabaseManager *manager, QSqlDatabase *database, QString *erro
 { return manager && manager->database(database, error); }
 }
 
-AdminManagementService::AdminManagementService(DatabaseManager *databaseManager, QObject *parent)
-    : QObject(parent), m_databaseManager(databaseManager)
+AdminManagementService::AdminManagementService(DatabaseManager *databaseManager, QObject *parent,
+                                               DeviceRegistry *deviceRegistry, DeviceControlService *deviceControl)
+    : QObject(parent), m_databaseManager(databaseManager), m_deviceRegistry(deviceRegistry), m_deviceControl(deviceControl)
 {
 }
 
@@ -28,7 +31,16 @@ ResponseMessage AdminManagementService::pileList(const RequestMessage &request) 
     const QJsonArray piles = pileRepository.list(
         static_cast<qint64>(request.payload.value(QStringLiteral("stationId")).toDouble()));
     if (!pileRepository.lastError().isEmpty()) return databaseError(request, pileRepository.lastError());
-    return ResponseMessage::success(request.requestId, {{QStringLiteral("piles"), piles}});
+    QJsonArray decorated;
+    for (QJsonValue value : piles) {
+        QJsonObject pile=value.toObject();
+        if (m_deviceRegistry) {
+            const QJsonObject live=m_deviceRegistry->liveFields(pile.value(QStringLiteral("pileId")).toInteger());
+            for (auto it=live.begin(); it!=live.end(); ++it) pile.insert(it.key(),it.value());
+        }
+        decorated.append(pile);
+    }
+    return ResponseMessage::success(request.requestId, {{QStringLiteral("piles"), decorated}});
 }
 
 ResponseMessage AdminManagementService::stationList(const RequestMessage &request) const
@@ -92,6 +104,10 @@ ResponseMessage AdminManagementService::restartPile(const RequestMessage &reques
         const QString error = pileRepository.lastError() + logRepository.lastError()
             + database.lastError().text();
         database.rollback(); return databaseError(request, error);
+    }
+    if (m_deviceRegistry && m_deviceRegistry->isManaged(pileId)) {
+        if (m_deviceControl) m_deviceControl->restart(pileId, adminId, before);
+        return ResponseMessage::success(request.requestId, {{QStringLiteral("pileId"), pileId}, {QStringLiteral("status"), QStringLiteral("RESTARTING")}, {QStringLiteral("deviceManaged"), true}});
     }
     QTimer::singleShot(1500, this, [this, pileId, before, adminId]() {
         QSqlDatabase delayedDatabase; QString error;

@@ -72,6 +72,16 @@ std::optional<ChargingOrderInfo> OrderRepository::findByIdForUser(
                         : std::nullopt;
 }
 
+std::optional<ChargingOrderInfo> OrderRepository::findById(
+    QSqlDatabase &database, qint64 orderId, QString *errorMessage) const
+{
+    QSqlQuery query(database);
+    query.prepare(orderSelectSql(QStringLiteral("WHERE o.id = :orderId")));
+    query.bindValue(QStringLiteral(":orderId"), orderId);
+    if (!query.exec()) { if (errorMessage) *errorMessage = query.lastError().text(); return std::nullopt; }
+    return query.next() ? std::optional<ChargingOrderInfo>(mapOrder(query)) : std::nullopt;
+}
+
 QList<ChargingOrderInfo> OrderRepository::listByUser(
     QSqlDatabase &database, qint64 userId, const QString &status, int limit, int offset,
     QString *errorMessage) const

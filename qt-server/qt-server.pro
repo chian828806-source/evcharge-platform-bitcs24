@@ -27,6 +27,7 @@ include($$PWD/map/map.pri)
 include($$PWD/repositories/repositories.pri)
 include($$PWD/services/user/user-services.pri)
 include($$PWD/services/admin/admin-services.pri)
+include($$PWD/devices/devices.pri)
 SOURCES += $$PWD/services/prediction/predictionservice.cpp \
            $$PWD/handlers/prediction/predictionhandler.cpp \
            $$PWD/handlers/prediction/registerpredictionhandlers.cpp

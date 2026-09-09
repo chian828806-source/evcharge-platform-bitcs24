@@ -115,3 +115,21 @@ bool PileRepository::createForStation(qint64 stationId, int count, const QString
     }
     return true;
 }
+
+bool PileRepository::deviceHello(qint64 pileId, const QString &pileNo, double *ratedPower,
+                                 QString *status) const
+{
+    clearError(); QSqlQuery query(m_database);
+    query.prepare(QStringLiteral("SELECT power_kw,status FROM charging_pile WHERE id=:id AND pile_no=:pileNo"));
+    query.bindValue(QStringLiteral(":id"), pileId); query.bindValue(QStringLiteral(":pileNo"), pileNo);
+    if (!query.exec() || !query.next()) { m_lastError=query.lastError().text(); return false; }
+    if (ratedPower) *ratedPower = query.value(0).toDouble();
+    if (status) *status = query.value(1).toString();
+    return true;
+}
+bool PileRepository::updateHeartbeat(qint64 pileId, const QString &now) const
+{ clearError(); QSqlQuery query(m_database); query.prepare(QStringLiteral("UPDATE charging_pile SET last_heartbeat_at=:now WHERE id=:id")); query.bindValue(QStringLiteral(":now"),now);query.bindValue(QStringLiteral(":id"),pileId); if(!query.exec()){m_lastError=query.lastError().text();return false;}return query.numRowsAffected()==1; }
+std::optional<PileRepository::DeviceState> PileRepository::deviceState(qint64 pileId) const
+{ clearError(); QSqlQuery query(m_database);query.prepare(QStringLiteral("SELECT status,current_order_id FROM charging_pile WHERE id=:id"));query.bindValue(QStringLiteral(":id"),pileId);if(!query.exec()){m_lastError=query.lastError().text();return std::nullopt;}if(!query.next())return std::nullopt;return DeviceState{query.value(0).toString(),query.value(1).toLongLong()}; }
+bool PileRepository::transitionDeviceState(qint64 pileId,const QString &before,const QString &after,const QString &now,qint64 expectedOrderId) const
+{ clearError();QSqlQuery query(m_database);QString sql=QStringLiteral("UPDATE charging_pile SET status=:after, current_order_id=NULL, updated_at=:now WHERE id=:id AND status=:before");if(expectedOrderId>0)sql+=QStringLiteral(" AND current_order_id=:orderId");query.prepare(sql);query.bindValue(QStringLiteral(":after"),after);query.bindValue(QStringLiteral(":now"),now);query.bindValue(QStringLiteral(":id"),pileId);query.bindValue(QStringLiteral(":before"),before);if(expectedOrderId>0)query.bindValue(QStringLiteral(":orderId"),expectedOrderId);if(!query.exec()){m_lastError=query.lastError().text();return false;}return query.numRowsAffected()==1; }

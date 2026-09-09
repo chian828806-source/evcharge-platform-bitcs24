@@ -20,6 +20,7 @@ struct OrderListResult
 class QDateTime;
 class QSqlDatabase;
 class UserRepository;
+class DeviceControlService;
 
 struct ActiveOrderResult
 {
@@ -38,7 +39,7 @@ class OrderService
 {
 public:
     OrderService(DatabaseManager *databaseManager, UserRepository *userRepository,
-                 OrderRepository *orderRepository);
+                 OrderRepository *orderRepository, DeviceControlService *deviceControl = nullptr);
 
     ServiceResult<ActiveOrderResult> activeOrder(qint64 userId);
     ServiceResult<OrderListResult> list(qint64 userId, int page, int pageSize,
@@ -58,4 +59,5 @@ private:
     DatabaseManager *m_databaseManager = nullptr;
     UserRepository *m_userRepository = nullptr;
     OrderRepository *m_orderRepository = nullptr;
+    DeviceControlService *m_deviceControl = nullptr;
 };

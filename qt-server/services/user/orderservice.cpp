@@ -7,6 +7,8 @@
 #include "repositories/orderrepository.h"
 #include "repositories/userrepository.h"
 #include "shared/protocol/errorcodes.h"
+#include "devices/devicecontrolservice.h"
+#include "services/user/chargingprogress.h"
 
 #include <QDateTime>
 #include <QSet>
@@ -16,9 +18,9 @@
 
 OrderService::OrderService(DatabaseManager *databaseManager,
                            UserRepository *userRepository,
-                           OrderRepository *orderRepository)
+                           OrderRepository *orderRepository, DeviceControlService *deviceControl)
     : m_databaseManager(databaseManager), m_userRepository(userRepository),
-      m_orderRepository(orderRepository)
+      m_orderRepository(orderRepository), m_deviceControl(deviceControl)
 {
 }
 
@@ -158,8 +160,8 @@ ServiceResult<ChargingOrderInfo> OrderService::start(qint64 userId, qint64 order
         return ServiceResult<ChargingOrderInfo>::failure(
             ErrorCodes::DatabaseError, QStringLiteral("read started order failed"));
     }
-    return ServiceResult<ChargingOrderInfo>::success(
-        withCurrentProgress(*savedOrder, QDateTime::currentDateTime()));
+    if (m_deviceControl) m_deviceControl->startCharging(order->pileId, orderId);
+    return ServiceResult<ChargingOrderInfo>::success(withCurrentProgress(*savedOrder, QDateTime::currentDateTime()));
 }
 
 ServiceResult<ChargingOrderInfo> OrderService::stop(qint64 userId, qint64 orderId)
@@ -214,8 +216,8 @@ ServiceResult<ChargingOrderInfo> OrderService::stop(qint64 userId, qint64 orderI
         return ServiceResult<ChargingOrderInfo>::failure(
             ErrorCodes::DatabaseError, QStringLiteral("read stopped order failed"));
     }
-    return ServiceResult<ChargingOrderInfo>::success(
-        withCurrentProgress(*savedOrder, nowDateTime));
+    if (m_deviceControl) m_deviceControl->stopCharging(order->pileId, orderId);
+    return ServiceResult<ChargingOrderInfo>::success(withCurrentProgress(*savedOrder, nowDateTime));
 }
 
 ServiceResult<ChargingOrderInfo> OrderService::cancel(qint64 userId, qint64 orderId,
@@ -461,14 +463,8 @@ ChargingOrderInfo OrderService::withCurrentProgress(const ChargingOrderInfo &ord
             return order;
         }
     }
+    if (order.status == QStringLiteral("CHARGING")) return chargingProgressAt(order, end);
     ChargingOrderInfo result = order;
-    const qint64 elapsedSeconds = qMax<qint64>(0, start.secsTo(end));
-    result.chargeSeconds = elapsedSeconds;
-    if (order.status == QStringLiteral("CHARGING")) {
-        result.chargeMinutes = static_cast<int>(elapsedSeconds / 60);
-        result.energyKwh = order.powerKw * static_cast<double>(elapsedSeconds) / 3600.0;
-        result.amountFen = qRound64(result.energyKwh
-            * static_cast<double>(order.priceFenPerKwh + order.serviceFeeFenPerKwh));
-    }
+    result.chargeSeconds = qMax<qint64>(0, start.secsTo(end));
     return result;
 }

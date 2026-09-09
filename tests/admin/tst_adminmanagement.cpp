@@ -1,11 +1,17 @@
 #include "services/admin/adminmanagementservice.h"
 #include "database/databasemanager.h"
 #include "shared/protocol/errorcodes.h"
+#include "devices/devicecontrolservice.h"
+#include "devices/deviceregistry.h"
+#include "devices/devicesession.h"
 
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QTemporaryDir>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QtTest>
 
 class AdminManagementTest : public QObject
@@ -20,6 +26,12 @@ private slots:
     void createStationAndListPiles();
     void restartAvailablePile();
     void listOrdersForAdmin();
+    void chargingFaultStopsOrderAndWritesSystemLog();
+    void reservedFaultCancelsOrder();
+    void chargingOfflineIsIdempotent();
+    void reconnectRestoresOnlyUnoccupiedOfflinePile();
+    void restartCorrectAckCompletesOnce();
+    void restartStaleAckIsIgnored();
 
 private:
     RequestMessage request(qint64 userId) const;
@@ -27,6 +39,8 @@ private:
     QTemporaryDir m_temporaryDirectory;
     DatabaseManager *m_databaseManager = nullptr;
     AdminManagementService *m_service = nullptr;
+    DeviceRegistry *m_devices = nullptr;
+    DeviceControlService *m_deviceControl = nullptr;
 };
 
 void AdminManagementTest::initTestCase()
@@ -51,34 +65,64 @@ void AdminManagementTest::initTestCase()
         "service_fee_fen_per_kwh INTEGER, status TEXT, created_at TEXT, updated_at TEXT)")));
     QVERIFY(query.exec(QStringLiteral(
         "CREATE TABLE charging_pile(id INTEGER PRIMARY KEY AUTOINCREMENT, station_id INTEGER, "
-        "pile_no TEXT, type TEXT, power_kw REAL, status TEXT, total_charge_count INTEGER DEFAULT 0, "
+        "pile_no TEXT, type TEXT, power_kw REAL, status TEXT, current_order_id INTEGER, last_heartbeat_at TEXT, total_charge_count INTEGER DEFAULT 0, "
         "total_charge_minutes INTEGER DEFAULT 0, created_at TEXT, updated_at TEXT)")));
     QVERIFY(query.exec(QStringLiteral(
         "CREATE TABLE charging_order(id INTEGER PRIMARY KEY AUTOINCREMENT, order_no TEXT, "
         "user_id INTEGER, station_id INTEGER, pile_id INTEGER, status TEXT, "
         "price_fen_per_kwh INTEGER, service_fee_fen_per_kwh INTEGER, start_at TEXT, end_at TEXT, "
-        "charge_minutes INTEGER DEFAULT 0, energy_kwh REAL DEFAULT 0, amount_fen INTEGER DEFAULT 0, "
+        "charge_minutes INTEGER DEFAULT 0, energy_kwh REAL DEFAULT 0, amount_fen INTEGER DEFAULT 0, cancelled_at TEXT, cancel_reason TEXT, "
         "created_at TEXT, updated_at TEXT)")));
     QVERIFY(query.exec(QStringLiteral(
         "INSERT INTO user VALUES(1, '13800138000', '测试用户', 10000, 'NORMAL', "
         "'2026-09-02 00:00:00', '2026-09-02 00:00:00')")));
     m_service = new AdminManagementService(m_databaseManager, this);
+    m_devices = new DeviceRegistry(this);
+    m_deviceControl = new DeviceControlService(m_databaseManager, m_devices, this);
 }
 
 void AdminManagementTest::cleanupTestCase()
 {
     delete m_service;
+    delete m_deviceControl;
+    delete m_devices;
     delete m_databaseManager;
     m_databaseManager = nullptr;
     m_database.close();
     m_database = {};
 }
 
+static qint64 addDeviceOrder(QSqlDatabase &db, const QString &pileStatus, const QString &orderStatus,
+                             const QString &startAt = QStringLiteral("2026-09-09 10:00:00"))
+{
+    QSqlQuery q(db); q.exec(QStringLiteral("INSERT INTO charging_station(station_no,name,address,longitude,latitude,price_fen_per_kwh,service_fee_fen_per_kwh,status,created_at,updated_at) VALUES('DEV','D','D',1,1,100,0,'NORMAL','2026-01-01 00:00:00','2026-01-01 00:00:00')"));
+    const qint64 station=q.lastInsertId().toLongLong(); q.prepare(QStringLiteral("INSERT INTO charging_pile(station_id,pile_no,type,power_kw,status,created_at,updated_at) VALUES(:s,'DEV-P','FAST',60,:status,'2026-01-01 00:00:00','2026-01-01 00:00:00')"));q.bindValue(QStringLiteral(":s"),station);q.bindValue(QStringLiteral(":status"),pileStatus);q.exec();const qint64 pile=q.lastInsertId().toLongLong();
+    q.prepare(QStringLiteral("INSERT INTO charging_order(order_no,user_id,station_id,pile_id,status,price_fen_per_kwh,service_fee_fen_per_kwh,start_at,created_at,updated_at) VALUES(:no,1,:s,:p,:status,100,0,:start,'2026-01-01 00:00:00','2026-01-01 00:00:00')"));q.bindValue(QStringLiteral(":no"),QStringLiteral("DEV-%1").arg(pile));q.bindValue(QStringLiteral(":s"),station);q.bindValue(QStringLiteral(":p"),pile);q.bindValue(QStringLiteral(":status"),orderStatus);q.bindValue(QStringLiteral(":start"),startAt);q.exec();const qint64 order=q.lastInsertId().toLongLong();q.prepare(QStringLiteral("UPDATE charging_pile SET current_order_id=:o WHERE id=:p"));q.bindValue(QStringLiteral(":o"),order);q.bindValue(QStringLiteral(":p"),pile);q.exec();return pile;
+}
+
+void AdminManagementTest::chargingFaultStopsOrderAndWritesSystemLog()
+{ const qint64 pile=addDeviceOrder(m_database,QStringLiteral("CHARGING"),QStringLiteral("CHARGING"));m_deviceControl->handleFault(pile,QStringLiteral("TEMP_HIGH"),QStringLiteral("hot"));QSqlQuery q(m_database);q.prepare(QStringLiteral("SELECT o.status,o.energy_kwh,o.amount_fen,p.status,p.current_order_id FROM charging_order o JOIN charging_pile p ON p.id=o.pile_id WHERE p.id=:p"));q.bindValue(QStringLiteral(":p"),pile);QVERIFY(q.exec());QVERIFY(q.next());QCOMPARE(q.value(0).toString(),QStringLiteral("PENDING_PAYMENT"));QVERIFY(q.value(1).toDouble()>0);QVERIFY(q.value(2).toLongLong()>0);QCOMPARE(q.value(3).toString(),QStringLiteral("FAULT"));QVERIFY(q.value(4).isNull());q.prepare(QStringLiteral("SELECT admin_id FROM operation_log WHERE target_id=:p AND action='DEVICE_FAULT'"));q.bindValue(QStringLiteral(":p"),pile);QVERIFY(q.exec());QVERIFY(q.next());QVERIFY(q.value(0).isNull()); }
+void AdminManagementTest::reservedFaultCancelsOrder()
+{ const qint64 pile=addDeviceOrder(m_database,QStringLiteral("RESERVED"),QStringLiteral("CREATED"));m_deviceControl->handleFault(pile,QStringLiteral("TEMP_HIGH"),QStringLiteral("hot"));QSqlQuery q(m_database);q.prepare(QStringLiteral("SELECT o.status,o.cancel_reason,p.status,p.current_order_id FROM charging_order o JOIN charging_pile p ON p.id=o.pile_id WHERE p.id=:p"));q.bindValue(QStringLiteral(":p"),pile);QVERIFY(q.exec());QVERIFY(q.next());QCOMPARE(q.value(0).toString(),QStringLiteral("CANCELLED"));QCOMPARE(q.value(1).toString(),QStringLiteral("设备故障自动取消"));QCOMPARE(q.value(2).toString(),QStringLiteral("FAULT"));QVERIFY(q.value(3).isNull()); }
+void AdminManagementTest::chargingOfflineIsIdempotent()
+{ const qint64 pile=addDeviceOrder(m_database,QStringLiteral("CHARGING"),QStringLiteral("CHARGING"));m_deviceControl->handleOffline(pile);m_deviceControl->handleOffline(pile);QSqlQuery q(m_database);q.prepare(QStringLiteral("SELECT o.status,o.energy_kwh,p.status FROM charging_order o JOIN charging_pile p ON p.id=o.pile_id WHERE p.id=:p"));q.bindValue(QStringLiteral(":p"),pile);QVERIFY(q.exec());QVERIFY(q.next());QCOMPARE(q.value(0).toString(),QStringLiteral("PENDING_PAYMENT"));QVERIFY(q.value(1).toDouble()>0);QCOMPARE(q.value(2).toString(),QStringLiteral("OFFLINE")); }
+void AdminManagementTest::reconnectRestoresOnlyUnoccupiedOfflinePile()
+{ QSqlQuery q(m_database);q.exec(QStringLiteral("INSERT INTO charging_station(station_no,name,address,longitude,latitude,price_fen_per_kwh,service_fee_fen_per_kwh,status,created_at,updated_at) VALUES('REC','R','R',1,1,100,0,'NORMAL','2026-01-01 00:00:00','2026-01-01 00:00:00')"));const qint64 station=q.lastInsertId().toLongLong();q.prepare(QStringLiteral("INSERT INTO charging_pile(station_id,pile_no,type,power_kw,status,created_at,updated_at) VALUES(:s,'REC-P','FAST',60,'OFFLINE','2026-01-01 00:00:00','2026-01-01 00:00:00')"));q.bindValue(QStringLiteral(":s"),station);QVERIFY(q.exec());const qint64 pile=q.lastInsertId().toLongLong();double power=0;QString status;QVERIFY(m_deviceControl->completeHello(pile,QStringLiteral("REC-P"),&power,&status));QCOMPARE(status,QStringLiteral("AVAILABLE"));QVERIFY(m_deviceControl->validateHello(pile,QStringLiteral("REC-P"),&power,&status));q.prepare(QStringLiteral("UPDATE charging_pile SET status='FAULT' WHERE id=:p"));q.bindValue(QStringLiteral(":p"),pile);QVERIFY(q.exec());QVERIFY(m_deviceControl->completeHello(pile,QStringLiteral("REC-P"),&power,&status));QCOMPARE(status,QStringLiteral("FAULT")); }
+
 RequestMessage AdminManagementTest::request(qint64 userId) const
 {
     return {QStringLiteral("TEST-1"), QStringLiteral("ADMIN_USER_FREEZE"),
             QStringLiteral("S-ADMIN"), {{QStringLiteral("userId"), userId}}};
 }
+
+static qint64 addRestartPile(QSqlDatabase &db)
+{ QSqlQuery q(db);q.exec(QStringLiteral("INSERT INTO charging_station(station_no,name,address,longitude,latitude,price_fen_per_kwh,service_fee_fen_per_kwh,status,created_at,updated_at) VALUES('RST','R','R',1,1,100,0,'NORMAL','2026-01-01 00:00:00','2026-01-01 00:00:00')"));const qint64 s=q.lastInsertId().toLongLong();q.prepare(QStringLiteral("INSERT INTO charging_pile(station_id,pile_no,type,power_kw,status,created_at,updated_at) VALUES(:s,'RST-P','FAST',60,'RESTARTING','2026-01-01 00:00:00','2026-01-01 00:00:00')"));q.bindValue(QStringLiteral(":s"),s);q.exec();return q.lastInsertId().toLongLong(); }
+static QTcpSocket *attachDevice(QTcpServer &server, DeviceRegistry *registry, DeviceControlService *control, DatabaseManager *db, qint64 pile)
+{ if(!server.listen(QHostAddress::LocalHost))return nullptr;auto *client=new QTcpSocket(&server);client->connectToHost(QHostAddress::LocalHost,server.serverPort());if(!client->waitForConnected()||!server.waitForNewConnection(1000))return nullptr;auto *session=new DeviceSession(server.nextPendingConnection(),db,registry,control,&server);registry->registerSession(pile,session);return client; }
+void AdminManagementTest::restartCorrectAckCompletesOnce()
+{ const qint64 pile=addRestartPile(m_database);QTcpServer server;QTcpSocket *client=attachDevice(server,m_devices,m_deviceControl,m_databaseManager,pile);QVERIFY(client);QSignalSpy finished(m_deviceControl,&DeviceControlService::restartFinished);QVERIFY(m_deviceControl->restart(pile,9,QStringLiteral("FAULT")));QTRY_VERIFY(client->canReadLine());const QJsonObject command=QJsonDocument::fromJson(client->readLine()).object();m_deviceControl->handleAck(pile,{{QStringLiteral("command"),QStringLiteral("RESTART")},{QStringLiteral("commandId"),command.value(QStringLiteral("commandId"))},{QStringLiteral("success"),true}});QTRY_COMPARE(finished.count(),1);m_deviceControl->handleAck(pile,{{QStringLiteral("command"),QStringLiteral("RESTART")},{QStringLiteral("commandId"),command.value(QStringLiteral("commandId"))},{QStringLiteral("success"),true}});QCOMPARE(finished.count(),1);QSqlQuery q(m_database);q.prepare(QStringLiteral("SELECT status FROM charging_pile WHERE id=:p"));q.bindValue(QStringLiteral(":p"),pile);QVERIFY(q.exec());QVERIFY(q.next());QCOMPARE(q.value(0).toString(),QStringLiteral("AVAILABLE")); }
+void AdminManagementTest::restartStaleAckIsIgnored()
+{ const qint64 pile=addRestartPile(m_database);QTcpServer server;QTcpSocket *client=attachDevice(server,m_devices,m_deviceControl,m_databaseManager,pile);QSignalSpy finished(m_deviceControl,&DeviceControlService::restartFinished);QVERIFY(m_deviceControl->restart(pile,9,QStringLiteral("FAULT")));QTRY_VERIFY(client->canReadLine());client->readLine();m_deviceControl->handleAck(pile,{{QStringLiteral("command"),QStringLiteral("RESTART")},{QStringLiteral("commandId"),QStringLiteral("stale")},{QStringLiteral("success"),true}});QCOMPARE(finished.count(),0);QSqlQuery q(m_database);q.prepare(QStringLiteral("SELECT status FROM charging_pile WHERE id=:p"));q.bindValue(QStringLiteral(":p"),pile);QVERIFY(q.exec());QVERIFY(q.next());QCOMPARE(q.value(0).toString(),QStringLiteral("RESTARTING")); }
 
 void AdminManagementTest::freezeAndUnfreezeAreIdempotent()
 {

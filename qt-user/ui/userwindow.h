@@ -60,6 +60,9 @@ private:
     SessionMode m_sessionMode = SessionMode::None;
     QString m_loginRequestId;
     QString m_routePlanRequestId;
+    QString m_avatarRequestId;
+    QString m_avatarRequestPath;
+    QString m_avatarPath;
     QHash<QString, QString> m_requestTypes;
     QString m_orderStatus = QStringLiteral("CREATED");
     QJsonObject m_activeOrder;
@@ -105,6 +108,8 @@ private:
     void requestInitialData();
     void requestActiveOrder();
     void applyUser(const QJsonObject &user);
+    void requestAvatar(const QString &avatarPath);
+    void resetAvatar();
     void applyOrder(const QJsonObject &order);
     void renderStations(const QJsonArray &stations);
     void renderStationDetail(const QJsonObject &station, const QJsonArray &piles);

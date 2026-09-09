@@ -117,6 +117,30 @@ ResponseMessage UserHandler::avatarUpload(const RequestMessage &request,
     });
 }
 
+ResponseMessage UserHandler::avatarGet(const RequestMessage &request,
+                                       const SessionContext &context)
+{
+    if (!m_userService) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::InternalError,
+                                      QStringLiteral("user module is unavailable"));
+    }
+    const auto result = m_userService->avatarContent(context.principalId);
+    if (!result.ok) {
+        return ResponseMessage::error(request.requestId, result.code, result.message);
+    }
+    if (result.value.avatarPath.isEmpty()) {
+        return ResponseMessage::success(request.requestId,
+                                        {{QStringLiteral("hasAvatar"), false}});
+    }
+    return ResponseMessage::success(request.requestId, {
+        {QStringLiteral("hasAvatar"), true},
+        {QStringLiteral("avatarPath"), result.value.avatarPath},
+        {QStringLiteral("mimeType"), result.value.mimeType},
+        {QStringLiteral("contentBase64"),
+         QString::fromLatin1(result.value.content.toBase64())}
+    });
+}
+
 ResponseMessage UserHandler::recharge(const RequestMessage &request,
                                       const SessionContext &context)
 {

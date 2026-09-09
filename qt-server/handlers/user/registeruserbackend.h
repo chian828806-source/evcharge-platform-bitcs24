@@ -6,6 +6,7 @@
 class DatabaseManager;
 class MessageDispatcher;
 class SessionManager;
+class DeviceControlService;
 
 class UserBackendRegistry
 {
@@ -14,7 +15,7 @@ public:
                         MessageDispatcher *dispatcher,
                         const QString &avatarDirectory = QStringLiteral("data/avatars"),
                         const QString &mapApiKey = {},
-                        const QString &mapSigningSecret = {});
+                        const QString &mapSigningSecret = {}, DeviceControlService *deviceControl = nullptr);
 
 private:
     class Impl;

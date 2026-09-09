@@ -37,6 +37,22 @@ QString coordinateText(double longitude, double latitude)
         .arg(longitude, 0, 'f', 6);
 }
 
+QString fullDalianAddress(const QString &district, const QString &address)
+{
+    // 当前 V1 用户端只提供大连市的区县选项。腾讯 geocoder 的 region 需要城市级别
+    // 范围；把“甘井子区”直接作为 region 会返回 348 参数错误。
+    const QString city = QStringLiteral("大连市");
+    const QString normalizedDistrict = district.trimmed();
+    const QString normalizedAddress = address.trimmed();
+    if (normalizedAddress.startsWith(city)) {
+        return normalizedAddress;
+    }
+    if (!normalizedDistrict.isEmpty() && normalizedAddress.startsWith(normalizedDistrict)) {
+        return city + normalizedAddress;
+    }
+    return city + normalizedDistrict + normalizedAddress;
+}
+
 }
 
 MapAdapter::MapAdapter(const QString &apiKey, const QString &signingSecret)
@@ -83,10 +99,9 @@ void MapAdapter::geocode(const QString &district, const QString &address,
 
     QUrl url(QStringLiteral("https://apis.map.qq.com/ws/geocoder/v1/"));
     QUrlQuery query;
-    query.addQueryItem(QStringLiteral("address"), address.trimmed());
-    if (!district.trimmed().isEmpty()) {
-        query.addQueryItem(QStringLiteral("region"), district.trimmed());
-    }
+    query.addQueryItem(QStringLiteral("address"), fullDalianAddress(district, address));
+    // region 是城市范围，不是区县。当前项目站点和用户定位均在大连市。
+    query.addQueryItem(QStringLiteral("region"), QStringLiteral("大连市"));
     query.addQueryItem(QStringLiteral("key"), m_apiKey);
     appendSignature(url, &query);
     url.setQuery(query);

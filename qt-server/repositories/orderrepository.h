@@ -25,6 +25,8 @@ public:
     std::optional<ChargingOrderInfo> findByIdForUser(QSqlDatabase &database,
                                                       qint64 orderId, qint64 userId,
                                                       QString *errorMessage) const;
+    std::optional<ChargingOrderInfo> findById(QSqlDatabase &database, qint64 orderId,
+                                              QString *errorMessage) const;
     QList<ChargingOrderInfo> listByUser(QSqlDatabase &database, qint64 userId,
                                         const QString &status, int limit, int offset,
                                         QString *errorMessage) const;
