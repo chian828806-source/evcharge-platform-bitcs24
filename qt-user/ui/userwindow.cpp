@@ -28,7 +28,6 @@
 #include <QMouseEvent>
 #include <QPair>
 #include <QPixmap>
-#include <QProgressBar>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPushButton>
@@ -45,6 +44,117 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QtMath>
+#include <cmath>
+
+class EnergyFlowWidget final : public QWidget
+{
+public:
+    explicit EnergyFlowWidget(QWidget *parent = nullptr)
+        : QWidget(parent), m_animation(new QTimer(this))
+    {
+        setObjectName(QStringLiteral("energyFlow"));
+        setFixedHeight(56);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        setAccessibleName(QStringLiteral("充能流动状态"));
+        m_animation->setInterval(32);
+        connect(m_animation, &QTimer::timeout, this, [this]() {
+            if (m_phase < 1.0) {
+                m_phase = qMin(1.0, m_phase + 0.010);
+            } else if (++m_holdTicks >= 22) {
+                m_phase = 0.0;
+                m_holdTicks = 0;
+            }
+            update();
+        });
+        setVisible(false);
+    }
+
+    void setCharging(bool charging)
+    {
+        if (m_charging == charging) return;
+        m_charging = charging;
+        setVisible(charging);
+        if (charging) {
+            m_phase = 0.0;
+            m_holdTicks = 0;
+            m_animation->start();
+        } else {
+            m_animation->stop();
+        }
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        const QRectF track = rect().adjusted(1, 8, -1, -8);
+        const qreal radius = track.height() / 2.0;
+
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(226, 237, 233));
+        painter.drawRoundedRect(track, radius, radius);
+
+        const qreal progress = m_phase;
+        const qreal inset = 3.0;
+        const QRectF inner = track.adjusted(inset, inset, -inset, -inset);
+        const qreal fillWidth = qMax(inner.height(), inner.width() * progress);
+        QRectF fill(inner.left(), inner.top(), qMin(fillWidth, inner.width()), inner.height());
+        QPainterPath fillClip;
+        fillClip.addRoundedRect(inner, inner.height() / 2.0, inner.height() / 2.0);
+        painter.save();
+        painter.setClipPath(fillClip);
+
+        QLinearGradient energy(fill.topLeft(), fill.topRight());
+        energy.setColorAt(0.0, QColor(8, 132, 96));
+        energy.setColorAt(0.55, QColor(24, 194, 139));
+        energy.setColorAt(0.88, QColor(91, 239, 181));
+        energy.setColorAt(1.0, QColor(220, 255, 238));
+        painter.fillRect(fill, energy);
+
+        const qreal headX = fill.right();
+        QLinearGradient glow(headX - 28.0, 0, headX + 16.0, 0);
+        glow.setColorAt(0.0, QColor(220, 255, 238, 0));
+        glow.setColorAt(0.65, QColor(235, 255, 245, 190));
+        glow.setColorAt(1.0, QColor(235, 255, 245, 0));
+        painter.fillRect(QRectF(headX - 28.0, inner.top(), 44.0, inner.height()), glow);
+
+        painter.setPen(QPen(QColor(231, 255, 244, 105), 1.0));
+        const int segmentCount = 16;
+        for (int segment = 1; segment < segmentCount; ++segment) {
+            const qreal x = inner.left() + inner.width() * segment / segmentCount;
+            if (x < fill.right() - 2.0)
+                painter.drawLine(QPointF(x, inner.top() + 2.0), QPointF(x, inner.bottom() - 2.0));
+        }
+        painter.restore();
+
+        painter.setBrush(Qt::NoBrush);
+        painter.setPen(QPen(QColor(112, 181, 158, 135), 1.0));
+        painter.drawRoundedRect(track, radius, radius);
+
+        painter.setPen(Qt::NoPen);
+        for (int dot = 0; dot < 7; ++dot) {
+            const qreal drift = std::fmod(m_phase * (0.32 + dot * 0.025)
+                                         + dot * 0.173, 1.0);
+            const qreal x = track.left() + drift * track.width();
+            const bool above = dot % 2 == 0;
+            const qreal y = above ? track.top() - 3.5 - (dot % 3)
+                                  : track.bottom() + 3.5 + (dot % 3);
+            const qreal pulse = 0.55 + 0.45 * qSin(m_phase * 12.0 + dot * 1.8);
+            const int alpha = static_cast<int>(70 + pulse * 95);
+            const qreal dotRadius = dot % 3 == 0 ? 2.2 : 1.5;
+            painter.setBrush(QColor(61, 220, 159, alpha));
+            painter.drawEllipse(QPointF(x, y), dotRadius, dotRadius);
+        }
+    }
+
+private:
+    QTimer *m_animation = nullptr;
+    qreal m_phase = 0.0;
+    int m_holdTicks = 0;
+    bool m_charging = false;
+};
 
 #include <functional>
 
@@ -836,11 +946,8 @@ QWidget *UserWindow::buildChargingPage()
     progressLayout->addWidget(makeLabel(QStringLiteral("本次充电"), "sectionTitle"));
     m_chargeStatisticsLabel = makeLabel(QStringLiteral("0 秒　0.00 kWh　¥0.00"), "metricLarge");
     progressLayout->addWidget(m_chargeStatisticsLabel);
-    auto *progress = new QProgressBar;
-    progress->setRange(0, 100);
-    progress->setValue(0);
-    progress->setTextVisible(false);
-    progressLayout->addWidget(progress);
+    m_energyFlow = new EnergyFlowWidget(progressCard);
+    progressLayout->addWidget(m_energyFlow);
     m_orderHintLabel = makeLabel(QString(), "hint");
     progressLayout->addWidget(m_orderHintLabel);
     layout->addWidget(progressCard);
@@ -1363,6 +1470,7 @@ void UserWindow::setOrderStatus(const QString &status)
     const bool charging = status == QStringLiteral("CHARGING");
     const bool pendingPayment = status == QStringLiteral("PENDING_PAYMENT");
     const bool completed = status == QStringLiteral("COMPLETED");
+    if (m_energyFlow) m_energyFlow->setCharging(charging);
     m_startButton->setVisible(created);
     m_cancelButton->setVisible(created);
     m_stopButton->setVisible(charging);
@@ -1392,26 +1500,95 @@ void UserWindow::setOrderStatus(const QString &status)
 
 void UserWindow::showRechargeDialog()
 {
-    QDialog dialog(this);
-    dialog.setWindowTitle(QStringLiteral("钱包充值"));
-    auto *layout = new QFormLayout(&dialog);
+    QDialog dialog(this, Qt::Dialog | Qt::FramelessWindowHint);
+    dialog.setObjectName(QStringLiteral("userConfirmDialog"));
+    dialog.setModal(true);
+    dialog.setAttribute(Qt::WA_TranslucentBackground);
+    dialog.setMinimumWidth(400);
+
+    auto *outerLayout = new QVBoxLayout(&dialog);
+    outerLayout->setContentsMargins(18, 18, 18, 18);
+    auto *card = new QFrame(&dialog);
+    card->setObjectName(QStringLiteral("confirmCard"));
+    auto *shadow = new QGraphicsDropShadowEffect(card);
+    shadow->setBlurRadius(36);
+    shadow->setOffset(0, 12);
+    shadow->setColor(QColor(15, 44, 37, 70));
+    card->setGraphicsEffect(shadow);
+    outerLayout->addWidget(card);
+
+    auto *layout = new QVBoxLayout(card);
+    layout->setContentsMargins(28, 20, 28, 28);
+    layout->setSpacing(12);
+    auto *topRow = new QHBoxLayout;
+    topRow->addStretch();
+    auto *closeButton = makeButton(QStringLiteral("×"), "dialogClose");
+    closeButton->setFixedSize(36, 36);
+    closeButton->setAccessibleName(QStringLiteral("关闭充值弹窗"));
+    topRow->addWidget(closeButton);
+    layout->addLayout(topRow);
+
+    auto *icon = makeLabel(QStringLiteral("¥"), "dialogIcon");
+    icon->setAlignment(Qt::AlignCenter);
+    icon->setFixedSize(58, 58);
+    layout->addWidget(icon, 0, Qt::AlignHCenter);
+    auto *title = makeLabel(QStringLiteral("钱包充值"), "dialogTitle");
+    title->setAlignment(Qt::AlignCenter);
+    layout->addWidget(title);
+    auto *subtitle = makeLabel(QStringLiteral("选择常用金额或输入自定义金额"), "dialogDetail");
+    subtitle->setAlignment(Qt::AlignCenter);
+    layout->addWidget(subtitle);
+
     auto *amountEdit = new QLineEdit;
-    amountEdit->setPlaceholderText(QStringLiteral("例如：50.00"));
-    layout->addRow(QStringLiteral("充值金额（元）"), amountEdit);
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-    layout->addRow(buttons);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    amountEdit->setProperty("role", "rechargeAmount");
+    amountEdit->setPlaceholderText(QStringLiteral("请输入充值金额（元）"));
+    amountEdit->setAlignment(Qt::AlignCenter);
+    amountEdit->setValidator(new QRegularExpressionValidator(
+        QRegularExpression(QStringLiteral("[0-9]{0,7}(\\.[0-9]{0,2})?")), amountEdit));
+    layout->addWidget(amountEdit);
+
+    auto *quickAmounts = new QHBoxLayout;
+    quickAmounts->setSpacing(9);
+    for (const int amount : {20, 50, 100}) {
+        auto *quickButton = makeButton(QStringLiteral("¥%1").arg(amount), "rechargeQuick");
+        quickButton->setMinimumHeight(38);
+        quickAmounts->addWidget(quickButton, 1);
+        connect(quickButton, &QPushButton::clicked, amountEdit,
+                [amountEdit, amount]() { amountEdit->setText(QString::number(amount)); });
+    }
+    layout->addLayout(quickAmounts);
+
+    auto *errorLabel = makeLabel(QString(), "rechargeError");
+    errorLabel->setAlignment(Qt::AlignCenter);
+    errorLabel->setVisible(false);
+    layout->addWidget(errorLabel);
+    auto *confirmButton = makeButton(QStringLiteral("确认充值"), "dialogPrimary");
+    auto *cancelButton = makeButton(QStringLiteral("暂不充值"), "dialogSecondary");
+    confirmButton->setMinimumHeight(50);
+    cancelButton->setMinimumHeight(46);
+    layout->addWidget(confirmButton);
+    layout->addWidget(cancelButton);
+
+    int amountFen = 0;
+    const auto submitRecharge = [&dialog, amountEdit, errorLabel, &amountFen]() {
+        bool valid = false;
+        const double amountYuan = amountEdit->text().toDouble(&valid);
+        amountFen = qRound(amountYuan * 100.0);
+        if (!valid || amountFen <= 0 || amountFen > 100000000) {
+            errorLabel->setText(QStringLiteral("请输入 0.01 至 1,000,000.00 元之间的金额"));
+            errorLabel->setVisible(true);
+            return;
+        }
+        dialog.accept();
+    };
+    connect(closeButton, &QPushButton::clicked, &dialog, &QDialog::reject);
+    connect(cancelButton, &QPushButton::clicked, &dialog, &QDialog::reject);
+    connect(confirmButton, &QPushButton::clicked, &dialog, submitRecharge);
+    connect(amountEdit, &QLineEdit::returnPressed, &dialog, submitRecharge);
+    amountEdit->setFocus();
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
-    bool valid = false;
-    const double amountYuan = amountEdit->text().toDouble(&valid);
-    if (!valid || amountYuan <= 0.0) {
-        showNotice(QStringLiteral("请输入有效的充值金额"), true);
-        return;
-    }
-    const int amountFen = qRound(amountYuan * 100.0);
     sendRequest(MessageTypes::UserRecharge,
                 QJsonObject{{QStringLiteral("amountFen"), amountFen}});
 }

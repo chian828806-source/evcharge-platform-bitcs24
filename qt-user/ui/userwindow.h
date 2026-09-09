@@ -10,6 +10,7 @@
 class QDialog;
 class QLabel;
 class QLineEdit;
+class EnergyFlowWidget;
 class MapNavigationPage;
 class QPushButton;
 class QSplitter;
@@ -61,6 +62,7 @@ private:
     QLabel *m_profileStatusLabel = nullptr;
     QLabel *m_orderSummaryLabel = nullptr;
     QLabel *m_chargeStatisticsLabel = nullptr;
+    EnergyFlowWidget *m_energyFlow = nullptr;
     QLabel *m_stationDetailTitle = nullptr;
     QLabel *m_stationDetailSummary = nullptr;
     QPushButton *m_stationFavoriteButton = nullptr;
