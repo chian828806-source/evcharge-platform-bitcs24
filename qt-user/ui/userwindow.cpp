@@ -16,6 +16,7 @@
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QFrame>
+#include <QGridLayout>
 #include <QGraphicsDropShadowEffect>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -33,6 +34,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
+#include <QResizeEvent>
 #include <QScrollArea>
 #include <QSplitter>
 #include <QStackedWidget>
@@ -89,6 +91,40 @@ protected:
         if (event->button() == Qt::LeftButton && rect().contains(event->pos())
             && activated) {
             activated();
+        }
+    }
+};
+
+class ScaledPixmapLabel final : public QLabel
+{
+public:
+    explicit ScaledPixmapLabel(QWidget *parent = nullptr)
+        : QLabel(parent)
+    {
+        setAlignment(Qt::AlignCenter);
+    }
+
+    void setSourcePixmap(const QPixmap &pixmap)
+    {
+        m_sourcePixmap = pixmap;
+        updateScaledPixmap();
+    }
+
+protected:
+    void resizeEvent(QResizeEvent *event) override
+    {
+        QLabel::resizeEvent(event);
+        updateScaledPixmap();
+    }
+
+private:
+    QPixmap m_sourcePixmap;
+
+    void updateScaledPixmap()
+    {
+        if (!m_sourcePixmap.isNull() && size().isValid()) {
+            setPixmap(m_sourcePixmap.scaled(size(), Qt::KeepAspectRatio,
+                                            Qt::SmoothTransformation));
         }
     }
 };
@@ -265,6 +301,7 @@ UserWindow::UserWindow(QWidget *parent)
 
     m_pages = new QStackedWidget;
     m_pages->addWidget(buildLoginPage());
+    m_pages->addWidget(buildPromotionPage());
     m_pages->addWidget(buildHomePage());
     m_pages->addWidget(buildStationDetailPage());
     m_pages->addWidget(buildChargingPage());
@@ -345,6 +382,16 @@ UserWindow::UserWindow(QWidget *parent)
     m_orderPollTimer = new QTimer(this);
     m_orderPollTimer->setInterval(1000);
     connect(m_orderPollTimer, &QTimer::timeout, this, &UserWindow::requestActiveOrder);
+    m_promotionTimer = new QTimer(this);
+    m_promotionTimer->setInterval(1000);
+    connect(m_promotionTimer, &QTimer::timeout, this, [this]() {
+        --m_promotionSecondsRemaining;
+        if (m_promotionSecondsRemaining <= 0) {
+            finishPromotion();
+            return;
+        }
+        updatePromotionSkipText();
+    });
     m_socketClient->connectToServer(QStringLiteral("127.0.0.1"), 18080);
 }
 
@@ -406,6 +453,26 @@ QWidget *UserWindow::buildLoginPage()
 
     connect(loginButton, &QPushButton::clicked, this, &UserWindow::attemptLogin);
     connect(m_phoneEdit, &QLineEdit::returnPressed, this, &UserWindow::attemptLogin);
+    return page;
+}
+
+QWidget *UserWindow::buildPromotionPage()
+{
+    auto *page = new QWidget;
+    page->setObjectName(QStringLiteral("promotionPage"));
+    auto *layout = new QGridLayout(page);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+
+    auto *image = new ScaledPixmapLabel(page);
+    image->setObjectName(QStringLiteral("promotionImage"));
+    image->setSourcePixmap(QPixmap(QStringLiteral(":/images/promotion-ad.png")));
+    layout->addWidget(image, 0, 0);
+
+    auto *skipButton = makeButton(QStringLiteral("跳过 3s"), "promotionSkip");
+    skipButton->setMinimumSize(78, 34);
+    layout->addWidget(skipButton, 0, 0, Qt::AlignTop | Qt::AlignRight);
+    connect(skipButton, &QPushButton::clicked, this, &UserWindow::finishPromotion);
     return page;
 }
 
@@ -964,6 +1031,9 @@ void UserWindow::requestRoutePlan(const MapRoute &route, bool driving)
 
 void UserWindow::showPage(Page page)
 {
+    if (page != Promotion && m_promotionTimer) {
+        m_promotionTimer->stop();
+    }
     m_pages->setCurrentIndex(static_cast<int>(page));
     if (page == Home && !m_homeSheetInitialized && m_homeSplitter) {
         QTimer::singleShot(0, this, [this]() {
@@ -1305,6 +1375,34 @@ void UserWindow::renderStations(const QJsonArray &stations)
     }
 }
 
+void UserWindow::showPromotion()
+{
+    m_promotionSecondsRemaining = 3;
+    updatePromotionSkipText();
+    showPage(Promotion);
+    if (m_promotionTimer) {
+        m_promotionTimer->start();
+    }
+}
+
+void UserWindow::finishPromotion()
+{
+    if (m_promotionTimer) {
+        m_promotionTimer->stop();
+    }
+    if (m_pages->currentIndex() == static_cast<int>(Promotion)) {
+        showPage(Home);
+    }
+}
+
+void UserWindow::updatePromotionSkipText()
+{
+    const auto *promotionPage = m_pages->widget(static_cast<int>(Promotion));
+    if (const auto skipButton = promotionPage->findChild<QPushButton *>()) {
+        skipButton->setText(QStringLiteral("跳过 %1s").arg(m_promotionSecondsRemaining));
+    }
+}
+
 void UserWindow::selectHomeStation(int stationId)
 {
     bool exists = false;
@@ -1444,9 +1542,9 @@ void UserWindow::handleResponse(const QJsonObject &response)
         }
         m_loginRequestId.clear();
         applyUser(data.value(QStringLiteral("user")).toObject());
-        showPage(Home);
-        showNotice(QStringLiteral("登录成功"));
         requestInitialData();
+        showPromotion();
+        showNotice(QStringLiteral("登录成功"));
     } else if (type == MessageTypes::MapGeocode) {
         m_originLongitude = data.value(QStringLiteral("longitude")).toDouble();
         m_originLatitude = data.value(QStringLiteral("latitude")).toDouble();

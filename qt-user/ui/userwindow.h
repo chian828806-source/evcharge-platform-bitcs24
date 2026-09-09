@@ -28,6 +28,7 @@ public:
 private:
     enum Page {
         Login,
+        Promotion,
         Home,
         StationDetail,
         Charging,
@@ -80,11 +81,13 @@ private:
     QVBoxLayout *m_pileListLayout = nullptr;
     QVBoxLayout *m_orderListLayout = nullptr;
     QTimer *m_orderPollTimer = nullptr;
+    QTimer *m_promotionTimer = nullptr;
     QHash<int, QWidget *> m_stationCards;
     int m_balanceFenInFen = 0;
     int m_selectedHomeStationId = -1;
     int m_homeSheetStartHeight = 0;
     bool m_homeSheetInitialized = false;
+    int m_promotionSecondsRemaining = 0;
     double m_originLongitude = 121.538;
     double m_originLatitude = 38.889;
     QString m_originName = QStringLiteral("默认位置 · 甘井子区");
@@ -92,6 +95,7 @@ private:
     Page m_navigationSource = Home;
 
     QWidget *buildLoginPage();
+    QWidget *buildPromotionPage();
     QWidget *buildHomePage();
     QWidget *buildStationDetailPage();
     QWidget *buildChargingPage();
@@ -106,6 +110,9 @@ private:
                             const QString &amount, const QString &status);
 
     void showPage(Page page);
+    void showPromotion();
+    void finishPromotion();
+    void updatePromotionSkipText();
     void openNavigation(const QJsonObject &station, Page source);
     void requestRoutePlan(const MapRoute &route, bool driving);
     void attemptLogin();

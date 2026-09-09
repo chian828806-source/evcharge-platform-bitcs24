@@ -305,3 +305,17 @@ QPushButton[kind="dialogDanger"] {
     border: none; border-radius: 18px; font-size: 15px;
 }
 QPushButton[kind="dialogDanger"]:hover { background: #a83d42; }
+
+QWidget#promotionPage { background: #061c2a; }
+QLabel#promotionImage { background: #061c2a; }
+QPushButton[kind="promotionSkip"] {
+    color: white;
+    background: rgba(10, 28, 40, 185);
+    border: 1px solid rgba(255, 255, 255, 105);
+    border-radius: 17px;
+    font-size: 13px;
+    font-weight: 700;
+    margin: 16px;
+    padding: 0 12px;
+}
+QPushButton[kind="promotionSkip"]:hover { background: rgba(10, 28, 40, 230); }
