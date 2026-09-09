@@ -72,9 +72,14 @@ QLabel[role="walletAmount"] { color: #118268; font-size: 26px; font-weight: 800;
 QLabel[role="avatar"] {
     color: white;
     background: #18a67e;
-    border-radius: 29px;
+    border: 3px solid #d8f5e9;
+    border-radius: 33px;
     font-size: 22px;
     font-weight: 700;
+}
+QLabel[role="avatar"][hasAvatar="true"] {
+    background: #effbf6;
+    border: 3px solid #35b989;
 }
 QLabel[role="badgeGood"] {
     color: #08765c; background: #dff7ed; border-radius: 9px;
@@ -197,6 +202,22 @@ QPushButton#modeToggle {
 QPushButton#modeToggle:hover { border-color: #18a67e; }
 QPushButton#modeToggle:checked {
     color: white; background: #159873; border-color: #0f7a5c;
+    font-weight: 800;
+}
+
+QFrame#routeMetricsCard {
+    background: #edf8f4;
+    border: 1px solid #bce4d8;
+    border-radius: 10px;
+}
+QLabel#routeMetricsTitle {
+    color: #5b716b;
+    font-size: 11px;
+    font-weight: 700;
+}
+QLabel#routeMetricsValue {
+    color: #0f624d;
+    font-size: 16px;
     font-weight: 800;
 }
 

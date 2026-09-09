@@ -81,6 +81,7 @@ USER_LOGIN
 USER_PROFILE_GET
 USER_PROFILE_UPDATE
 USER_AVATAR_UPLOAD
+USER_AVATAR_GET
 USER_RECHARGE
 USER_ORDER_LIST
 ```
@@ -259,12 +260,13 @@ Response:
 | `ORDER_START` | `orderId: integer`，必须大于 `0`。 | `order`。仅允许将本人 `CREATED` 订单启动为 `CHARGING`。 | `4002` 用户冻结，`4003` Session 无效，`4102` 电桩预约状态无效，`4104` 订单状态非法，`4401` 订单 ID 非法，`5001` 事务失败。 |
 | `ORDER_STOP` | `orderId: integer`，必须大于 `0`。 | `order`，包含最终 `chargeSeconds`、`chargeMinutes`、`energyKwh`、`amountFen`。服务端计算金额并释放电桩，订单进入 `PENDING_PAYMENT`。 | `4003` Session 无效，`4102` 电桩释放失败，`4104` 订单状态非法，`4401` 订单 ID 非法，`5001` 事务失败。 |
 | `ORDER_SETTLE` | `orderId: integer`，必须大于 `0`。 | `order`、`balanceFen`。成功时在一个事务中扣减余额、完成订单并更新电桩累计统计；已完成订单重复请求不重复扣款。 | `4003` Session 无效，`4103` 余额不足，`4104` 订单状态非法，`4401` 订单 ID 非法，`5001` 事务失败。 |
-| `USER_AVATAR_UPLOAD` | `fileName: string`、`mimeType: string`、`contentBase64: string`。仅接受扩展名与 MIME 一致的 PNG 或 JPEG，Base64 解码后的原文件最大 512 KiB。 | `avatarPath`、`user`；`avatarPath` 为如 `avatars/user-<id>-<uuid>.png` 的相对路径。 | `4002` 用户冻结，`4003` Session 无效，`4401` 文件名、MIME 或文件内容非法，`5001` 数据库失败，`5002` 文件目录或保存失败。 |
+| `USER_AVATAR_UPLOAD` | `fileName: string`、`mimeType: string`、`contentBase64: string`。仅接受扩展名与 MIME 一致的 PNG 或 JPEG，Base64 解码后的原文件最大 1000 KiB。 | `avatarPath`、`user`；`avatarPath` 为如 `avatars/user-<id>-<uuid>.png` 的相对路径。 | `4002` 用户冻结，`4003` Session 无效，`4401` 文件名、MIME 或文件内容非法，`5001` 数据库失败，`5002` 文件目录或保存失败。 |
+| `USER_AVATAR_GET` | 空对象。只读取当前 Session 所属用户的头像。 | 无头像时为 `hasAvatar: false`；有头像时为 `hasAvatar: true`、`avatarPath`、`mimeType`、`contentBase64`。 | `4003` Session 无效，`5001` 查询失败，`5002` 头像文件不可用或内容非法。 |
 | `USER_RECHARGE` | `amountFen: integer`，范围为 `1` 至 `100000000`。 | `rechargeId`、`recordNo`、`amountFen`、`balanceFen`、`createdAt`。 | `4002` 用户冻结，`4003` Session 无效，`4401` 金额不是正整数或超出范围，`5001` 余额与充值流水事务失败。 |
 | `USER_ORDER_LIST` | 可选 `page: integer`（默认 `1`）、`pageSize: integer`（默认 `20`，最大 `50`）、`status: string`。`status` 只允许 `CREATED`、`CHARGING`、`PENDING_PAYMENT`、`COMPLETED`、`CANCELLED`。 | `items`、`page`、`pageSize`、`total`。`items` 按 `createdAt DESC, orderId DESC` 排序，每项为订单对象。 | `4003` Session 无效，`4401` 分页或状态筛选非法，`5001` 查询失败。 |
 | `PREDICTION_RECOMMENDATION` | `longitude: number`、`latitude: number`；可选 `limit: integer`（默认 `5`，范围 `1` 至 `20`）、`horizon: string`（默认 `1h`，可选 `1h`、`6h`、`24h`）。 | `stations`。每项为站点对象，并额外含 `recommended: true`、`predictedLoad`、`predictedAvailablePileCount`、`recommendationReason`。结果按预测负荷升序、距离升序、预测空闲桩数降序排列。无合格推荐时返回空数组。 | `4003` Session 无效，`4401` 坐标、数量或预测窗口非法，`5001` 站点或预测数据查询失败，`5002` 推荐模块未装配。 |
 
-以上为 17 个用户可调用接口。`PREDICTION_LIST` 由 Prediction Registry 提供，
+以上为 18 个用户可调用接口。`PREDICTION_LIST` 由 Prediction Registry 提供，
 不属于当前用户 UI 的必需页面能力。`MAP_GEOCODE` 和 `MAP_ROUTE_PLAN` 均已注册为
 异步 Handler：未配置地图 Key、网络超时或地图服务拒绝请求时返回 `5002`，不会阻塞
 Socket 读取线程。
@@ -276,7 +278,7 @@ Socket 读取线程。
 - `StationStatus = NORMAL | DISABLED`。普通用户站点查询仅返回 `NORMAL`，但仍返回 `status` 以便客户端使用稳定枚举，而非中文文案判断逻辑。
 - `items` 中的订单对象包含 `orderId`、`orderNo`、`userId`、`stationId`、`stationName`、`pileId`、`pileNo`、`powerKw`、`status`、`priceFenPerKwh`、`serviceFeeFenPerKwh`、`totalPriceFenPerKwh`、`startAt`、`endAt`、`chargeMinutes`、`chargeSeconds`、`energyKwh`、`amountFen`、`createdAt`。`chargeSeconds` 是从 `startAt` 到当前时刻（充电中）或 `endAt`（已停止）的精确秒数；`chargeMinutes` 保持兼容的截断分钟。允许为 `null` 的文本字段以 `null` 返回。
 - `USER_RECHARGE` 的重复请求在同一服务进程内以 `userId + requestId` 去重；相同用户以相同 `requestId` 重试时，服务端返回首次成功响应，不会重复增加余额。服务重启后的跨进程幂等尚未实现。
-- `USER_AVATAR_UPLOAD` 保存文件后，数据库只保存相对路径并在响应中返回更新后的 `user`。当前公共 TCP 协议不提供 `USER_AVATAR_GET`；后续若需要跨设备读取头像，应另行设计鉴权后的静态文件下载接口，不得暴露服务端绝对路径。
+- `USER_AVATAR_UPLOAD` 保存文件后，数据库只保存相对路径并在响应中返回更新后的 `user`。`USER_AVATAR_GET` 只允许有效 User Session 读取本人的头像，返回 Base64 图片内容；不得暴露服务端绝对路径，也不得通过 `avatarPath` 读取其他用户文件。
 
 ### 12.1.2 `MAP_GEOCODE` 已确认契约
 
@@ -284,6 +286,9 @@ Socket 读取线程。
 Key，也不自行把地址解析为坐标。请求为 `district: string`、`address: string`；成功
 响应为 `formattedAddress: string`、`longitude: number`、`latitude: number`。服务端用
 环境变量 `TENCENT_MAP_KEY`（推荐）或服务端启动参数 `--tencent-map-key` 读取 Key。
+当前 V1 的区域下拉仅覆盖大连市：服务端会把 `district` 与 `address` 规范化为完整地址
+（如 `大连市甘井子区软件园路`），并向腾讯接口传城市级 `region=大连市`；不得把区县名
+直接作为腾讯 `region` 参数。
 若腾讯控制台对该 WebService Key 启用了签名校验，服务端还必须设置本地环境变量
 `TENCENT_MAP_SK`（或启动参数 `--tencent-map-sk`）；`MapAdapter` 会生成 `sig`，SK 不写入
 仓库、不记录到日志。用户端 `QWebEngineView` 仅使用服务端返回的坐标或导航路线，不得

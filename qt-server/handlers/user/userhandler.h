@@ -24,6 +24,8 @@ public:
                                   const SessionContext &context);
     ResponseMessage avatarUpload(const RequestMessage &request,
                                  const SessionContext &context);
+    ResponseMessage avatarGet(const RequestMessage &request,
+                              const SessionContext &context);
     ResponseMessage recharge(const RequestMessage &request,
                              const SessionContext &context);
 

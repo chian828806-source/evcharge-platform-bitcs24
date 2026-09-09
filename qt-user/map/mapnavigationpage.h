@@ -74,12 +74,15 @@ private:
     QString interactiveMapHtml(const MapRoutePlanPreview &plan) const;
     void showPlaceholder(const QString &message);
     void updateRouteSummary();
+    void showRouteMetricsHint(const QString &message);
+    void updateRouteMetrics(const MapRoutePlanPreview &plan);
     void setTravelMode(TravelMode mode);
 
     MapRoute m_route;
     TravelMode m_travelMode = TravelMode::Driving;
     QWebEngineView *m_mapView = nullptr;
     QLabel *m_routeSummary = nullptr;
+    QLabel *m_routeMetrics = nullptr;
     QLabel *m_statusLabel = nullptr;
     QPushButton *m_drivingButton = nullptr;
     QPushButton *m_walkingButton = nullptr;

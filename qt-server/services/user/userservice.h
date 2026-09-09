@@ -5,6 +5,7 @@
 #pragma once
 
 #include "common/serviceresult.h"
+#include "models/avatarcontent.h"
 #include "models/rechargeinfo.h"
 #include "models/userprofile.h"
 
@@ -27,6 +28,7 @@ public:
     ServiceResult<UserProfile> uploadAvatar(qint64 userId, const QString &fileName,
                                             const QString &mimeType,
                                             const QString &contentBase64);
+    ServiceResult<AvatarContent> avatarContent(qint64 userId);
     ServiceResult<RechargeInfo> recharge(qint64 userId, qint64 amountFen);
 
 private:

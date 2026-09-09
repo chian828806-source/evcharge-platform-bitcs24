@@ -5,6 +5,7 @@
 #include "shared/protocol/messagetypes.h"
 
 #include <QColor>
+#include <QByteArray>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -24,6 +25,8 @@
 #include <QPair>
 #include <QPixmap>
 #include <QProgressBar>
+#include <QPainter>
+#include <QPainterPath>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
@@ -80,6 +83,23 @@ QScrollArea *makeScrollArea(QWidget *content)
 QString displayMoney(int amountFen)
 {
     return QStringLiteral("¥%1").arg(amountFen / 100.0, 0, 'f', 2);
+}
+
+QPixmap circularAvatar(const QPixmap &source, const QSize &size)
+{
+    QPixmap result(size);
+    result.fill(Qt::transparent);
+
+    QPainter painter(&result);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    QPainterPath clip;
+    clip.addEllipse(result.rect());
+    painter.setClipPath(clip);
+    const QPixmap scaled = source.scaled(size, Qt::KeepAspectRatioByExpanding,
+                                         Qt::SmoothTransformation);
+    painter.drawPixmap((size.width() - scaled.width()) / 2,
+                       (size.height() - scaled.height()) / 2, scaled);
+    return result;
 }
 
 QString pileTypeText(const QString &type)
@@ -247,6 +267,10 @@ UserWindow::UserWindow(QWidget *parent)
                             QStringLiteral("路线规划超时，请检查网络后重试。"));
                     }
                 }
+                if (requestId == m_avatarRequestId) {
+                    m_avatarRequestId.clear();
+                    m_avatarRequestPath.clear();
+                }
                 if (type == MessageTypes::StationDetailGet && m_pileListLayout) {
                     clearLayout(m_pileListLayout);
                     m_stationDetailSummary->setText(QStringLiteral("站点详情加载超时"));
@@ -266,6 +290,10 @@ UserWindow::UserWindow(QWidget *parent)
                     if (m_mapNavigationPage) {
                         m_mapNavigationPage->setLoadError(message);
                     }
+                }
+                if (requestId == m_avatarRequestId) {
+                    m_avatarRequestId.clear();
+                    m_avatarRequestPath.clear();
                 }
                 if (type == MessageTypes::StationDetailGet && m_pileListLayout) {
                     clearLayout(m_pileListLayout);
@@ -687,7 +715,8 @@ QWidget *UserWindow::buildProfilePage()
     profileLayout->setContentsMargins(20, 20, 20, 20);
     m_avatarLabel = makeLabel(QStringLiteral("U"), "avatar");
     m_avatarLabel->setAlignment(Qt::AlignCenter);
-    m_avatarLabel->setFixedSize(58, 58);
+    m_avatarLabel->setFixedSize(66, 66);
+    m_avatarLabel->setProperty("hasAvatar", false);
     profileLayout->addWidget(m_avatarLabel);
     auto *identity = new QVBoxLayout;
     m_nicknameLabel = makeLabel(QStringLiteral("用户信息加载中"), "cardTitle");
@@ -997,8 +1026,8 @@ void UserWindow::uploadAvatar()
         return;
     }
     QFile file(path);
-    if (!file.open(QIODevice::ReadOnly) || file.size() > 512 * 1024) {
-        showNotice(QStringLiteral("头像无法读取或超过 512 KiB"), true);
+    if (!file.open(QIODevice::ReadOnly) || file.size() > 1000 * 1024) {
+        showNotice(QStringLiteral("头像无法读取或超过 1000 KiB"), true);
         return;
     }
     const QString suffix = QFileInfo(path).suffix().toLower();
@@ -1100,6 +1129,40 @@ void UserWindow::applyUser(const QJsonObject &user)
     }
     m_balanceFenInFen = user.value(QStringLiteral("balanceFen")).toInt();
     if (m_balanceLabel) m_balanceLabel->setText(displayMoney(m_balanceFenInFen));
+
+    const QString avatarPath = user.value(QStringLiteral("avatarPath")).toString();
+    if (avatarPath != m_avatarPath) {
+        m_avatarPath = avatarPath;
+        requestAvatar(avatarPath);
+    }
+}
+
+void UserWindow::resetAvatar()
+{
+    if (!m_avatarLabel) {
+        return;
+    }
+    m_avatarLabel->setPixmap(QPixmap());
+    m_avatarLabel->setText(QStringLiteral("U"));
+    m_avatarLabel->setProperty("hasAvatar", false);
+    m_avatarLabel->style()->unpolish(m_avatarLabel);
+    m_avatarLabel->style()->polish(m_avatarLabel);
+}
+
+void UserWindow::requestAvatar(const QString &avatarPath)
+{
+    if (avatarPath.isEmpty()) {
+        resetAvatar();
+        return;
+    }
+    if (m_avatarRequestPath == avatarPath && !m_avatarRequestId.isEmpty()) {
+        return;
+    }
+    m_avatarRequestPath = avatarPath;
+    m_avatarRequestId = sendRequest(MessageTypes::UserAvatarGet);
+    if (m_avatarRequestId.isEmpty()) {
+        m_avatarRequestPath.clear();
+    }
 }
 
 void UserWindow::applyOrder(const QJsonObject &order)
@@ -1193,6 +1256,10 @@ void UserWindow::handleResponse(const QJsonObject &response)
                     response.value(QStringLiteral("message")).toString());
             }
         }
+        if (requestId == m_avatarRequestId) {
+            m_avatarRequestId.clear();
+            m_avatarRequestPath.clear();
+        }
         showNotice(response.value(QStringLiteral("message")).toString(), true);
         return;
     }
@@ -1251,6 +1318,32 @@ void UserWindow::handleResponse(const QJsonObject &response)
                || type == MessageTypes::UserProfileUpdate) {
         applyUser(data.value(QStringLiteral("user")).toObject());
         if (type == MessageTypes::UserProfileUpdate) showNotice(QStringLiteral("昵称已更新"));
+    } else if (type == MessageTypes::UserAvatarGet) {
+        // 只接受当前头像路径对应的响应，避免旧请求覆盖刚上传的新头像。
+        if (requestId != m_avatarRequestId) {
+            return;
+        }
+        m_avatarRequestId.clear();
+        m_avatarRequestPath.clear();
+        const QString avatarPath = data.value(QStringLiteral("avatarPath")).toString();
+        if (!data.value(QStringLiteral("hasAvatar")).toBool()
+            || avatarPath.isEmpty() || avatarPath != m_avatarPath) {
+            if (m_avatarPath.isEmpty()) resetAvatar();
+            return;
+        }
+        const QByteArray content = QByteArray::fromBase64(
+            data.value(QStringLiteral("contentBase64")).toString().toLatin1(),
+            QByteArray::AbortOnBase64DecodingErrors);
+        QPixmap avatar;
+        if (content.isEmpty() || !avatar.loadFromData(content)) {
+            showNotice(QStringLiteral("头像文件无法显示"), true);
+            return;
+        }
+        m_avatarLabel->setText(QString());
+        m_avatarLabel->setProperty("hasAvatar", true);
+        m_avatarLabel->style()->unpolish(m_avatarLabel);
+        m_avatarLabel->style()->polish(m_avatarLabel);
+        m_avatarLabel->setPixmap(circularAvatar(avatar, QSize(56, 56)));
     } else if (type == MessageTypes::StationListNearby
                || type == MessageTypes::PredictionRecommendation) {
         if (type == MessageTypes::StationListNearby) {
