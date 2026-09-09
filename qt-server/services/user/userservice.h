@@ -29,6 +29,7 @@ public:
                                             const QString &mimeType,
                                             const QString &contentBase64);
     ServiceResult<AvatarContent> avatarContent(qint64 userId);
+    ServiceResult<UserProfile> removeAvatar(qint64 userId);
     ServiceResult<RechargeInfo> recharge(qint64 userId, qint64 amountFen);
 
 private:

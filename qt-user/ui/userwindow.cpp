@@ -725,8 +725,10 @@ QWidget *UserWindow::buildProfilePage()
     identity->addWidget(m_profilePhoneLabel);
     profileLayout->addLayout(identity, 1);
     auto *avatarButton = makeButton(QStringLiteral("更换头像"), "ghostCompact");
+    auto *removeAvatarButton = makeButton(QStringLiteral("移除头像"), "ghostCompact");
     auto *renameButton = makeButton(QStringLiteral("修改昵称"), "ghostCompact");
     profileLayout->addWidget(avatarButton);
+    profileLayout->addWidget(removeAvatarButton);
     profileLayout->addWidget(renameButton);
     layout->addWidget(profileCard);
 
@@ -757,6 +759,14 @@ QWidget *UserWindow::buildProfilePage()
     connect(renameButton, &QPushButton::clicked, this, &UserWindow::showRenameDialog);
     connect(rechargeButton, &QPushButton::clicked, this, &UserWindow::showRechargeDialog);
     connect(avatarButton, &QPushButton::clicked, this, &UserWindow::uploadAvatar);
+    connect(removeAvatarButton, &QPushButton::clicked, this, [this]() {
+        if (confirmUserAction(this, QStringLiteral("移除头像"),
+                              QStringLiteral("确认移除当前头像？"),
+                              QStringLiteral("移除后将恢复为默认头像，但可随时重新上传。"),
+                              QStringLiteral("确认移除"), true)) {
+            sendRequest(MessageTypes::UserAvatarRemove);
+        }
+    });
     connect(logoutButton, &QPushButton::clicked, this, [this]() {
         if (confirmUserAction(this, QStringLiteral("退出登录"),
                               QStringLiteral("确认退出当前账户？"),
@@ -1316,7 +1326,7 @@ void UserWindow::handleResponse(const QJsonObject &response)
         m_mapNavigationPage->setRoutePlan(plan);
     } else if (type == MessageTypes::UserProfileGet
                || type == MessageTypes::UserProfileUpdate) {
-        applyUser(data.value(QStringLiteral("user")).toObject());
+        applyUser(data.value(QStringLiteral("user")).   toObject());
         if (type == MessageTypes::UserProfileUpdate) showNotice(QStringLiteral("昵称已更新"));
     } else if (type == MessageTypes::UserAvatarGet) {
         // 只接受当前头像路径对应的响应，避免旧请求覆盖刚上传的新头像。
@@ -1388,5 +1398,8 @@ void UserWindow::handleResponse(const QJsonObject &response)
     } else if (type == MessageTypes::UserAvatarUpload) {
         applyUser(data.value(QStringLiteral("user")).toObject());
         showNotice(QStringLiteral("头像上传成功"));
+    } else if (type == MessageTypes::UserAvatarRemove) {
+        applyUser(data.value(QStringLiteral("user")).toObject());
+        showNotice(QStringLiteral("头像已移除"));
     }
 }
