@@ -21,6 +21,8 @@ inline const QString UserCouponList = QStringLiteral("USER_COUPON_LIST");
 
 inline const QString StationListNearby = QStringLiteral("STATION_LIST_NEARBY");
 inline const QString StationDetailGet = QStringLiteral("STATION_DETAIL_GET");
+inline const QString UserStationFavoriteToggle = QStringLiteral("USER_STATION_FAVORITE_TOGGLE");
+inline const QString UserStationFavoriteList = QStringLiteral("USER_STATION_FAVORITE_LIST");
 inline const QString MapGeocode = QStringLiteral("MAP_GEOCODE");
 inline const QString MapRoutePlan = QStringLiteral("MAP_ROUTE_PLAN");
 

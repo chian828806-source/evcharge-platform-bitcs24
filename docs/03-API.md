@@ -85,7 +85,15 @@ USER_AVATAR_GET
 USER_AVATAR_REMOVE
 USER_RECHARGE
 USER_ORDER_LIST
+USER_STATION_FAVORITE_TOGGLE
+USER_STATION_FAVORITE_LIST
 ```
+
+收藏接口均要求普通用户 Session。`USER_STATION_FAVORITE_TOGGLE` 请求携带
+`stationId`，成功响应返回 `stationId` 和服务端确认后的 `isFavorite`；
+`USER_STATION_FAVORITE_LIST` 可携带 `longitude`、`latitude` 用于计算距离，
+成功响应的 `stations` 为当前用户已收藏的站点数组。站点列表和详情对象统一使用
+`isFavorite` 表示当前用户的收藏状态，客户端不得自行伪造该状态。
 
 站点与导航：
 

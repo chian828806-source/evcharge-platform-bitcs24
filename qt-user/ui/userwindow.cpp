@@ -241,6 +241,7 @@ UserWindow::UserWindow(QWidget *parent)
     m_pages->addWidget(buildStationDetailPage());
     m_pages->addWidget(buildChargingPage());
     m_pages->addWidget(buildProfilePage());
+    m_pages->addWidget(buildFavoritesPage());
     m_pages->addWidget(buildNavigationPage());
     rootLayout->addWidget(m_pages, 1);
     setCentralWidget(root);
@@ -285,6 +286,11 @@ UserWindow::UserWindow(QWidget *parent)
                     m_pileListLayout->addWidget(makeLabel(
                         QStringLiteral("暂时无法获取电桩信息，请返回首页后重试。"), "hint"));
                 }
+                if (type == MessageTypes::UserStationFavoriteList && m_favoriteListLayout) {
+                    clearLayout(m_favoriteListLayout);
+                    m_favoriteListLayout->addWidget(makeLabel(
+                        QStringLiteral("收藏列表加载超时，请稍后重试。"), "hint"));
+                }
                 showNotice(QStringLiteral("请求超时，请检查服务后重试"), true);
             });
     connect(m_socketClient, &SocketClient::requestFailed, this,
@@ -308,6 +314,11 @@ UserWindow::UserWindow(QWidget *parent)
                     m_stationDetailSummary->setText(QStringLiteral("站点详情加载失败"));
                     m_pileListLayout->addWidget(makeLabel(
                         QStringLiteral("暂时无法获取电桩信息，请返回首页后重试。"), "hint"));
+                }
+                if (type == MessageTypes::UserStationFavoriteList && m_favoriteListLayout) {
+                    clearLayout(m_favoriteListLayout);
+                    m_favoriteListLayout->addWidget(makeLabel(
+                        QStringLiteral("暂时无法获取收藏列表，请稍后重试。"), "hint"));
                 }
                 showNotice(QStringLiteral("请求失败：%1").arg(message), true);
             });
@@ -477,7 +488,10 @@ QWidget *UserWindow::buildStationCard(const QJsonObject &station)
     const QString name = station.value(QStringLiteral("name")).toString();
     const QString address = station.value(QStringLiteral("address")).toString();
     const bool recommended = station.value(QStringLiteral("recommended")).toBool();
+    const bool disabled = station.value(QStringLiteral("status")).toString()
+        == QStringLiteral("DISABLED");
     const int stationId = station.value(QStringLiteral("stationId")).toInt();
+    const bool isFavorite = station.value(QStringLiteral("isFavorite")).toBool();
     auto *stationCard = makeCard();
     stationCard->setProperty("variant", "station");
     auto *layout = new QVBoxLayout(stationCard);
@@ -489,6 +503,15 @@ QWidget *UserWindow::buildStationCard(const QJsonObject &station)
     if (recommended) {
         titleRow->addWidget(makeLabel(QStringLiteral("低拥堵推荐"), "badgeGood"));
     }
+    if (disabled) {
+        titleRow->addWidget(makeLabel(QStringLiteral("已停用"), "badgeNeutral"));
+    }
+    auto *favoriteButton = makeButton(isFavorite ? QStringLiteral("★") : QStringLiteral("☆"),
+                                      isFavorite ? "favoriteIconActive" : "favoriteIcon");
+    favoriteButton->setFixedSize(38, 38);
+    favoriteButton->setToolTip(isFavorite ? QStringLiteral("取消收藏") : QStringLiteral("收藏站点"));
+    favoriteButton->setAccessibleName(favoriteButton->toolTip());
+    titleRow->addWidget(favoriteButton);
     layout->addLayout(titleRow);
     layout->addWidget(makeLabel(QStringLiteral("⌖ %1").arg(address), "caption"));
     auto *metrics = new QHBoxLayout;
@@ -509,6 +532,8 @@ QWidget *UserWindow::buildStationCard(const QJsonObject &station)
     layout->addLayout(actions);
     connect(detailButton, &QPushButton::clicked, this, [this, station, stationId]() {
         m_selectedStation = station;
+        m_stationDetailSource = m_pages->currentIndex() == static_cast<int>(Favorites)
+            ? Favorites : Home;
         m_stationDetailTitle->setText(station.value(QStringLiteral("name")).toString());
         m_stationDetailSummary->setText(QStringLiteral("正在获取站点详情…"));
         clearLayout(m_pileListLayout);
@@ -518,7 +543,12 @@ QWidget *UserWindow::buildStationCard(const QJsonObject &station)
                     QJsonObject{{QStringLiteral("stationId"), stationId}});
     });
     connect(navigationButton, &QPushButton::clicked, this, [this, station]() {
-        openNavigation(station, Home);
+        const Page source = m_pages->currentIndex() == static_cast<int>(Favorites)
+            ? Favorites : Home;
+        openNavigation(station, source);
+    });
+    connect(favoriteButton, &QPushButton::clicked, this, [this, stationId]() {
+        toggleFavorite(stationId);
     });
     return stationCard;
 }
@@ -555,6 +585,8 @@ QWidget *UserWindow::buildStationDetailPage()
     m_stationDetailSummary = makeLabel(QStringLiteral("等待服务端数据"), "metricLarge");
     summaryLayout->addWidget(m_stationDetailSummary);
     summaryLayout->addStretch();
+    m_stationFavoriteButton = makeButton(QStringLiteral("☆ 收藏"), "favorite");
+    summaryLayout->addWidget(m_stationFavoriteButton);
     auto *navigationButton = makeButton(QStringLiteral("导航到这里"), "primary");
     summaryLayout->addWidget(navigationButton);
     layout->addWidget(summaryCard);
@@ -566,7 +598,10 @@ QWidget *UserWindow::buildStationDetailPage()
     pageLayout->addWidget(makeScrollArea(content), 1);
     pageLayout->addWidget(buildBottomNavigation(Home));
     connect(backButton, &QPushButton::clicked, this,
-            [this]() { showPage(Home); });
+            [this]() { showPage(m_stationDetailSource); });
+    connect(m_stationFavoriteButton, &QPushButton::clicked, this, [this]() {
+        toggleFavorite(m_selectedStation.value(QStringLiteral("stationId")).toInt());
+    });
     connect(navigationButton, &QPushButton::clicked, this, [this]() {
         openNavigation(m_selectedStation, StationDetail);
     });
@@ -579,7 +614,9 @@ QWidget *UserWindow::buildPileCard(const QJsonObject &pile)
     const QString type = pile.value(QStringLiteral("type")).toString();
     const QString status = pile.value(QStringLiteral("status")).toString();
     const int pileId = pile.value(QStringLiteral("pileId")).toInt();
-    const bool available = status == QStringLiteral("AVAILABLE");
+    const bool available = status == QStringLiteral("AVAILABLE")
+        && m_selectedStation.value(QStringLiteral("status")).toString()
+            != QStringLiteral("DISABLED");
     auto *pileCard = makeCard();
     pileCard->setProperty("variant", "pile");
     auto *layout = new QHBoxLayout(pileCard);
@@ -816,9 +853,7 @@ QWidget *UserWindow::buildProfilePage()
     connect(membershipButton, &QPushButton::clicked, this, [this]() {
         showNotice(QStringLiteral("会员中心入口已预留"));
     });
-    connect(favoritesButton, &QPushButton::clicked, this, [this]() {
-        showNotice(QStringLiteral("我的收藏入口已预留"));
-    });
+    connect(favoritesButton, &QPushButton::clicked, this, [this]() { showPage(Favorites); });
     connect(ordersButton, &QPushButton::clicked, this, [this]() {
         if (m_ordersDialog) {
             m_ordersDialog->raise();
@@ -875,6 +910,52 @@ QWidget *UserWindow::buildProfilePage()
             showPage(Login);
         }
     });
+    return page;
+}
+
+QWidget *UserWindow::buildFavoritesPage()
+{
+    auto *page = new QWidget;
+    auto *pageLayout = new QVBoxLayout(page);
+    pageLayout->setContentsMargins(0, 0, 0, 0);
+    pageLayout->setSpacing(0);
+
+    auto *content = new QWidget;
+    auto *layout = new QVBoxLayout(content);
+    layout->setContentsMargins(20, 0, 20, 24);
+    layout->setSpacing(14);
+
+    auto *top = new QHBoxLayout;
+    top->setContentsMargins(0, 16, 0, 0);
+    top->setSpacing(12);
+    auto *backButton = makeButton(QStringLiteral("←"), "icon");
+    backButton->setFixedSize(42, 42);
+    backButton->setToolTip(QStringLiteral("返回个人中心"));
+    backButton->setAccessibleName(QStringLiteral("返回个人中心"));
+    top->addWidget(backButton, 0, Qt::AlignTop);
+    top->addWidget(buildPageHeader(QStringLiteral("MY FAVORITES"),
+                                   QStringLiteral("我的收藏"),
+                                   QStringLiteral("集中查看常用站点，快速进入详情或导航")), 1);
+    layout->addLayout(top);
+
+    auto *heading = new QHBoxLayout;
+    heading->addWidget(makeLabel(QStringLiteral("收藏站点"), "sectionTitle"));
+    heading->addStretch();
+    auto *refreshButton = makeButton(QStringLiteral("刷新"), "ghost");
+    refreshButton->setMinimumWidth(76);
+    heading->addWidget(refreshButton);
+    layout->addLayout(heading);
+
+    m_favoriteListLayout = new QVBoxLayout;
+    m_favoriteListLayout->setSpacing(14);
+    m_favoriteListLayout->addWidget(makeLabel(QStringLiteral("进入页面后加载收藏站点"), "hint"));
+    layout->addLayout(m_favoriteListLayout);
+    layout->addStretch();
+
+    pageLayout->addWidget(makeScrollArea(content), 1);
+    pageLayout->addWidget(buildBottomNavigation(Profile));
+    connect(backButton, &QPushButton::clicked, this, [this]() { showPage(Profile); });
+    connect(refreshButton, &QPushButton::clicked, this, &UserWindow::requestFavoriteList);
     return page;
 }
 
@@ -997,6 +1078,8 @@ void UserWindow::showPage(Page page)
             requestActiveOrder();
         } else if (page == Profile) {
             sendRequest(MessageTypes::UserProfileGet);
+        } else if (page == Favorites) {
+            requestFavoriteList();
         }
     }
     if (page != Charging && m_orderPollTimer) {
@@ -1219,6 +1302,36 @@ void UserWindow::requestInitialData()
     requestActiveOrder();
 }
 
+void UserWindow::requestFavoriteList()
+{
+    if (!m_favoriteListLayout) return;
+    if (!m_socketClient->isConnected() || m_sessionId.isEmpty()) {
+        clearLayout(m_favoriteListLayout);
+        m_favoriteListLayout->addWidget(makeLabel(
+            QStringLiteral("请连接服务并登录后查看收藏。"), "hint"));
+        return;
+    }
+    clearLayout(m_favoriteListLayout);
+    m_favoriteListLayout->addWidget(makeLabel(QStringLiteral("正在加载收藏站点…"), "hint"));
+    sendRequest(MessageTypes::UserStationFavoriteList,
+                QJsonObject{{QStringLiteral("longitude"), m_originLongitude},
+                            {QStringLiteral("latitude"), m_originLatitude}});
+}
+
+void UserWindow::toggleFavorite(int stationId)
+{
+    if (stationId <= 0) {
+        showNotice(QStringLiteral("站点信息不完整，暂时无法收藏"), true);
+        return;
+    }
+    if (!m_socketClient->isConnected() || m_sessionId.isEmpty()) {
+        showNotice(QStringLiteral("请连接服务并登录后再收藏"), true);
+        return;
+    }
+    sendRequest(MessageTypes::UserStationFavoriteToggle,
+                QJsonObject{{QStringLiteral("stationId"), stationId}});
+}
+
 void UserWindow::requestActiveOrder()
 {
     if (m_sessionMode == SessionMode::Real && !m_sessionId.isEmpty()
@@ -1341,6 +1454,17 @@ void UserWindow::renderStationDetail(const QJsonObject &station, const QJsonArra
         .arg(displayMoney(station.value(QStringLiteral("totalPriceFenPerKwh")).toInt()))
         .arg(station.value(QStringLiteral("availablePileCount")).toInt())
         .arg(station.value(QStringLiteral("pileCount")).toInt()));
+    if (m_stationFavoriteButton) {
+        const bool isFavorite = station.value(QStringLiteral("isFavorite")).toBool();
+        m_stationFavoriteButton->setText(isFavorite ? QStringLiteral("★ 已收藏")
+                                                     : QStringLiteral("☆ 收藏"));
+        m_stationFavoriteButton->setProperty("kind",
+            isFavorite ? "favoriteActive" : "favorite");
+        m_stationFavoriteButton->setToolTip(isFavorite ? QStringLiteral("取消收藏")
+                                                        : QStringLiteral("收藏站点"));
+        m_stationFavoriteButton->style()->unpolish(m_stationFavoriteButton);
+        m_stationFavoriteButton->style()->polish(m_stationFavoriteButton);
+    }
     clearLayout(m_pileListLayout);
     if (piles.isEmpty()) {
         m_pileListLayout->addWidget(makeLabel(QStringLiteral("站内暂无电桩"), "hint"));
@@ -1370,6 +1494,72 @@ void UserWindow::renderOrders(const QJsonArray &orders)
     }
 }
 
+void UserWindow::renderFavorites(const QJsonArray &stations)
+{
+    m_favoriteStations = stations;
+    clearLayout(m_favoriteListLayout);
+    if (stations.isEmpty()) {
+        m_favoriteListLayout->addWidget(makeLabel(
+            QStringLiteral("还没有收藏站点。可在首页或站点详情点击星标收藏。"), "hint"));
+        return;
+    }
+    for (const QJsonValue &value : stations) {
+        QJsonObject station = value.toObject();
+        station.insert(QStringLiteral("isFavorite"), true);
+        m_favoriteListLayout->addWidget(buildStationCard(station));
+    }
+}
+
+void UserWindow::applyFavoriteState(int stationId, bool isFavorite)
+{
+    const auto updateArray = [stationId, isFavorite](QJsonArray &stations, bool removeMissing) {
+        QJsonArray updated;
+        for (const QJsonValue &value : stations) {
+            QJsonObject station = value.toObject();
+            if (station.value(QStringLiteral("stationId")).toInt() == stationId) {
+                station.insert(QStringLiteral("isFavorite"), isFavorite);
+                if (removeMissing && !isFavorite) continue;
+            }
+            updated.append(station);
+        }
+        stations = updated;
+    };
+    updateArray(m_nearbyStations, false);
+    updateArray(m_recommendedStations, false);
+    updateArray(m_favoriteStations, true);
+
+    if (m_selectedStation.value(QStringLiteral("stationId")).toInt() == stationId) {
+        m_selectedStation.insert(QStringLiteral("isFavorite"), isFavorite);
+        if (m_stationFavoriteButton) {
+            m_stationFavoriteButton->setText(isFavorite ? QStringLiteral("★ 已收藏")
+                                                         : QStringLiteral("☆ 收藏"));
+            m_stationFavoriteButton->setProperty("kind",
+                isFavorite ? "favoriteActive" : "favorite");
+            m_stationFavoriteButton->setToolTip(isFavorite ? QStringLiteral("取消收藏")
+                                                            : QStringLiteral("收藏站点"));
+            m_stationFavoriteButton->style()->unpolish(m_stationFavoriteButton);
+            m_stationFavoriteButton->style()->polish(m_stationFavoriteButton);
+        }
+    }
+
+    QSet<int> recommendedIds;
+    for (const QJsonValue &value : m_recommendedStations) {
+        recommendedIds.insert(value.toObject().value(QStringLiteral("stationId")).toInt());
+    }
+    QJsonArray combined;
+    for (const QJsonValue &value : m_nearbyStations) {
+        QJsonObject station = value.toObject();
+        if (recommendedIds.contains(station.value(QStringLiteral("stationId")).toInt())) {
+            station.insert(QStringLiteral("recommended"), true);
+        }
+        combined.append(station);
+    }
+    renderStations(combined.isEmpty() ? m_recommendedStations : combined);
+    if (m_pages && m_pages->currentIndex() == static_cast<int>(Favorites)) {
+        requestFavoriteList();
+    }
+}
+
 void UserWindow::handleResponse(const QJsonObject &response)
 {
     const QString requestId = response.value(QStringLiteral("requestId")).toString();
@@ -1395,6 +1585,11 @@ void UserWindow::handleResponse(const QJsonObject &response)
         if (requestId == m_avatarRequestId) {
             m_avatarRequestId.clear();
             m_avatarRequestPath.clear();
+        }
+        if (type == MessageTypes::UserStationFavoriteList && m_favoriteListLayout) {
+            clearLayout(m_favoriteListLayout);
+            m_favoriteListLayout->addWidget(makeLabel(
+                QStringLiteral("收藏服务暂不可用，后端接口完成后即可加载。"), "hint"));
         }
         showNotice(response.value(QStringLiteral("message")).toString(), true);
         return;
@@ -1506,6 +1701,14 @@ void UserWindow::handleResponse(const QJsonObject &response)
     } else if (type == MessageTypes::StationDetailGet) {
         renderStationDetail(data.value(QStringLiteral("station")).toObject(),
                             data.value(QStringLiteral("piles")).toArray());
+    } else if (type == MessageTypes::UserStationFavoriteList) {
+        renderFavorites(data.value(QStringLiteral("stations")).toArray());
+    } else if (type == MessageTypes::UserStationFavoriteToggle) {
+        const int stationId = data.value(QStringLiteral("stationId")).toInt();
+        const bool isFavorite = data.value(QStringLiteral("isFavorite")).toBool();
+        applyFavoriteState(stationId, isFavorite);
+        showNotice(isFavorite ? QStringLiteral("已加入我的收藏")
+                              : QStringLiteral("已取消收藏"));
     } else if (type == MessageTypes::OrderActiveCheck) {
         m_balanceFenInFen = data.value(QStringLiteral("balanceFen")).toInt(m_balanceFenInFen);
         applyOrder(data.value(QStringLiteral("order")).toObject());

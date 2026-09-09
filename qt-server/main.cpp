@@ -52,6 +52,7 @@ bool hasRequiredTables(QSqlDatabase &database, QString *errorMessage)
         QStringLiteral("user"), QStringLiteral("admin"),
         QStringLiteral("charging_station"), QStringLiteral("charging_pile"),
         QStringLiteral("charging_order"), QStringLiteral("coupon"),
+        QStringLiteral("user_station_favorite"),
         QStringLiteral("recharge_record"),
         QStringLiteral("prediction_batch"), QStringLiteral("prediction"),
         QStringLiteral("operation_log"), QStringLiteral("data_import_batch"),

@@ -44,6 +44,7 @@ struct StationInfo
     QString status;
     int pileCount = 0;
     int availablePileCount = 0;
+    bool isFavorite = false;
     // 小于0表示当前场景没有用户坐标，例如站点详情请求。
     double distanceKm = -1.0;
     // 仅推荐接口填充；普通站点列表不返回这些字段。
@@ -68,6 +69,7 @@ struct StationInfo
             {QStringLiteral("pileCount"), pileCount},
             {QStringLiteral("availablePileCount"), availablePileCount}
         };
+        json.insert(QStringLiteral("isFavorite"), isFavorite);
         json.insert(QStringLiteral("district"), district.isEmpty()
             ? QJsonValue(QJsonValue::Null) : QJsonValue(district));
         if (distanceKm >= 0.0) {
