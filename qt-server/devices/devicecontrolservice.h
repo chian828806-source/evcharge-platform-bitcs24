@@ -19,6 +19,7 @@ public:
     void handleFault(qint64 pileId, const QString &code, const QString &message);
     void handleOffline(qint64 pileId);
     bool validateHello(qint64 pileId, const QString &pileNo, double *ratedPower, QString *status);
+    bool completeHello(qint64 pileId, const QString &pileNo, double *ratedPower, QString *status);
     void recordHeartbeat(qint64 pileId);
 signals:
     void restartFinished(qint64 pileId, bool success);
