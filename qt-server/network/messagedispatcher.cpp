@@ -63,7 +63,7 @@ void MessageDispatcher::dispatchAsync(const RequestMessage &request,
 ResponseMessage MessageDispatcher::preflight(const RequestMessage &request, Route *route,
                                              SessionContext *context) const
 {
-    // 第一层只允许公共文档登记的32种TCP消息进入系统。
+    // 第一层只允许公共文档登记的33种TCP消息进入系统。
     if (!MessageTypes::tcpTypes().contains(request.type)) {
         return ResponseMessage::error(request.requestId, ErrorCodes::InvalidSocketMessage,
                                       QStringLiteral("unknown message type"));

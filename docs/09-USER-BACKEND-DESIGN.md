@@ -219,6 +219,7 @@ registerAdminHandlers(dispatcher, adminDependencies);
 | U05 | 查询资料 | `USER_PROFILE_GET` | UserHandler | UserService | UserRepository | `user` |
 | U05 | 修改昵称 | `USER_PROFILE_UPDATE` | UserHandler | UserService | UserRepository | `user` |
 | U05 | 上传头像 | `USER_AVATAR_UPLOAD` | UserHandler | UserService | AvatarStorage、UserRepository | `user` + 头像文件 |
+| U05 | 读取头像 | `USER_AVATAR_GET` | UserHandler | UserService | AvatarStorage、UserRepository | `user` + 头像文件 |
 | U05 | 钱包充值 | `USER_RECHARGE` | UserHandler | WalletService | UserRepository、RechargeRepository | `user`, `recharge_record` |
 | U05 | 查询订单列表 | `USER_ORDER_LIST` | OrderHandler | OrderService | OrderRepository、StationRepository、PileRepository | `charging_order`, `charging_station`, `charging_pile` |
 | 可选详情 | 查询预测 | `PREDICTION_LIST` | PredictionHandler | PredictionService | PredictionRepository | `prediction` |
@@ -403,10 +404,23 @@ V1 已冻结：仅允许 PNG 或 JPEG，文件名扩展名必须与 MIME 匹配�
 文件最大 1000 KiB。服务端以随机文件名保存，数据库只保存 `avatars/<文件名>`
 形式的相对路径；旧头像在成功替换后清理。
 
-用户端不拼接服务端磁盘路径，也不通过当前协议读取头像文件。服务端在上传时校验
-文件扩展名、大小与图片签名，防止非法文件写入头像目录。
+用户端不拼接服务端磁盘路径。服务端在上传时校验文件扩展名、大小与图片签名，
+防止非法文件写入头像目录。
 
-### 8.5 `USER_RECHARGE`
+### 8.5 `USER_AVATAR_GET`
+
+| 项目 | 内容 |
+| --- | --- |
+| 权限 | User |
+| 请求 payload | `{}` |
+| 成功 data | 无头像时 `hasAvatar: false`；有头像时返回 `hasAvatar`、`avatarPath`、`mimeType`、`contentBase64` |
+| 文件操作 | 仅按当前 Session 用户在数据库中的相对路径读取配置头像目录内的文件 |
+
+读取时必须再次校验相对路径、文件扩展名、图片签名和 1000 KiB 大小限制；不得接受
+客户端传入的文件路径，且不得返回服务端绝对路径。这样客户端重启或换设备登录后，
+也可通过受 Session 保护的消息恢复头像。
+
+### 8.6 `USER_RECHARGE`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -420,7 +434,7 @@ V1 已冻结：仅允许 PNG 或 JPEG，文件名扩展名必须与 MIME 匹配�
 `userId + requestId` 缓存成功响应；同一用户重复提交同一 `requestId` 不会再次
 充值。服务重启后的跨进程持久化幂等仍属于 C10。
 
-### 8.6 `USER_ORDER_LIST`
+### 8.7 `USER_ORDER_LIST`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -433,7 +447,7 @@ V1 已冻结：仅允许 PNG 或 JPEG，文件名扩展名必须与 MIME 匹配�
 Service 必须强制使用 Session 用户 ID，不能查询其他用户的订单。`status` 仅允许
 `CREATED`、`CHARGING`、`PENDING_PAYMENT`、`COMPLETED`、`CANCELLED` 中的一个值。
 
-### 8.7 `MAP_GEOCODE`
+### 8.8 `MAP_GEOCODE`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -454,7 +468,7 @@ Service 必须强制使用 Session 用户 ID，不能查询其他用户的订单
 以独立的 `TENCENT_MAP_JS_KEY` 加载腾讯 JavaScript API GL，将服务端返回的路线折线叠加
 到可拖动、可缩放的真实地图。JS Key 不得复用服务端 SK，且必须通过域名白名单限制。
 
-### 8.8 `MAP_ROUTE_PLAN`
+### 8.9 `MAP_ROUTE_PLAN`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -468,7 +482,7 @@ Service 必须强制使用 Session 用户 ID，不能查询其他用户的订单
 用户端在 `QWebEngineView` 的腾讯 JavaScript API GL 真实底图中绘制路线，地图交互只在
 客户端进行。WebService Key/SK 仍只存在服务端；客户端仅使用受域名白名单约束的 JS Key。
 
-### 8.9 `STATION_LIST_NEARBY`
+### 8.10 `STATION_LIST_NEARBY`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -482,7 +496,7 @@ Service 必须强制使用 Session 用户 ID，不能查询其他用户的订单
 统计 `AVAILABLE`。距离使用统一的 Haversine 或平面近似算法，单位 km，
 展示值保留两位小数。`DISABLED` 站点默认不向普通用户展示。
 
-### 8.10 `STATION_DETAIL_GET`
+### 8.11 `STATION_DETAIL_GET`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -495,7 +509,7 @@ Service 必须强制使用 Session 用户 ID，不能查询其他用户的订单
 `AVAILABLE` 状态在 UI 中允许点击“选择”，但服务端仍必须再次检查状态，
 不能依赖按钮禁用保证安全。
 
-### 8.11 `ORDER_ACTIVE_CHECK`
+### 8.12 `ORDER_ACTIVE_CHECK`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -508,7 +522,7 @@ V1 约定：U04 打开时请求一次；充电中每 1 秒轮询本消息；页�
 不再是 `CHARGING` 时停止轮询。服务端在响应中计算当前 `chargeSeconds`、
 `chargeMinutes`、`energyKwh` 和预估 `amountFen`，因此不新增未经登记的 TCP 推送消息。
 
-### 8.12 `ORDER_CREATE`
+### 8.13 `ORDER_CREATE`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -526,7 +540,7 @@ V1 约定：U04 打开时请求一次；充电中每 1 秒轮询本消息；页�
 5. 将电桩改为 `RESERVED` 并写入 `current_order_id`；
 6. 任一步失败全部回滚。
 
-### 8.13 `ORDER_CANCEL`
+### 8.14 `ORDER_CANCEL`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -539,7 +553,7 @@ V1 约定：U04 打开时请求一次；充电中每 1 秒轮询本消息；页�
 订单改为 `CANCELLED`、记录取消时间，并将匹配的电桩恢复为 `AVAILABLE`、
 清空 `current_order_id`。
 
-### 8.14 `ORDER_START`
+### 8.15 `ORDER_START`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -552,7 +566,7 @@ V1 约定：U04 打开时请求一次；充电中每 1 秒轮询本消息；页�
 `current_order_id` 与订单匹配。同一事务内写入 `start_at`，将订单和电桩
 都改为 `CHARGING`。
 
-### 8.15 `ORDER_STOP`
+### 8.16 `ORDER_STOP`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -574,7 +588,7 @@ amountFen = round(energyKwh *
 
 客户端可以展示服务端返回的金额，但不得用另一套公式形成最终账单。
 
-### 8.16 `ORDER_SETTLE`
+### 8.17 `ORDER_SETTLE`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -588,7 +602,7 @@ amountFen = round(energyKwh *
 写操作必须在同一个事务中完成。`COMPLETED` 订单重复结算直接返回已完成结果，
 不得再次扣款。冻结用户已有待支付订单时仍允许结算。
 
-### 8.17 `PREDICTION_LIST`
+### 8.18 `PREDICTION_LIST`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -600,7 +614,7 @@ amountFen = round(energyKwh *
 无预测结果时使用公共错误码 4501。V1 用户端若不展示独立预测详情，可暂不在
 第一阶段实现，但消息登记保持不变。
 
-### 8.18 `PREDICTION_RECOMMENDATION`
+### 8.19 `PREDICTION_RECOMMENDATION`
 
 | 项目 | 内容 |
 | --- | --- |
@@ -813,6 +827,7 @@ V1 最低实现：
 - `USER_RECHARGE`；
 - `USER_ORDER_LIST`；
 - `USER_AVATAR_UPLOAD`；
+- `USER_AVATAR_GET`；
 
 ### 阶段 6：智能推荐
 

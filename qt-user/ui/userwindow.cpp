@@ -5,6 +5,7 @@
 #include "shared/protocol/messagetypes.h"
 
 #include <QColor>
+#include <QByteArray>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -247,6 +248,10 @@ UserWindow::UserWindow(QWidget *parent)
                             QStringLiteral("路线规划超时，请检查网络后重试。"));
                     }
                 }
+                if (requestId == m_avatarRequestId) {
+                    m_avatarRequestId.clear();
+                    m_avatarRequestPath.clear();
+                }
                 if (type == MessageTypes::StationDetailGet && m_pileListLayout) {
                     clearLayout(m_pileListLayout);
                     m_stationDetailSummary->setText(QStringLiteral("站点详情加载超时"));
@@ -266,6 +271,10 @@ UserWindow::UserWindow(QWidget *parent)
                     if (m_mapNavigationPage) {
                         m_mapNavigationPage->setLoadError(message);
                     }
+                }
+                if (requestId == m_avatarRequestId) {
+                    m_avatarRequestId.clear();
+                    m_avatarRequestPath.clear();
                 }
                 if (type == MessageTypes::StationDetailGet && m_pileListLayout) {
                     clearLayout(m_pileListLayout);
@@ -1100,6 +1109,37 @@ void UserWindow::applyUser(const QJsonObject &user)
     }
     m_balanceFenInFen = user.value(QStringLiteral("balanceFen")).toInt();
     if (m_balanceLabel) m_balanceLabel->setText(displayMoney(m_balanceFenInFen));
+
+    const QString avatarPath = user.value(QStringLiteral("avatarPath")).toString();
+    if (avatarPath != m_avatarPath) {
+        m_avatarPath = avatarPath;
+        requestAvatar(avatarPath);
+    }
+}
+
+void UserWindow::resetAvatar()
+{
+    if (!m_avatarLabel) {
+        return;
+    }
+    m_avatarLabel->setPixmap(QPixmap());
+    m_avatarLabel->setText(QStringLiteral("U"));
+}
+
+void UserWindow::requestAvatar(const QString &avatarPath)
+{
+    if (avatarPath.isEmpty()) {
+        resetAvatar();
+        return;
+    }
+    if (m_avatarRequestPath == avatarPath && !m_avatarRequestId.isEmpty()) {
+        return;
+    }
+    m_avatarRequestPath = avatarPath;
+    m_avatarRequestId = sendRequest(MessageTypes::UserAvatarGet);
+    if (m_avatarRequestId.isEmpty()) {
+        m_avatarRequestPath.clear();
+    }
 }
 
 void UserWindow::applyOrder(const QJsonObject &order)
@@ -1193,6 +1233,10 @@ void UserWindow::handleResponse(const QJsonObject &response)
                     response.value(QStringLiteral("message")).toString());
             }
         }
+        if (requestId == m_avatarRequestId) {
+            m_avatarRequestId.clear();
+            m_avatarRequestPath.clear();
+        }
         showNotice(response.value(QStringLiteral("message")).toString(), true);
         return;
     }
@@ -1251,6 +1295,31 @@ void UserWindow::handleResponse(const QJsonObject &response)
                || type == MessageTypes::UserProfileUpdate) {
         applyUser(data.value(QStringLiteral("user")).toObject());
         if (type == MessageTypes::UserProfileUpdate) showNotice(QStringLiteral("昵称已更新"));
+    } else if (type == MessageTypes::UserAvatarGet) {
+        // 只接受当前头像路径对应的响应，避免旧请求覆盖刚上传的新头像。
+        if (requestId != m_avatarRequestId) {
+            return;
+        }
+        m_avatarRequestId.clear();
+        m_avatarRequestPath.clear();
+        const QString avatarPath = data.value(QStringLiteral("avatarPath")).toString();
+        if (!data.value(QStringLiteral("hasAvatar")).toBool()
+            || avatarPath.isEmpty() || avatarPath != m_avatarPath) {
+            if (m_avatarPath.isEmpty()) resetAvatar();
+            return;
+        }
+        const QByteArray content = QByteArray::fromBase64(
+            data.value(QStringLiteral("contentBase64")).toString().toLatin1(),
+            QByteArray::AbortOnBase64DecodingErrors);
+        QPixmap avatar;
+        if (content.isEmpty() || !avatar.loadFromData(content)) {
+            showNotice(QStringLiteral("头像文件无法显示"), true);
+            return;
+        }
+        m_avatarLabel->setText(QString());
+        m_avatarLabel->setPixmap(avatar.scaled(m_avatarLabel->size(),
+                                                Qt::KeepAspectRatioByExpanding,
+                                                Qt::SmoothTransformation));
     } else if (type == MessageTypes::StationListNearby
                || type == MessageTypes::PredictionRecommendation) {
         if (type == MessageTypes::StationListNearby) {

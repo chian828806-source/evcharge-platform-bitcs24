@@ -193,8 +193,8 @@ void testSessionAndDispatcherBoundaries()
 void testKnownMessageRegistry()
 {
     // 数量变化意味着公共文档与代码可能发生漏登或私自扩展。
-    check(MessageTypes::tcpTypes().size() == 32,
-          QStringLiteral("all 32 documented TCP message types are registered"));
+    check(MessageTypes::tcpTypes().size() == 33,
+          QStringLiteral("all 33 documented TCP message types are registered"));
     check(MessageTypes::dashboardTopics().size() == 4,
           QStringLiteral("all four dashboard topics are registered"));
 }
@@ -496,6 +496,20 @@ void testUserProfileWalletOrdersAndRecommendations()
               && avatarPath.startsWith(QStringLiteral("avatars/"))
               && QFileInfo::exists(avatarDirectory.filePath(QFileInfo(avatarPath).fileName())),
           QStringLiteral("avatar upload validates content, stores file and returns relative path"));
+
+    RequestMessage avatarGetRequest{
+        QStringLiteral("REQ-AVATAR-GET"), MessageTypes::UserAvatarGet, sessionId, {}
+    };
+    const ResponseMessage avatarGetResponse = dispatcher.dispatch(avatarGetRequest);
+    const QByteArray receivedAvatar = QByteArray::fromBase64(
+        avatarGetResponse.data.value(QStringLiteral("contentBase64")).toString().toLatin1());
+    check(avatarGetResponse.code == ErrorCodes::Success
+              && avatarGetResponse.data.value(QStringLiteral("hasAvatar")).toBool()
+              && avatarGetResponse.data.value(QStringLiteral("avatarPath")).toString() == avatarPath
+              && avatarGetResponse.data.value(QStringLiteral("mimeType")).toString()
+                     == QStringLiteral("image/png")
+              && receivedAvatar == png,
+          QStringLiteral("avatar get returns only the session user's stored image"));
 
     RequestMessage rechargeRequest{
         QStringLiteral("REQ-RECHARGE"), MessageTypes::UserRecharge, sessionId,
