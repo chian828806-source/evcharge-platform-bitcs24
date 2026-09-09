@@ -5,9 +5,6 @@
 #include <QHash>
 #include <QSet>
 #include <QMainWindow>
-#include <QPointer>
-
-class QDialog;
 class QLabel;
 class QLineEdit;
 class EnergyFlowWidget;
@@ -38,6 +35,9 @@ private:
         Charging,
         Profile,
         Favorites,
+        Orders,
+        Coupons,
+        Membership,
         Navigation
     };
 
@@ -62,6 +62,9 @@ private:
     QLabel *m_profileStatusLabel = nullptr;
     QLabel *m_orderSummaryLabel = nullptr;
     QLabel *m_chargeStatisticsLabel = nullptr;
+    QLabel *m_membershipStatusLabel = nullptr;
+    QLabel *m_membershipPeriodLabel = nullptr;
+    QLabel *m_membershipBalanceLabel = nullptr;
     EnergyFlowWidget *m_energyFlow = nullptr;
     QLabel *m_stationDetailTitle = nullptr;
     QLabel *m_stationDetailSummary = nullptr;
@@ -91,8 +94,9 @@ private:
     QVBoxLayout *m_stationListLayout = nullptr;
     QVBoxLayout *m_pileListLayout = nullptr;
     QVBoxLayout *m_orderListLayout = nullptr;
-    QPointer<QDialog> m_ordersDialog;
     QVBoxLayout *m_favoriteListLayout = nullptr;
+    QVBoxLayout *m_couponListLayout = nullptr;
+    QVBoxLayout *m_membershipProductLayout = nullptr;
     QTimer *m_orderPollTimer = nullptr;
     QTimer *m_promotionTimer = nullptr;
     QTimer *m_couponPollTimer = nullptr;
@@ -123,14 +127,16 @@ private:
     QWidget *buildChargingPage();
     QWidget *buildProfilePage();
     QWidget *buildFavoritesPage();
+    QWidget *buildOrdersPage();
+    QWidget *buildCouponsPage();
+    QWidget *buildMembershipPage();
     QWidget *buildNavigationPage();
     QWidget *buildPageHeader(const QString &eyebrow, const QString &title,
                              const QString &subtitle = {});
     QWidget *buildBottomNavigation(Page activePage);
     QWidget *buildStationCard(const QJsonObject &station);
     QWidget *buildPileCard(const QJsonObject &pile);
-    QWidget *buildOrderCard(const QString &station, const QString &description,
-                            const QString &amount, const QString &status);
+    QWidget *buildOrderCard(const QJsonObject &order);
 
     void showPage(Page page);
     void showPromotion();
@@ -144,7 +150,6 @@ private:
     void showNotice(const QString &message, bool error = false);
     void showRechargeDialog();
     void showRenameDialog();
-    void showCouponDialog();
     void uploadAvatar();
     QString sendRequest(const QString &type, const QJsonObject &payload = {});
     void requestInitialData();
@@ -162,6 +167,8 @@ private:
     void renderStationDetail(const QJsonObject &station, const QJsonArray &piles);
     void renderOrders(const QJsonArray &orders);
     void renderFavorites(const QJsonArray &stations);
+    void renderCoupons(const QJsonArray &coupons);
+    void renderMembership();
     void applyFavoriteState(int stationId, bool isFavorite);
     void clearLayout(QVBoxLayout *layout);
     void handleResponse(const QJsonObject &response);
