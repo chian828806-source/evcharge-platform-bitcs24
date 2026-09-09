@@ -24,6 +24,15 @@
 -- 1. 默认管理员：admin / 123456
 --    PBKDF2-HMAC-SHA256，210000 次迭代；格式见 docs/04-DATABASE.md 5.2。
 -- ----------------------------------------------------------------------------
+
+INSERT INTO membership_product
+    (product_no, name, card_type, duration_days, sale_price_fen,
+     service_fee_discount_bps, status, created_at, updated_at)
+VALUES
+    ('VIP-MONTH', 'VIP月卡', 'MONTH', 30, 64800, 8000, 'ON_SALE',
+     '2026-09-09 00:00:00', '2026-09-09 00:00:00'),
+    ('VIP-SEASON', 'VIP季卡', 'SEASON', 90, 99900, 8000, 'ON_SALE',
+     '2026-09-09 00:00:00', '2026-09-09 00:00:00');
 INSERT INTO admin (id, username, password_hash, display_name, status, last_login_at, created_at, updated_at) VALUES
 (1, 'admin', 'pbkdf2_sha256$210000$65766368617267652d76312d61646d696e$9994e379144051ce69f1a9cfaa8ab395c57273c7760533f358faa13288fd7da7',
  '系统管理员', 'NORMAL', '2026-09-01 09:00:00', '2026-08-20 09:00:00', '2026-08-20 09:00:00');

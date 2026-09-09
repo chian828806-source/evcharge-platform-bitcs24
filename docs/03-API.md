@@ -705,3 +705,6 @@ Qt Socket对象具有线程归属，必须在其所属线程读取和写入。�
 | 修改数据库字段 | 数据库、业务、网络 |
 
 文档未定义的业务字段不得由网络层猜测。应先形成评审结论，再按“文档→代码→测试”的顺序修改。
+# 会员接口补充
+
+`MEMBERSHIP_PRODUCT_LIST`、`MEMBERSHIP_STATUS_GET` 和 `MEMBERSHIP_PURCHASE` 已由用户端服务注册。购买请求携带 `productNo`，服务端按 requestId 与用户维度幂等处理。

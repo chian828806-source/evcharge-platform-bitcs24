@@ -12,7 +12,8 @@ const QSet<QString> &tcpTypes()
     static const QSet<QString> types = {
         UserLogin, UserProfileGet, UserProfileUpdate, UserAvatarUpload, UserAvatarGet,
         UserAvatarRemove,
-        UserRecharge, UserOrderList, UserCouponList, StationListNearby, StationDetailGet,
+        UserRecharge, UserOrderList, UserCouponList, MembershipProductList,
+        MembershipStatusGet, MembershipPurchase, StationListNearby, StationDetailGet,
         UserStationFavoriteToggle, UserStationFavoriteList,
         MapGeocode, MapRoutePlan, OrderActiveCheck, OrderCreate, OrderCancel, OrderStart,
         OrderStop, OrderSettle, AdminLogin, AdminRevenueSummary,

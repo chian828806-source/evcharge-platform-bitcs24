@@ -195,8 +195,8 @@ void testSessionAndDispatcherBoundaries()
 void testKnownMessageRegistry()
 {
     // 数量变化意味着公共文档与代码可能发生漏登或私自扩展。
-    check(MessageTypes::tcpTypes().size() == 38,
-          QStringLiteral("all 38 documented TCP message types are registered"));
+    check(MessageTypes::tcpTypes().size() == 41,
+          QStringLiteral("all 41 documented TCP message types are registered"));
     check(MessageTypes::dashboardTopics().size() == 4,
           QStringLiteral("all four dashboard topics are registered"));
 }

@@ -77,6 +77,7 @@ private:
     QJsonArray m_nearbyStations;
     QJsonArray m_recommendedStations;
     QJsonArray m_favoriteStations;
+    QJsonArray m_membershipProducts;
     QVBoxLayout *m_stationListLayout = nullptr;
     QVBoxLayout *m_pileListLayout = nullptr;
     QVBoxLayout *m_orderListLayout = nullptr;
@@ -88,6 +89,10 @@ private:
     QSet<qint64> m_knownCouponIds;
     bool m_couponSnapshotReady = false;
     int m_balanceFenInFen = 0;
+    bool m_isMember = false;
+    int m_membershipRemainingDays = 0;
+    int m_membershipDiscountBps = 10000;
+    QString m_membershipExpiresAt;
     double m_originLongitude = 121.538;
     double m_originLatitude = 38.889;
     QString m_originName = QStringLiteral("默认位置 · 甘井子区");

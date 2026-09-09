@@ -33,6 +33,10 @@ QFrame#card[variant="favoriteEntry"] {
 }
 QFrame#card[variant="order"] { background: #fbfdfc; }
 QFrame#card[variant="common"] { background: #ffffff; border-color: #d7ebe5; }
+QFrame#card[variant="membership"] { background: #edfaf6; border-color: #bfe7da; }
+QFrame#card[variant="membershipProduct"] { background: #ffffff; border-color: #d7ebe5; }
+QFrame#card[variant="membershipProduct"][cardType="month"] { background: #f1f3f5; border-color: #d5dbe0; }
+QFrame#card[variant="membershipProduct"][cardType="season"] { background: #fff8df; border-color: #ead79b; }
 QFrame#bottomNavigation { background: #ffffff; border-top: 1px solid #dce9e5; }
 QToolTip {
     color: #f8fffd; background: #173f36; border: 1px solid #2b5d50;

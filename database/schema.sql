@@ -21,6 +21,8 @@ DROP TABLE IF EXISTS operation_log;
 DROP TABLE IF EXISTS prediction;
 DROP TABLE IF EXISTS prediction_batch;
 DROP TABLE IF EXISTS recharge_record;
+DROP TABLE IF EXISTS membership_purchase;
+DROP TABLE IF EXISTS membership_product;
 DROP TABLE IF EXISTS charging_order;
 DROP TABLE IF EXISTS coupon;
 DROP TABLE IF EXISTS charging_pile;
@@ -38,11 +40,18 @@ CREATE TABLE user (
     nickname      TEXT    NOT NULL,                    -- 昵称 2~20 字符，自动注册默认"用户+后四位"
     avatar_path   TEXT,                                -- 头像相对路径，空 = 默认灰色头像
     balance_fen   INTEGER NOT NULL DEFAULT 0,          -- 钱包余额(分)，约束 >= 0
+    is_member     INTEGER NOT NULL DEFAULT 0,          -- 是否为VIP会员：0否/1是
+    membership_remaining_days INTEGER NOT NULL DEFAULT 0, -- VIP剩余天数
+    membership_expires_at TEXT,                         -- VIP到期时间，事实依据
+    membership_discount_bps INTEGER NOT NULL DEFAULT 10000, -- 服务费折扣万分比
     status        TEXT    NOT NULL DEFAULT 'NORMAL',   -- NORMAL 正常 / FROZEN 冻结
     last_login_at TEXT,                                -- 最近登录时间(7.1 登录事务更新)
     created_at    TEXT    NOT NULL,                    -- 注册时间
     updated_at    TEXT    NOT NULL,                    -- 更新时间
     CHECK (balance_fen >= 0),
+    CHECK (is_member IN (0, 1)),
+    CHECK (membership_remaining_days >= 0),
+    CHECK (membership_discount_bps BETWEEN 0 AND 10000),
     CHECK (status IN ('NORMAL', 'FROZEN'))
 );
 
@@ -192,6 +201,38 @@ CREATE TABLE recharge_record (
     CHECK (amount_fen > 0),
     CHECK (balance_after_fen >= 0),
     CHECK (status IN ('SUCCESS', 'FAILED'))
+);
+
+-- 会员产品与购买流水：月卡648元/30天，季卡999元/90天，统一服务费8折。
+CREATE TABLE membership_product (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_no TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    card_type TEXT NOT NULL,
+    duration_days INTEGER NOT NULL,
+    sale_price_fen INTEGER NOT NULL,
+    service_fee_discount_bps INTEGER NOT NULL DEFAULT 8000,
+    status TEXT NOT NULL DEFAULT 'ON_SALE',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    CHECK (card_type IN ('MONTH', 'SEASON')),
+    CHECK (duration_days > 0),
+    CHECK (sale_price_fen > 0),
+    CHECK (service_fee_discount_bps BETWEEN 0 AND 10000),
+    CHECK (status IN ('ON_SALE', 'OFF_SALE'))
+);
+
+CREATE TABLE membership_purchase (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    purchase_no TEXT NOT NULL UNIQUE,
+    user_id INTEGER NOT NULL REFERENCES user(id),
+    product_id INTEGER NOT NULL REFERENCES membership_product(id),
+    amount_fen INTEGER NOT NULL,
+    balance_after_fen INTEGER NOT NULL,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    CHECK (amount_fen > 0),
+    CHECK (balance_after_fen >= 0)
 );
 
 -- ----------------------------------------------------------------------------
