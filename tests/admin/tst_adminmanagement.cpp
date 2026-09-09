@@ -26,6 +26,7 @@ private slots:
     void createStationAndListPiles();
     void restartAvailablePile();
     void listOrdersForAdmin();
+    void issueCouponForUser();
     void chargingFaultStopsOrderAndWritesSystemLog();
     void reservedFaultCancelsOrder();
     void chargingOfflineIsIdempotent();
@@ -72,7 +73,11 @@ void AdminManagementTest::initTestCase()
         "user_id INTEGER, station_id INTEGER, pile_id INTEGER, status TEXT, "
         "price_fen_per_kwh INTEGER, service_fee_fen_per_kwh INTEGER, start_at TEXT, end_at TEXT, "
         "charge_minutes INTEGER DEFAULT 0, energy_kwh REAL DEFAULT 0, amount_fen INTEGER DEFAULT 0, cancelled_at TEXT, cancel_reason TEXT, "
-        "created_at TEXT, updated_at TEXT)")));
+        "created_at TEXT, updated_at TEXT, coupon_id INTEGER, discount_rate INTEGER DEFAULT 100)")));
+    QVERIFY(query.exec(QStringLiteral(
+        "CREATE TABLE coupon(id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, "
+        "discount_rate INTEGER DEFAULT 80, status TEXT DEFAULT 'AVAILABLE', order_id INTEGER, "
+        "issued_by INTEGER, issued_at TEXT, used_at TEXT)")));
     QVERIFY(query.exec(QStringLiteral(
         "INSERT INTO user VALUES(1, '13800138000', '测试用户', 10000, 'NORMAL', "
         "'2026-09-02 00:00:00', '2026-09-02 00:00:00')")));
@@ -250,6 +255,23 @@ void AdminManagementTest::listOrdersForAdmin()
     QCOMPARE(order.value(QStringLiteral("orderNo")).toString(), QStringLiteral("O-ADMIN-1"));
     QCOMPARE(order.value(QStringLiteral("userPhone")).toString(), QStringLiteral("13800138000"));
     QCOMPARE(order.value(QStringLiteral("userNickname")).toString(), QStringLiteral("测试用户"));
+}
+
+void AdminManagementTest::issueCouponForUser()
+{
+    const RequestMessage issue{
+        QStringLiteral("TEST-COUPON-ISSUE"), QStringLiteral("ADMIN_COUPON_ISSUE"),
+        QStringLiteral("S-ADMIN"), {{QStringLiteral("userId"), 1}}};
+    const ResponseMessage response = m_service->issueCoupon(issue, 9);
+    QCOMPARE(response.code, ErrorCodes::Success);
+    QCOMPARE(response.data.value(QStringLiteral("discountRate")).toInt(), 80);
+    QSqlQuery query(m_database);
+    QVERIFY(query.exec(QStringLiteral(
+        "SELECT user_id, discount_rate, status FROM coupon ORDER BY id DESC LIMIT 1")));
+    QVERIFY(query.next());
+    QCOMPARE(query.value(0).toLongLong(), 1);
+    QCOMPARE(query.value(1).toInt(), 80);
+    QCOMPARE(query.value(2).toString(), QStringLiteral("AVAILABLE"));
 }
 
 QTEST_MAIN(AdminManagementTest)

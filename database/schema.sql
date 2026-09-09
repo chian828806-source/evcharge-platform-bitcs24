@@ -22,6 +22,7 @@ DROP TABLE IF EXISTS prediction;
 DROP TABLE IF EXISTS prediction_batch;
 DROP TABLE IF EXISTS recharge_record;
 DROP TABLE IF EXISTS charging_order;
+DROP TABLE IF EXISTS coupon;
 DROP TABLE IF EXISTS charging_pile;
 DROP TABLE IF EXISTS charging_station;
 DROP TABLE IF EXISTS admin;
@@ -133,6 +134,8 @@ CREATE TABLE charging_order (
     charge_minutes          INTEGER NOT NULL DEFAULT 0,-- 充电分钟数
     energy_kwh              REAL    NOT NULL DEFAULT 0,-- 充电量 kWh
     amount_fen              INTEGER NOT NULL DEFAULT 0,-- 应付金额(分)，计费公式见 7.5
+    coupon_id               INTEGER REFERENCES coupon(id), -- 使用的优惠券
+    discount_rate           INTEGER NOT NULL DEFAULT 100, -- 折扣百分比，80 表示八折
     paid_at                 TEXT,                      -- 结算时间(7.6 写入，营收统计口径)
     cancelled_at            TEXT,                      -- 取消时间(7.3 写入)
     cancel_reason           TEXT,                      -- 取消原因
@@ -145,6 +148,21 @@ CREATE TABLE charging_order (
     CHECK (amount_fen >= 0),
     CHECK (charge_minutes >= 0)
 );
+
+-- 管理员下发的八折优惠券；每张券只能用于一个订单。
+CREATE TABLE coupon (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL REFERENCES user(id),
+    discount_rate INTEGER NOT NULL DEFAULT 80,
+    status        TEXT NOT NULL DEFAULT 'AVAILABLE',
+    order_id      INTEGER,
+    issued_by     INTEGER NOT NULL REFERENCES admin(id),
+    issued_at     TEXT NOT NULL,
+    used_at       TEXT,
+    CHECK (discount_rate > 0 AND discount_rate <= 100),
+    CHECK (status IN ('AVAILABLE', 'LOCKED', 'USED'))
+);
+CREATE INDEX idx_coupon_user_status ON coupon(user_id, status, issued_at DESC);
 
 -- ----------------------------------------------------------------------------
 -- 6. 充值流水表 recharge_record —— 钱包充值流水（04 文档 5.6）

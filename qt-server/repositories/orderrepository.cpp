@@ -17,7 +17,8 @@ QString orderSelectSql(const QString &whereClause)
         "SELECT o.id, o.order_no, o.user_id, o.station_id, s.name, "
         "o.pile_id, p.pile_no, p.power_kw, o.status, o.price_fen_per_kwh, "
         "o.service_fee_fen_per_kwh, o.start_at, o.end_at, "
-        "o.charge_minutes, o.energy_kwh, o.amount_fen, o.created_at "
+        "o.charge_minutes, o.energy_kwh, o.amount_fen, o.created_at, "
+        "o.coupon_id, o.discount_rate "
         "FROM charging_order o "
         "LEFT JOIN charging_station s ON s.id = o.station_id "
         "LEFT JOIN charging_pile p ON p.id = o.pile_id "
@@ -150,7 +151,8 @@ QJsonArray OrderRepository::listForAdmin(QSqlDatabase &database,
         "SELECT o.id, o.order_no, o.user_id, o.station_id, s.name, "
         "o.pile_id, p.pile_no, p.power_kw, o.status, o.price_fen_per_kwh, "
         "o.service_fee_fen_per_kwh, o.start_at, o.end_at, o.charge_minutes, "
-        "o.energy_kwh, o.amount_fen, o.created_at, u.phone, u.nickname "
+        "o.energy_kwh, o.amount_fen, o.created_at, o.coupon_id, o.discount_rate, "
+        "u.phone, u.nickname "
         "FROM charging_order o JOIN user u ON u.id=o.user_id "
         "LEFT JOIN charging_station s ON s.id=o.station_id "
         "LEFT JOIN charging_pile p ON p.id=o.pile_id %1 "
@@ -166,8 +168,8 @@ QJsonArray OrderRepository::listForAdmin(QSqlDatabase &database,
     QJsonArray items;
     while (query.next()) {
         QJsonObject item = mapOrder(query).toJson();
-        item.insert(QStringLiteral("userPhone"), query.value(17).toString());
-        item.insert(QStringLiteral("userNickname"), query.value(18).toString());
+        item.insert(QStringLiteral("userPhone"), query.value(19).toString());
+        item.insert(QStringLiteral("userNickname"), query.value(20).toString());
         items.append(item);
     }
     return items;
@@ -238,15 +240,17 @@ bool OrderRepository::insertCreated(QSqlDatabase &database,
     query.prepare(QStringLiteral(
         "INSERT INTO charging_order "
         "(order_no, user_id, station_id, pile_id, status, price_fen_per_kwh, "
-        "service_fee_fen_per_kwh, created_at, updated_at) "
+        "service_fee_fen_per_kwh, coupon_id, discount_rate, created_at, updated_at) "
         "VALUES (:orderNo, :userId, :stationId, :pileId, 'CREATED', :price, "
-        ":serviceFee, :now, :now)"));
+        ":serviceFee, :couponId, :discountRate, :now, :now)"));
     query.bindValue(QStringLiteral(":orderNo"), order.orderNo);
     query.bindValue(QStringLiteral(":userId"), order.userId);
     query.bindValue(QStringLiteral(":stationId"), order.stationId);
     query.bindValue(QStringLiteral(":pileId"), order.pileId);
     query.bindValue(QStringLiteral(":price"), order.priceFenPerKwh);
     query.bindValue(QStringLiteral(":serviceFee"), order.serviceFeeFenPerKwh);
+    query.bindValue(QStringLiteral(":couponId"), order.couponId > 0 ? QVariant(order.couponId) : QVariant());
+    query.bindValue(QStringLiteral(":discountRate"), order.discountRate);
     query.bindValue(QStringLiteral(":now"), order.createdAt);
     if (!query.exec()) {
         if (errorMessage) {
@@ -567,5 +571,7 @@ ChargingOrderInfo OrderRepository::mapOrder(const QSqlQuery &query)
     order.energyKwh = query.value(14).toDouble();
     order.amountFen = query.value(15).toLongLong();
     order.createdAt = query.value(16).toString();
+    order.couponId = query.value(17).toLongLong();
+    order.discountRate = query.value(18).toInt();
     return order;
 }

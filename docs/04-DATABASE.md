@@ -140,6 +140,8 @@ PENDING_PAYMENT -> PENDING_PAYMENT
 ```mermaid
 erDiagram
     user ||--o{ charging_order : creates
+    user ||--o{ coupon : owns
+    admin ||--o{ coupon : issues
     user ||--o{ recharge_record : recharges
     admin ||--o{ operation_log : writes
     charging_station ||--o{ charging_pile : owns
@@ -152,7 +154,7 @@ erDiagram
 
 核心关系：
 
-- 一个用户可以有多条订单和充值记录；
+- 一个用户可以有多条订单、充值记录和优惠券；
 - 一个站点包含多个充电桩；
 - 一个电桩可以产生多条历史订单，但同一时刻最多被一个活动订单占用；
 - 预测结果按站点和预测时间保存；
@@ -687,6 +689,7 @@ stationLoad = 360 / (10 * 60) = 0.6
 | 营收统计 | `charging_order` | `amount_fen`, `energy_kwh`, `paid_at`, `status` |
 | 电桩管理 | `charging_station`, `charging_pile` | `pile_no`, `type`, `power_kw`, `status` |
 | 用户管理 | `user` | `phone`, `nickname`, `balance_fen`, `status` |
+| 下放优惠券 | `coupon` | `user_id`, `discount_rate`, `status`, `issued_at` |
 | 远程重启 | `charging_pile`, `operation_log` | `status`, `action`, `before_status`, `after_status` |
 | 负荷预警 | `prediction`, `charging_station` | `predicted_load`, `predicted_available_count`, `peak_level` |
 

@@ -15,6 +15,7 @@ inline ChargingOrderInfo chargingProgressAt(const ChargingOrderInfo &order, cons
     result.chargeMinutes = static_cast<int>(elapsedSeconds / 60);
     result.energyKwh = order.powerKw * static_cast<double>(elapsedSeconds) / 3600.0;
     result.amountFen = qRound64(result.energyKwh * static_cast<double>(
-        order.priceFenPerKwh + order.serviceFeeFenPerKwh));
+        order.priceFenPerKwh + order.serviceFeeFenPerKwh)
+        * static_cast<double>(order.discountRate) / 100.0);
     return result;
 }

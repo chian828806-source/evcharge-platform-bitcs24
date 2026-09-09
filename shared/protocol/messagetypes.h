@@ -17,6 +17,7 @@ inline const QString UserAvatarGet = QStringLiteral("USER_AVATAR_GET");
 inline const QString UserAvatarRemove = QStringLiteral("USER_AVATAR_REMOVE");
 inline const QString UserRecharge = QStringLiteral("USER_RECHARGE");
 inline const QString UserOrderList = QStringLiteral("USER_ORDER_LIST");
+inline const QString UserCouponList = QStringLiteral("USER_COUPON_LIST");
 
 inline const QString StationListNearby = QStringLiteral("STATION_LIST_NEARBY");
 inline const QString StationDetailGet = QStringLiteral("STATION_DETAIL_GET");
@@ -42,6 +43,7 @@ inline const QString AdminUserList = QStringLiteral("ADMIN_USER_LIST");
 inline const QString AdminUserFreeze = QStringLiteral("ADMIN_USER_FREEZE");
 inline const QString AdminUserUnfreeze = QStringLiteral("ADMIN_USER_UNFREEZE");
 inline const QString AdminOrderList = QStringLiteral("ADMIN_ORDER_LIST");
+inline const QString AdminCouponIssue = QStringLiteral("ADMIN_COUPON_ISSUE");
 
 inline const QString PredictionList = QStringLiteral("PREDICTION_LIST");
 inline const QString PredictionRecommendation = QStringLiteral("PREDICTION_RECOMMENDATION");
@@ -51,7 +53,7 @@ inline const QString PredictionImport = QStringLiteral("PREDICTION_IMPORT");
 inline const QString DashboardSubscribe = QStringLiteral("DASHBOARD_SUBSCRIBE");
 inline const QString DashboardUpdate = QStringLiteral("DASHBOARD_UPDATE");
 
-// 返回文档中34种TCP消息的只读集合。
+// 返回TCP业务消息的只读集合。
 const QSet<QString> &tcpTypes();
 // 返回大屏允许订阅的4个主题。
 const QSet<QString> &dashboardTopics();

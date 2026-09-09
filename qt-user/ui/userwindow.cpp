@@ -309,6 +309,11 @@ UserWindow::UserWindow(QWidget *parent)
     m_orderPollTimer = new QTimer(this);
     m_orderPollTimer->setInterval(1000);
     connect(m_orderPollTimer, &QTimer::timeout, this, &UserWindow::requestActiveOrder);
+    m_couponPollTimer = new QTimer(this);
+    m_couponPollTimer->setInterval(5000);
+    connect(m_couponPollTimer, &QTimer::timeout, this, [this]() {
+        if (!m_sessionId.isEmpty()) sendRequest(MessageTypes::UserCouponList);
+    });
     m_socketClient->connectToServer(QStringLiteral("127.0.0.1"), 18080);
 }
 
@@ -587,9 +592,23 @@ QWidget *UserWindow::buildPileCard(const QJsonObject &pile)
                               QStringLiteral("选择 %1 开始本次充电？").arg(number),
                               QStringLiteral("预约成功后将创建待开始订单，你可以在充电页开始或取消。"),
                               QStringLiteral("确认预约"))) {
+            QJsonObject payload{{QStringLiteral("pileId"), pileId}};
+            qint64 availableCouponId = 0;
+            for (const QJsonValue &value : m_coupons) {
+                const QJsonObject coupon = value.toObject();
+                if (coupon.value(QStringLiteral("status")).toString() == QStringLiteral("AVAILABLE")) {
+                    availableCouponId = coupon.value(QStringLiteral("couponId")).toInteger();
+                    break;
+                }
+            }
+            if (availableCouponId > 0
+                && QMessageBox::question(this, QStringLiteral("使用优惠券"),
+                    QStringLiteral("检测到可用的八折优惠券，本次订单是否使用？"),
+                    QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes) == QMessageBox::Yes) {
+                payload.insert(QStringLiteral("couponId"), availableCouponId);
+            }
             showPage(Charging);
-            sendRequest(MessageTypes::OrderCreate,
-                        QJsonObject{{QStringLiteral("pileId"), pileId}});
+            sendRequest(MessageTypes::OrderCreate, payload);
         }
     });
     return pileCard;
@@ -746,6 +765,10 @@ QWidget *UserWindow::buildProfilePage()
     walletLayout->addWidget(rechargeButton);
     layout->addWidget(walletCard);
 
+    auto *couponButton = makeButton(QStringLiteral("🎟  我的优惠券"), "ghostCompact");
+    couponButton->setMinimumHeight(48);
+    layout->addWidget(couponButton);
+
     layout->addWidget(makeLabel(QStringLiteral("最近订单"), "sectionTitle"));
     m_orderListLayout = new QVBoxLayout;
     m_orderListLayout->setSpacing(12);
@@ -758,6 +781,7 @@ QWidget *UserWindow::buildProfilePage()
 
     connect(renameButton, &QPushButton::clicked, this, &UserWindow::showRenameDialog);
     connect(rechargeButton, &QPushButton::clicked, this, &UserWindow::showRechargeDialog);
+    connect(couponButton, &QPushButton::clicked, this, &UserWindow::showCouponDialog);
     connect(avatarButton, &QPushButton::clicked, this, &UserWindow::uploadAvatar);
     connect(removeAvatarButton, &QPushButton::clicked, this, [this]() {
         if (confirmUserAction(this, QStringLiteral("移除头像"),
@@ -773,6 +797,7 @@ QWidget *UserWindow::buildProfilePage()
                               QStringLiteral("退出后需要重新输入手机号登录，当前服务连接不会断开。"),
                               QStringLiteral("退出登录"), true)) {
             m_sessionId.clear();
+            if (m_couponPollTimer) m_couponPollTimer->stop();
             showPage(Login);
         }
     });
@@ -1028,6 +1053,33 @@ void UserWindow::showRenameDialog()
                 QJsonObject{{QStringLiteral("nickname"), nickname}});
 }
 
+void UserWindow::showCouponDialog()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("我的优惠券"));
+    dialog.setMinimumWidth(380);
+    auto *layout = new QVBoxLayout(&dialog);
+    layout->addWidget(makeLabel(QStringLiteral("我的优惠券"), "sectionTitle"));
+    if (m_coupons.isEmpty()) {
+        layout->addWidget(makeLabel(QStringLiteral("暂无优惠券"), "hint"));
+    } else {
+        for (const QJsonValue &value : m_coupons) {
+            const QJsonObject coupon = value.toObject();
+            const QString status = coupon.value(QStringLiteral("status")).toString();
+            const QString statusName = status == QStringLiteral("AVAILABLE") ? QStringLiteral("可使用")
+                : status == QStringLiteral("LOCKED") ? QStringLiteral("订单已选用") : QStringLiteral("已使用");
+            layout->addWidget(makeLabel(QStringLiteral("八折优惠券 #%1　%2\n下发时间：%3")
+                .arg(coupon.value(QStringLiteral("couponId")).toInteger())
+                .arg(statusName, coupon.value(QStringLiteral("issuedAt")).toString()), "caption"));
+        }
+    }
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+    sendRequest(MessageTypes::UserCouponList);
+    dialog.exec();
+}
+
 void UserWindow::uploadAvatar()
 {
     const QString path = QFileDialog::getOpenFileName(
@@ -1077,6 +1129,7 @@ QString UserWindow::sendRequest(const QString &type, const QJsonObject &payload)
 void UserWindow::requestInitialData()
 {
     sendRequest(MessageTypes::UserProfileGet);
+    sendRequest(MessageTypes::UserCouponList);
     // 站点列表来自数据库，不应被第三方地理编码服务的可用性阻断。
     // 先按默认位置加载真实站点；地理编码成功后会使用新坐标再次刷新。
     sendRequest(MessageTypes::StationListNearby,
@@ -1287,6 +1340,9 @@ void UserWindow::handleResponse(const QJsonObject &response)
             m_balanceLabel->setText(displayMoney(m_balanceFenInFen));
         }
         m_loginRequestId.clear();
+        m_couponSnapshotReady = false;
+        m_knownCouponIds.clear();
+        if (m_couponPollTimer) m_couponPollTimer->start();
         applyUser(data.value(QStringLiteral("user")).toObject());
         showPage(Home);
         showNotice(QStringLiteral("登录成功"));
@@ -1395,6 +1451,23 @@ void UserWindow::handleResponse(const QJsonObject &response)
         showNotice(QStringLiteral("充值成功"));
     } else if (type == MessageTypes::UserOrderList) {
         renderOrders(data.value(QStringLiteral("items")).toArray());
+    } else if (type == MessageTypes::UserCouponList) {
+        const QJsonArray coupons = data.value(QStringLiteral("items")).toArray();
+        QSet<qint64> currentIds;
+        bool receivedNewCoupon = false;
+        for (const QJsonValue &value : coupons) {
+            const QJsonObject coupon = value.toObject();
+            const qint64 id = coupon.value(QStringLiteral("couponId")).toInteger();
+            currentIds.insert(id);
+            if (m_couponSnapshotReady && !m_knownCouponIds.contains(id)) receivedNewCoupon = true;
+        }
+        m_coupons = coupons;
+        m_knownCouponIds = currentIds;
+        if (m_couponSnapshotReady && receivedNewCoupon) {
+            QMessageBox::information(this, QStringLiteral("收到优惠券"),
+                                     QStringLiteral("您收到一张优惠券！请到我的优惠券查看"));
+        }
+        m_couponSnapshotReady = true;
     } else if (type == MessageTypes::UserAvatarUpload) {
         applyUser(data.value(QStringLiteral("user")).toObject());
         showNotice(QStringLiteral("头像上传成功"));

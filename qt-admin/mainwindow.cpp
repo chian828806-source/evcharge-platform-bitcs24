@@ -328,6 +328,10 @@ void MainWindow::handleResponse(const QJsonObject &response)
     else if (type == MessageTypes::AdminOrderList) {
         if (orderQuery == m_activeOrderQuery) m_orders->setOrders(data);
     }
+    else if (type == MessageTypes::AdminCouponIssue) {
+        QMessageBox::information(this, QStringLiteral("下放成功"),
+                                 QStringLiteral("八折优惠券已下放给该用户。"));
+    }
     else if (type == MessageTypes::AdminPileRestart) {
         QMessageBox::information(this, QStringLiteral("操作成功"), QStringLiteral("远程重启指令已发送。"));
         QTimer::singleShot(1700, this, [this]() { requestPileList(); refreshDashboard(); });
@@ -410,6 +414,14 @@ void MainWindow::buildManagementPages()
         if (send(freeze ? MessageTypes::AdminUserFreeze : MessageTypes::AdminUserUnfreeze,
                  {{QStringLiteral("userId"), id}}).isEmpty()) m_users->setActionBusy(false);
     });
+    connect(m_users, &UserPage::couponIssueRequested, this, [this](qint64 id) {
+        if (!confirmDangerousAction(this, QStringLiteral("确认下放优惠券"),
+                                    QStringLiteral("确定给该用户下放一张八折优惠券吗？"),
+                                    QStringLiteral("确认下放"))) return;
+        m_users->setActionBusy(true);
+        if (send(MessageTypes::AdminCouponIssue,
+                 {{QStringLiteral("userId"), id}}).isEmpty()) m_users->setActionBusy(false);
+    });
     connect(m_orders, &OrderPage::queryRequested, this, &MainWindow::requestOrderList);
     m_dashboardTimer = new QTimer(this); m_dashboardTimer->setInterval(30000);
     connect(m_dashboardTimer, &QTimer::timeout, this, &MainWindow::refreshDashboard);
@@ -485,7 +497,8 @@ void MainWindow::finishAction(const QString &type)
 {
     if (type == MessageTypes::AdminPileRestart && m_piles) m_piles->setActionBusy(false);
     else if (type == MessageTypes::AdminStationCreate && m_stations) m_stations->setCreateBusy(false);
-    else if ((type == MessageTypes::AdminUserFreeze || type == MessageTypes::AdminUserUnfreeze) && m_users)
+    else if ((type == MessageTypes::AdminUserFreeze || type == MessageTypes::AdminUserUnfreeze
+              || type == MessageTypes::AdminCouponIssue) && m_users)
         m_users->setActionBusy(false);
     else if (type == MessageTypes::AdminLogin && m_login) m_login->setEnabled(true);
 }

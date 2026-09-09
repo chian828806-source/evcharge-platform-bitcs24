@@ -6,7 +6,7 @@
 
 | 文件 | 作用 |
 | --- | --- |
-| `schema.sql` | 建库脚本：12 张表 + 21 个索引，可重复执行（先 DROP 再 CREATE） |
+| `schema.sql` | 建库脚本：13 张表 + 22 个索引，可重复执行（先 DROP 再 CREATE） |
 | `init_data.sql` | 演示种子数据：满足 04 文档第 11 节全部初始化要求 |
 | `evcharge.db` | 运行时生成的 SQLite 数据库文件（已被 .gitignore 忽略，不入库） |
 | `evcharge_cary_simulation.db` | 含 CC0 历史会话和小时指标的预构建演示数据库 |

@@ -193,8 +193,8 @@ void testSessionAndDispatcherBoundaries()
 void testKnownMessageRegistry()
 {
     // 数量变化意味着公共文档与代码可能发生漏登或私自扩展。
-    check(MessageTypes::tcpTypes().size() == 34,
-          QStringLiteral("all 34 documented TCP message types are registered"));
+    check(MessageTypes::tcpTypes().size() == 36,
+          QStringLiteral("all 36 documented TCP message types are registered"));
     check(MessageTypes::dashboardTopics().size() == 4,
           QStringLiteral("all four dashboard topics are registered"));
 }
@@ -422,7 +422,7 @@ void testUserProfileWalletOrdersAndRecommendations()
             "user_id INTEGER, station_id INTEGER, pile_id INTEGER, status TEXT, "
             "price_fen_per_kwh INTEGER, service_fee_fen_per_kwh INTEGER, start_at TEXT, "
             "end_at TEXT, charge_minutes INTEGER, energy_kwh REAL, amount_fen INTEGER, "
-            "created_at TEXT, updated_at TEXT)"))
+            "created_at TEXT, updated_at TEXT, coupon_id INTEGER, discount_rate INTEGER DEFAULT 100)"))
         && schema.exec(QStringLiteral(
             "CREATE TABLE prediction (id INTEGER PRIMARY KEY, station_id INTEGER, "
             "prediction_time TEXT, horizon TEXT, predicted_load REAL, "
@@ -447,9 +447,9 @@ void testUserProfileWalletOrdersAndRecommendations()
         && schema.exec(QStringLiteral(
             "INSERT INTO charging_order VALUES "
             "(1, 'O-OLD', 1, 1, 1, 'COMPLETED', 100, 20, NULL, NULL, 30, 5.0, 600, "
-            "'2026-01-01 10:00:00', '2026-01-01 10:00:00'), "
+            "'2026-01-01 10:00:00', '2026-01-01 10:00:00', NULL, 100), "
             "(2, 'O-NEW', 1, 2, 2, 'PENDING_PAYMENT', 100, 20, NULL, NULL, 10, 2.0, 240, "
-            "'2026-01-02 10:00:00', '2026-01-02 10:00:00')"))
+            "'2026-01-02 10:00:00', '2026-01-02 10:00:00', NULL, 100)"))
         && schema.exec(QStringLiteral(
             "INSERT INTO prediction VALUES "
             "(1, 1, '2026-01-03 11:00:00', '1h', 0.80, 1, 'HIGH', 'demo', 0.1, 0.1, "
@@ -746,10 +746,15 @@ void testOrderCreateAndActiveCheckFlow()
         "service_fee_fen_per_kwh INTEGER, start_at TEXT, end_at TEXT, "
         "charge_minutes INTEGER DEFAULT 0, energy_kwh REAL DEFAULT 0, "
         "amount_fen INTEGER DEFAULT 0, paid_at TEXT, cancelled_at TEXT, "
-        "cancel_reason TEXT, created_at TEXT, updated_at TEXT)"));
-    check(userTableCreated && stationTableCreated && pileTableCreated && orderTableCreated,
+        "cancel_reason TEXT, created_at TEXT, updated_at TEXT, coupon_id INTEGER, "
+        "discount_rate INTEGER DEFAULT 100)"));
+    const bool couponTableCreated = schema.exec(QStringLiteral(
+        "CREATE TABLE coupon (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, "
+        "discount_rate INTEGER DEFAULT 80, status TEXT DEFAULT 'AVAILABLE', order_id INTEGER, "
+        "issued_by INTEGER, issued_at TEXT, used_at TEXT)"));
+    check(userTableCreated && stationTableCreated && pileTableCreated && orderTableCreated && couponTableCreated,
           QStringLiteral("order backend test schema is created"));
-    if (!userTableCreated || !stationTableCreated || !pileTableCreated || !orderTableCreated) {
+    if (!userTableCreated || !stationTableCreated || !pileTableCreated || !orderTableCreated || !couponTableCreated) {
         return;
     }
 
@@ -764,7 +769,10 @@ void testOrderCreateAndActiveCheckFlow()
             "VALUES (1, '演示站点', 'NORMAL', 120, 30)"))
         && schema.exec(QStringLiteral(
             "INSERT INTO charging_pile (id, station_id, pile_no, power_kw, status) VALUES "
-            "(1, 1, 'A-01', 60, 'AVAILABLE'), (2, 1, 'A-02', 60, 'AVAILABLE')"));
+            "(1, 1, 'A-01', 60, 'AVAILABLE'), (2, 1, 'A-02', 60, 'AVAILABLE')"))
+        && schema.exec(QStringLiteral(
+            "INSERT INTO coupon(id, user_id, discount_rate, status, issued_by, issued_at) "
+            "VALUES(1, 1, 80, 'AVAILABLE', 9, '2026-01-01 00:00:00')"));
     check(demoDataCreated, QStringLiteral("order backend test demo data is created"));
     if (!demoDataCreated) {
         return;
@@ -783,7 +791,7 @@ void testOrderCreateAndActiveCheckFlow()
 
     RequestMessage createRequest{
         QStringLiteral("REQ-ORDER-CREATE"), MessageTypes::OrderCreate, userOneSession,
-        {{QStringLiteral("pileId"), 1}}
+        {{QStringLiteral("pileId"), 1}, {QStringLiteral("couponId"), 1}}
     };
     const ResponseMessage createResponse = dispatcher.dispatch(createRequest);
     const QJsonObject createdOrder = createResponse.data.value(QStringLiteral("order")).toObject();
@@ -796,6 +804,7 @@ void testOrderCreateAndActiveCheckFlow()
               && createdOrder.value(QStringLiteral("status")).toString()
                     == QStringLiteral("CREATED")
               && createdOrder.value(QStringLiteral("priceFenPerKwh")).toInt() == 120
+              && createdOrder.value(QStringLiteral("discountRate")).toInt() == 80
               && pileCheck.value(0).toString() == QStringLiteral("RESERVED")
               && pileCheck.value(1).toLongLong() == createdOrderId,
           QStringLiteral("create order atomically reserves available pile with price snapshot"));
@@ -833,6 +842,9 @@ void testOrderCreateAndActiveCheckFlow()
     const ResponseMessage startResponse = dispatcher.dispatch(startRequest);
     pileCheck.exec(QStringLiteral("SELECT status FROM charging_pile WHERE id = 1"));
     pileCheck.next();
+    QSqlQuery couponCheck(database);
+    couponCheck.exec(QStringLiteral("SELECT status FROM coupon WHERE id=1"));
+    couponCheck.next();
     check(startResponse.code == ErrorCodes::Success
               && startResponse.data.value(QStringLiteral("order")).toObject()
                      .value(QStringLiteral("status")).toString() == QStringLiteral("CHARGING")
@@ -887,6 +899,8 @@ void testOrderCreateAndActiveCheckFlow()
               && pileCheck.value(1).toInt() > 0
               && pileCheck.value(2).toDouble() > 0.0,
           QStringLiteral("settlement deducts balance and accumulates pile statistics once"));
+    check(couponCheck.value(0).toString() == QStringLiteral("USED"),
+          QStringLiteral("settlement marks the selected coupon as used"));
 
     const ResponseMessage repeatedSettleResponse = dispatcher.dispatch(settleRequest);
     check(repeatedSettleResponse.code == ErrorCodes::Success
@@ -897,6 +911,7 @@ void testOrderCreateAndActiveCheckFlow()
     createRequest.requestId = QStringLiteral("REQ-CANCEL-CREATE");
     createRequest.sessionId = userOneSession;
     createRequest.payload.insert(QStringLiteral("pileId"), 1);
+    createRequest.payload.remove(QStringLiteral("couponId"));
     const ResponseMessage secondCreateResponse = dispatcher.dispatch(createRequest);
     const qint64 secondOrderId = static_cast<qint64>(
         secondCreateResponse.data.value(QStringLiteral("order")).toObject()

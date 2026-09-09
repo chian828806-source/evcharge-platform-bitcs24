@@ -13,6 +13,8 @@
 #include <QDateTime>
 #include <QSet>
 #include <QSqlDatabase>
+#include <QSqlError>
+#include <QSqlQuery>
 #include <QUuid>
 #include <QtMath>
 
@@ -90,6 +92,25 @@ ServiceResult<OrderListResult> OrderService::list(qint64 userId, int page,
             ErrorCodes::DatabaseError, QStringLiteral("query order list failed"));
     }
     return ServiceResult<OrderListResult>::success({orders, page, pageSize, total});
+}
+
+ServiceResult<QJsonArray> OrderService::coupons(qint64 userId)
+{
+    QSqlDatabase database; QString error;
+    if (!openDatabase(&database, &error))
+        return ServiceResult<QJsonArray>::failure(ErrorCodes::DatabaseError, QStringLiteral("database unavailable"));
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral("SELECT id, discount_rate, status, issued_at, used_at FROM coupon WHERE user_id=:userId ORDER BY issued_at DESC, id DESC"));
+    query.bindValue(QStringLiteral(":userId"), userId);
+    if (!query.exec()) return ServiceResult<QJsonArray>::failure(ErrorCodes::DatabaseError, query.lastError().text());
+    QJsonArray items;
+    while (query.next()) items.append(QJsonObject{
+        {QStringLiteral("couponId"), query.value(0).toLongLong()},
+        {QStringLiteral("discountRate"), query.value(1).toInt()},
+        {QStringLiteral("status"), query.value(2).toString()},
+        {QStringLiteral("issuedAt"), query.value(3).toString()},
+        {QStringLiteral("usedAt"), query.value(4).toString()}});
+    return ServiceResult<QJsonArray>::success(items);
 }
 
 ServiceResult<ChargingOrderInfo> OrderService::start(qint64 userId, qint64 orderId)
@@ -257,6 +278,17 @@ ServiceResult<ChargingOrderInfo> OrderService::cancel(qint64 userId, qint64 orde
                                     : ErrorCodes::DatabaseError,
             QStringLiteral("order cancellation failed"));
     }
+    if (order->couponId > 0) {
+        QSqlQuery release(database);
+        release.prepare(QStringLiteral("UPDATE coupon SET status='AVAILABLE', order_id=NULL WHERE id=:id AND order_id=:orderId AND status='LOCKED'"));
+        release.bindValue(QStringLiteral(":id"), order->couponId);
+        release.bindValue(QStringLiteral(":orderId"), orderId);
+        if (!release.exec() || release.numRowsAffected() != 1) {
+            database.rollback();
+            return ServiceResult<ChargingOrderInfo>::failure(
+                ErrorCodes::DatabaseError, QStringLiteral("release coupon failed"));
+        }
+    }
     const auto savedOrder = m_orderRepository->findByIdForUser(database, orderId, userId,
                                                                  &databaseError);
     if (!savedOrder.has_value() || !database.commit()) {
@@ -324,6 +356,18 @@ ServiceResult<SettlementResult> OrderService::settle(qint64 userId, qint64 order
         return ServiceResult<SettlementResult>::failure(
             ErrorCodes::DatabaseError, QStringLiteral("complete order failed"));
     }
+    if (order->couponId > 0) {
+        QSqlQuery consume(database);
+        consume.prepare(QStringLiteral("UPDATE coupon SET status='USED', used_at=:now WHERE id=:id AND order_id=:orderId AND status='LOCKED'"));
+        consume.bindValue(QStringLiteral(":now"), now);
+        consume.bindValue(QStringLiteral(":id"), order->couponId);
+        consume.bindValue(QStringLiteral(":orderId"), orderId);
+        if (!consume.exec() || consume.numRowsAffected() != 1) {
+            database.rollback();
+            return ServiceResult<SettlementResult>::failure(
+                ErrorCodes::DatabaseError, QStringLiteral("use coupon failed"));
+        }
+    }
     const auto savedOrder = m_orderRepository->findByIdForUser(database, orderId, userId,
                                                                  &databaseError);
     const auto savedUser = m_userRepository->findById(database, userId, &databaseError);
@@ -336,7 +380,8 @@ ServiceResult<SettlementResult> OrderService::settle(qint64 userId, qint64 order
         withCurrentProgress(*savedOrder, QDateTime::currentDateTime()), savedUser->balanceFen});
 }
 
-ServiceResult<ChargingOrderInfo> OrderService::create(qint64 userId, qint64 pileId)
+ServiceResult<ChargingOrderInfo> OrderService::create(qint64 userId, qint64 pileId,
+                                                       qint64 couponId)
 {
     if (pileId <= 0) {
         return ServiceResult<ChargingOrderInfo>::failure(
@@ -411,6 +456,19 @@ ServiceResult<ChargingOrderInfo> OrderService::create(qint64 userId, qint64 pile
     order.status = QStringLiteral("CREATED");
     order.priceFenPerKwh = target->priceFenPerKwh;
     order.serviceFeeFenPerKwh = target->serviceFeeFenPerKwh;
+    order.couponId = couponId;
+    order.discountRate = 100;
+    if (couponId > 0) {
+        QSqlQuery coupon(database);
+        coupon.prepare(QStringLiteral("SELECT discount_rate FROM coupon WHERE id=:id AND user_id=:userId AND status='AVAILABLE'"));
+        coupon.bindValue(QStringLiteral(":id"), couponId);
+        coupon.bindValue(QStringLiteral(":userId"), userId);
+        if (!coupon.exec() || !coupon.next()) {
+            database.rollback();
+            return ServiceResult<ChargingOrderInfo>::failure(ErrorCodes::InvalidOrderState, QStringLiteral("coupon is unavailable"));
+        }
+        order.discountRate = coupon.value(0).toInt();
+    }
     order.createdAt = now;
 
     qint64 orderId = 0;
@@ -418,6 +476,16 @@ ServiceResult<ChargingOrderInfo> OrderService::create(qint64 userId, qint64 pile
         database.rollback();
         return ServiceResult<ChargingOrderInfo>::failure(
             ErrorCodes::DatabaseError, QStringLiteral("create order failed"));
+    }
+    if (couponId > 0) {
+        QSqlQuery lock(database);
+        lock.prepare(QStringLiteral("UPDATE coupon SET status='LOCKED', order_id=:orderId WHERE id=:id AND status='AVAILABLE'"));
+        lock.bindValue(QStringLiteral(":orderId"), orderId);
+        lock.bindValue(QStringLiteral(":id"), couponId);
+        if (!lock.exec() || lock.numRowsAffected() != 1) {
+            database.rollback();
+            return ServiceResult<ChargingOrderInfo>::failure(ErrorCodes::InvalidOrderState, QStringLiteral("coupon was used by another order"));
+        }
     }
     bool reserved = false;
     if (!m_orderRepository->reservePile(database, pileId, orderId, now, &reserved,

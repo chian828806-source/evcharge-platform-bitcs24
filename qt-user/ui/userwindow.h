@@ -3,6 +3,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QHash>
+#include <QSet>
 #include <QMainWindow>
 
 class QLabel;
@@ -73,6 +74,10 @@ private:
     QVBoxLayout *m_pileListLayout = nullptr;
     QVBoxLayout *m_orderListLayout = nullptr;
     QTimer *m_orderPollTimer = nullptr;
+    QTimer *m_couponPollTimer = nullptr;
+    QJsonArray m_coupons;
+    QSet<qint64> m_knownCouponIds;
+    bool m_couponSnapshotReady = false;
     int m_balanceFenInFen = 0;
     double m_originLongitude = 121.538;
     double m_originLatitude = 38.889;
@@ -103,6 +108,7 @@ private:
     void showNotice(const QString &message, bool error = false);
     void showRechargeDialog();
     void showRenameDialog();
+    void showCouponDialog();
     void uploadAvatar();
     QString sendRequest(const QString &type, const QJsonObject &payload = {});
     void requestInitialData();

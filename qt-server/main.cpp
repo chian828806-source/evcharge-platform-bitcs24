@@ -21,6 +21,7 @@
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
+#include <QSet>
 #include <QTextStream>
 #include <QTimer>
 
@@ -50,7 +51,8 @@ bool hasRequiredTables(QSqlDatabase &database, QString *errorMessage)
     const QStringList requiredTables = {
         QStringLiteral("user"), QStringLiteral("admin"),
         QStringLiteral("charging_station"), QStringLiteral("charging_pile"),
-        QStringLiteral("charging_order"), QStringLiteral("recharge_record"),
+        QStringLiteral("charging_order"), QStringLiteral("coupon"),
+        QStringLiteral("recharge_record"),
         QStringLiteral("prediction_batch"), QStringLiteral("prediction"),
         QStringLiteral("operation_log"), QStringLiteral("data_import_batch"),
         QStringLiteral("charging_session_history"),
@@ -68,6 +70,42 @@ bool hasRequiredTables(QSqlDatabase &database, QString *errorMessage)
             }
             return false;
         }
+    }
+    return true;
+}
+
+bool ensureCouponSchema(QSqlDatabase &database, QString *errorMessage)
+{
+    QSqlQuery query(database);
+    if (!query.exec(QStringLiteral(
+            "CREATE TABLE IF NOT EXISTS coupon ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES user(id), "
+            "discount_rate INTEGER NOT NULL DEFAULT 80, status TEXT NOT NULL DEFAULT 'AVAILABLE', "
+            "order_id INTEGER, issued_by INTEGER NOT NULL REFERENCES admin(id), issued_at TEXT NOT NULL, "
+            "used_at TEXT, CHECK(discount_rate > 0 AND discount_rate <= 100), "
+            "CHECK(status IN ('AVAILABLE','LOCKED','USED')))"))) {
+        if (errorMessage) *errorMessage = query.lastError().text();
+        return false;
+    }
+    if (!query.exec(QStringLiteral("CREATE INDEX IF NOT EXISTS idx_coupon_user_status ON coupon(user_id, status, issued_at DESC)"))) {
+        if (errorMessage) *errorMessage = query.lastError().text();
+        return false;
+    }
+    QSet<QString> columns;
+    if (!query.exec(QStringLiteral("PRAGMA table_info(charging_order)"))) {
+        if (errorMessage) *errorMessage = query.lastError().text();
+        return false;
+    }
+    while (query.next()) columns.insert(query.value(1).toString());
+    if (!columns.contains(QStringLiteral("coupon_id"))
+        && !query.exec(QStringLiteral("ALTER TABLE charging_order ADD COLUMN coupon_id INTEGER REFERENCES coupon(id)"))) {
+        if (errorMessage) *errorMessage = query.lastError().text();
+        return false;
+    }
+    if (!columns.contains(QStringLiteral("discount_rate"))
+        && !query.exec(QStringLiteral("ALTER TABLE charging_order ADD COLUMN discount_rate INTEGER NOT NULL DEFAULT 100"))) {
+        if (errorMessage) *errorMessage = query.lastError().text();
+        return false;
     }
     return true;
 }
@@ -120,7 +158,7 @@ int main(int argc, char *argv[])
         QTextStream(stderr) << "SQLite open failed: " << error << '\n';
         return 3;
     }
-    if (!hasRequiredTables(database, &error)) {
+    if (!ensureCouponSchema(database, &error) || !hasRequiredTables(database, &error)) {
         QTextStream(stderr) << "SQLite schema is unavailable: " << error << '\n';
         return 3;
     }
