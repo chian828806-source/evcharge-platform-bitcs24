@@ -46,6 +46,8 @@ private:
     QLabel *m_nicknameLabel = nullptr;
     MapNavigationPage *m_mapNavigationPage = nullptr;
     QLabel *m_profilePhoneLabel = nullptr;
+    QLabel *m_profileIdLabel = nullptr;
+    QLabel *m_profileStatusLabel = nullptr;
     QLabel *m_orderSummaryLabel = nullptr;
     QLabel *m_chargeStatisticsLabel = nullptr;
     QLabel *m_stationDetailTitle = nullptr;

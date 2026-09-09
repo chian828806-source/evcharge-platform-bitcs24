@@ -14,6 +14,7 @@
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QFrame>
+#include <QGridLayout>
 #include <QGraphicsDropShadowEffect>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -132,6 +133,13 @@ QString orderStatusText(const QString &status)
         {QStringLiteral("CANCELLED"), QStringLiteral("已取消")}
     };
     return labels.value(status, status.isEmpty() ? QStringLiteral("未知状态") : status);
+}
+
+QString userStatusText(const QString &status)
+{
+    if (status == QStringLiteral("NORMAL")) return QStringLiteral("正常");
+    if (status == QStringLiteral("FROZEN")) return QStringLiteral("已冻结");
+    return status.isEmpty() ? QStringLiteral("未知") : status;
 }
 
 bool confirmUserAction(QWidget *parent, const QString &title, const QString &message,
@@ -705,10 +713,6 @@ QWidget *UserWindow::buildProfilePage()
     auto *layout = new QVBoxLayout(content);
     layout->setContentsMargins(20, 0, 20, 24);
     layout->setSpacing(14);
-    layout->addWidget(buildPageHeader(QStringLiteral("MY EVCHARGE"),
-                                      QStringLiteral("我的"),
-                                      QStringLiteral("账户、钱包与充电记录")));
-
     auto *profileCard = makeCard();
     profileCard->setProperty("variant", "profile");
     auto *profileLayout = new QHBoxLayout(profileCard);
@@ -721,33 +725,64 @@ QWidget *UserWindow::buildProfilePage()
     auto *identity = new QVBoxLayout;
     m_nicknameLabel = makeLabel(QStringLiteral("用户信息加载中"), "cardTitle");
     identity->addWidget(m_nicknameLabel);
+    m_profileIdLabel = makeLabel(QStringLiteral("ID：--"), "caption");
+    identity->addWidget(m_profileIdLabel);
     m_profilePhoneLabel = makeLabel(QStringLiteral("尚未登录"), "caption");
     identity->addWidget(m_profilePhoneLabel);
+    m_profileStatusLabel = makeLabel(QStringLiteral("账户状态：--"), "badgeGood");
+    m_profileStatusLabel->setMaximumWidth(120);
+    identity->addWidget(m_profileStatusLabel, 0, Qt::AlignLeft);
     profileLayout->addLayout(identity, 1);
+    auto *profileActions = new QVBoxLayout;
     auto *avatarButton = makeButton(QStringLiteral("更换头像"), "ghostCompact");
     auto *renameButton = makeButton(QStringLiteral("修改昵称"), "ghostCompact");
-    profileLayout->addWidget(avatarButton);
-    profileLayout->addWidget(renameButton);
+    profileActions->addWidget(avatarButton);
+    profileActions->addWidget(renameButton);
+    profileLayout->addLayout(profileActions);
     layout->addWidget(profileCard);
 
     auto *walletCard = makeCard();
     walletCard->setProperty("variant", "wallet");
-    auto *walletLayout = new QHBoxLayout(walletCard);
+    auto *walletLayout = new QVBoxLayout(walletCard);
     walletLayout->setContentsMargins(20, 19, 20, 19);
+    walletLayout->setSpacing(14);
+    auto *walletTop = new QHBoxLayout;
     auto *walletInformation = new QVBoxLayout;
-    walletInformation->addWidget(makeLabel(QStringLiteral("钱包余额"), "caption"));
+    walletInformation->addWidget(makeLabel(QStringLiteral("我的钱包"), "cardTitle"));
+    walletInformation->addWidget(makeLabel(QStringLiteral("账户余额"), "caption"));
     m_balanceLabel = makeLabel(displayMoney(m_balanceFenInFen), "walletAmount");
     walletInformation->addWidget(m_balanceLabel);
-    walletLayout->addLayout(walletInformation);
-    walletLayout->addStretch();
+    walletTop->addLayout(walletInformation);
+    walletTop->addStretch();
+    walletLayout->addLayout(walletTop);
     auto *rechargeButton = makeButton(QStringLiteral("立即充值"));
-    walletLayout->addWidget(rechargeButton);
+    walletTop->addWidget(rechargeButton, 0, Qt::AlignVCenter);
     layout->addWidget(walletCard);
 
-    layout->addWidget(makeLabel(QStringLiteral("最近订单"), "sectionTitle"));
+    layout->addWidget(makeLabel(QStringLiteral("常用功能"), "sectionTitle"));
+    auto *commonCard = makeCard();
+    commonCard->setProperty("variant", "common");
+    auto *commonLayout = new QVBoxLayout(commonCard);
+    commonLayout->setContentsMargins(18, 16, 18, 18);
+    auto *featureGrid = new QGridLayout;
+    featureGrid->setHorizontalSpacing(10);
+    featureGrid->setVerticalSpacing(8);
+    auto *ordersButton = makeButton(QStringLiteral("▤\n我的订单"), "profileFeature");
+    ordersButton->setToolTip(QStringLiteral("查看最近的充电与结算记录"));
+    ordersButton->setMinimumSize(92, 100);
+    featureGrid->addWidget(ordersButton, 0, 0);
+    featureGrid->setColumnStretch(0, 0);
+    featureGrid->setColumnStretch(1, 1);
+    featureGrid->setColumnStretch(2, 1);
+    featureGrid->setColumnStretch(3, 1);
+    commonLayout->addLayout(featureGrid);
+    layout->addWidget(commonCard);
     m_orderListLayout = new QVBoxLayout;
     m_orderListLayout->setSpacing(12);
-    layout->addLayout(m_orderListLayout);
+    auto *ordersPanel = new QWidget;
+    ordersPanel->setLayout(m_orderListLayout);
+    ordersPanel->setVisible(false);
+    layout->addWidget(ordersPanel);
     auto *logoutButton = makeButton(QStringLiteral("退出登录"), "dangerGhost");
     layout->addWidget(logoutButton);
     layout->addStretch();
@@ -756,6 +791,26 @@ QWidget *UserWindow::buildProfilePage()
 
     connect(renameButton, &QPushButton::clicked, this, &UserWindow::showRenameDialog);
     connect(rechargeButton, &QPushButton::clicked, this, &UserWindow::showRechargeDialog);
+    connect(ordersButton, &QPushButton::clicked, this, [this, layout, ordersPanel]() {
+        QDialog dialog(this);
+        dialog.setWindowTitle(QStringLiteral("我的订单"));
+        dialog.setModal(true);
+        dialog.resize(430, 560);
+        auto *dialogLayout = new QVBoxLayout(&dialog);
+        dialogLayout->setContentsMargins(18, 18, 18, 18);
+        auto *title = makeLabel(QStringLiteral("最近订单"), "sectionTitle");
+        dialogLayout->addWidget(title);
+        auto *hint = makeLabel(QStringLiteral("查看最近的充电与结算记录"), "caption");
+        dialogLayout->addWidget(hint);
+        ordersPanel->setVisible(true);
+        dialogLayout->addWidget(ordersPanel, 1);
+        auto *closeButton = makeButton(QStringLiteral("关闭"), "secondary");
+        dialogLayout->addWidget(closeButton);
+        connect(closeButton, &QPushButton::clicked, &dialog, &QDialog::accept);
+        dialog.exec();
+        ordersPanel->setVisible(false);
+        layout->addWidget(ordersPanel);
+    });
     connect(avatarButton, &QPushButton::clicked, this, &UserWindow::uploadAvatar);
     connect(logoutButton, &QPushButton::clicked, this, [this]() {
         if (confirmUserAction(this, QStringLiteral("退出登录"),
@@ -1124,9 +1179,10 @@ void UserWindow::applyUser(const QJsonObject &user)
     if (m_profilePhoneLabel && !phone.isEmpty()) {
         const QString masked = phone.size() == 11
             ? phone.left(3) + QStringLiteral("****") + phone.right(4) : phone;
-        m_profilePhoneLabel->setText(masked + QStringLiteral(" · ")
-            + user.value(QStringLiteral("status")).toString());
+        m_profilePhoneLabel->setText(QStringLiteral("手机号：") + masked);
     }
+    if (m_profileIdLabel) m_profileIdLabel->setText(QStringLiteral("ID：%1").arg(user.value(QStringLiteral("userId")).toInteger()));
+    if (m_profileStatusLabel) m_profileStatusLabel->setText(QStringLiteral("账户状态：%1").arg(userStatusText(user.value(QStringLiteral("status")).toString())));
     m_balanceFenInFen = user.value(QStringLiteral("balanceFen")).toInt();
     if (m_balanceLabel) m_balanceLabel->setText(displayMoney(m_balanceFenInFen));
 
