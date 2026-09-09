@@ -1079,24 +1079,37 @@ QWidget *UserWindow::buildProfilePage()
     auto *commonCard = makeCard();
     commonCard->setProperty("variant", "common");
     auto *commonLayout = new QVBoxLayout(commonCard);
-    commonLayout->setContentsMargins(18, 16, 18, 18);
+    commonLayout->setContentsMargins(12, 14, 12, 14);
     auto *featureRow = new QHBoxLayout;
-    featureRow->setSpacing(8);
-    auto *couponButton = makeButton(QStringLiteral("🎟\n我的优惠券"), "profileFeature");
-    auto *membershipButton = makeButton(QStringLiteral("♛\n会员中心"), "profileFeature");
-    auto *ordersButton = makeButton(QStringLiteral("▤\n我的订单"), "profileFeature");
-    auto *favoritesButton = makeButton(QStringLiteral("★\n我的收藏"), "profileFeature");
-    couponButton->setToolTip(QStringLiteral("查看账户中的优惠券"));
-    membershipButton->setToolTip(QStringLiteral("查看会员状态与会员卡"));
-    ordersButton->setToolTip(QStringLiteral("查看最近的充电与结算记录"));
-    favoritesButton->setToolTip(QStringLiteral("我的收藏功能入口"));
-    const QList<QPushButton *> featureButtons{
-        couponButton, membershipButton, ordersButton, favoritesButton};
-    for (QPushButton *featureButton : featureButtons) {
-        featureButton->setMinimumHeight(100);
-        featureButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-        featureRow->addWidget(featureButton, 1);
-    }
+    featureRow->setSpacing(4);
+    const auto addProfileFeature = [commonCard, featureRow](const QString &iconText,
+                                                             const QString &buttonText,
+                                                             const QString &toolTip) {
+        auto *feature = new QWidget(commonCard);
+        feature->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        auto *featureLayout = new QVBoxLayout(feature);
+        featureLayout->setContentsMargins(2, 2, 2, 2);
+        featureLayout->setSpacing(5);
+        auto *icon = makeLabel(iconText, "profileFeatureIcon");
+        icon->setFixedSize(48, 48);
+        icon->setAlignment(Qt::AlignCenter);
+        if (iconText.size() > 1) icon->setProperty("compact", true);
+        featureLayout->addWidget(icon, 0, Qt::AlignHCenter);
+        auto *button = makeButton(buttonText, "profileFeature");
+        button->setToolTip(toolTip);
+        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        featureLayout->addWidget(button);
+        featureRow->addWidget(feature, 1);
+        return button;
+    };
+    auto *couponButton = addProfileFeature(QStringLiteral("券"), QStringLiteral("我的优惠券"),
+                                            QStringLiteral("查看账户中的优惠券"));
+    auto *membershipButton = addProfileFeature(QStringLiteral("VIP"), QStringLiteral("会员中心"),
+                                                QStringLiteral("查看会员状态与会员卡"));
+    auto *ordersButton = addProfileFeature(QStringLiteral("单"), QStringLiteral("我的订单"),
+                                            QStringLiteral("查看最近的充电与结算记录"));
+    auto *favoritesButton = addProfileFeature(QStringLiteral("★"), QStringLiteral("我的收藏"),
+                                               QStringLiteral("我的收藏功能入口"));
     commonLayout->addLayout(featureRow);
     layout->addWidget(commonCard);
     auto *logoutButton = makeButton(QStringLiteral("退出登录"), "dangerGhost");
