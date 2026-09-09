@@ -109,6 +109,8 @@ private:
     QLineEdit *m_search = nullptr;
     QComboBox *m_statusFilter = nullptr;
     QTableWidget *m_table = nullptr;
+    QLabel *m_resultSummary = nullptr;
+    QLabel *m_loadState = nullptr;
     QLabel *m_pageLabel = nullptr;
     QPushButton *m_previous = nullptr;
     QPushButton *m_next = nullptr;

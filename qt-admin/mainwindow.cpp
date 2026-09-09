@@ -3,6 +3,7 @@
 #include "shared/protocol/errorcodes.h"
 #include "shared/protocol/messagetypes.h"
 #include "ui/adminpages.h"
+#include <QDialog>
 #include <QFormLayout>
 #include <QFrame>
 #include <QHBoxLayout>
@@ -14,6 +15,7 @@
 #include <QStackedWidget>
 #include <QTabWidget>
 #include <QTimer>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 namespace {
@@ -21,17 +23,64 @@ namespace {
 bool confirmDangerousAction(QWidget *parent, const QString &title,
                             const QString &message, const QString &confirmText)
 {
-    QMessageBox box(QMessageBox::Warning, title, message,
-                    QMessageBox::NoButton, parent);
-    box.setInformativeText(QStringLiteral("该操作会立即提交到服务端，请确认当前对象和状态无误。"));
-    auto *confirm = box.addButton(confirmText, QMessageBox::AcceptRole);
-    auto *cancel = box.addButton(QStringLiteral("取消"), QMessageBox::RejectRole);
-    confirm->setProperty("kind", "danger");
-    cancel->setProperty("kind", "secondary");
-    box.setDefaultButton(cancel);
-    box.setEscapeButton(cancel);
-    box.exec();
-    return box.clickedButton() == confirm;
+    QDialog dialog(parent, Qt::Dialog | Qt::FramelessWindowHint);
+    dialog.setObjectName(QStringLiteral("confirmDialog"));
+    dialog.setAttribute(Qt::WA_TranslucentBackground);
+    dialog.setModal(true);
+    dialog.setFixedSize(480, 350);
+
+    auto *outer = new QVBoxLayout(&dialog);
+    outer->setContentsMargins(18, 18, 18, 18);
+    auto *card = new QFrame(&dialog);
+    card->setObjectName(QStringLiteral("confirmCard"));
+    auto *layout = new QVBoxLayout(card);
+    layout->setContentsMargins(30, 22, 30, 28);
+    layout->setSpacing(12);
+
+    auto *top = new QHBoxLayout;
+    auto *badge = new QLabel(QStringLiteral("!"), card);
+    badge->setObjectName(QStringLiteral("confirmBadge"));
+    badge->setAlignment(Qt::AlignCenter);
+    badge->setFixedSize(46, 46);
+    auto *close = new QToolButton(card);
+    close->setObjectName(QStringLiteral("confirmClose"));
+    close->setText(QStringLiteral("×"));
+    close->setFixedSize(34, 34);
+    top->addWidget(badge);
+    top->addStretch();
+    top->addWidget(close);
+    layout->addLayout(top);
+
+    auto *titleLabel = new QLabel(title, card);
+    titleLabel->setProperty("role", "confirmTitle");
+    auto *messageLabel = new QLabel(message, card);
+    messageLabel->setProperty("role", "confirmMessage");
+    messageLabel->setWordWrap(true);
+    auto *hint = new QLabel(QStringLiteral("操作将立即提交至服务端，请确认对象和当前状态无误。"), card);
+    hint->setProperty("role", "confirmHint");
+    hint->setWordWrap(true);
+    layout->addWidget(titleLabel);
+    layout->addWidget(messageLabel);
+    layout->addWidget(hint);
+    layout->addStretch();
+
+    auto *actions = new QHBoxLayout;
+    actions->setSpacing(12);
+    auto *cancel = new QPushButton(QStringLiteral("暂不操作"), card);
+    cancel->setProperty("kind", "dialogSecondary");
+    auto *confirm = new QPushButton(confirmText, card);
+    confirm->setProperty("kind", "dialogDanger");
+    cancel->setMinimumHeight(46);
+    confirm->setMinimumHeight(46);
+    actions->addWidget(cancel, 1);
+    actions->addWidget(confirm, 1);
+    layout->addLayout(actions);
+    outer->addWidget(card);
+
+    QObject::connect(close, &QToolButton::clicked, &dialog, &QDialog::reject);
+    QObject::connect(cancel, &QPushButton::clicked, &dialog, &QDialog::reject);
+    QObject::connect(confirm, &QPushButton::clicked, &dialog, &QDialog::accept);
+    return dialog.exec() == QDialog::Accepted;
 }
 
 } // namespace
@@ -296,17 +345,29 @@ void MainWindow::buildManagementPages()
 {
     if (m_dashboardTimer) { m_dashboardTimer->stop(); m_dashboardTimer->deleteLater(); m_dashboardTimer = nullptr; }
     if (m_tabs) { m_rootStack->removeWidget(m_tabs); m_tabs->deleteLater(); }
-    m_tabs = new QTabWidget(m_rootStack); m_dashboard = new DashboardPage(m_tabs);
+    m_tabs = new QTabWidget(m_rootStack);
+    m_tabs->setObjectName(QStringLiteral("managementTabs"));
+    m_tabs->setDocumentMode(true);
+    m_dashboard = new DashboardPage(m_tabs);
     m_stations = new StationPage(m_tabs); m_piles = new PilePage(m_tabs);
     m_users = new UserPage(m_tabs); m_orders = new OrderPage(m_tabs);
     m_tabs->addTab(m_dashboard, QStringLiteral("运营概览")); m_tabs->addTab(m_stations, QStringLiteral("站点管理"));
     m_tabs->addTab(m_piles, QStringLiteral("电桩管理")); m_tabs->addTab(m_users, QStringLiteral("用户管理"));
     m_tabs->addTab(m_orders, QStringLiteral("订单管理"));
-    auto *account = new QWidget(m_tabs); auto *accountLayout = new QHBoxLayout(account);
-    accountLayout->setContentsMargins(8, 0, 8, 0);
-    accountLayout->addWidget(new QLabel(m_adminDisplayName.isEmpty()
-        ? QStringLiteral("管理员") : m_adminDisplayName, account));
+    auto *account = new QWidget(m_tabs);
+    account->setObjectName(QStringLiteral("accountBar"));
+    auto *accountLayout = new QHBoxLayout(account);
+    accountLayout->setContentsMargins(14, 5, 10, 5);
+    accountLayout->setSpacing(10);
+    auto *online = new QLabel(QStringLiteral("● 服务在线"), account);
+    online->setProperty("role", "onlineBadge");
+    auto *identity = new QLabel(m_adminDisplayName.isEmpty()
+        ? QStringLiteral("管理员") : m_adminDisplayName, account);
+    identity->setProperty("role", "accountName");
+    accountLayout->addWidget(online);
+    accountLayout->addWidget(identity);
     auto *logout = new QPushButton(QStringLiteral("退出登录"), account);
+    logout->setProperty("kind", "secondary");
     accountLayout->addWidget(logout);
     m_tabs->setCornerWidget(account, Qt::TopRightCorner);
     m_rootStack->addWidget(m_tabs); m_rootStack->setCurrentWidget(m_tabs);

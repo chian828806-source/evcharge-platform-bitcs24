@@ -22,6 +22,7 @@
 #include <QPushButton>
 #include <QScrollBar>
 #include <QSpinBox>
+#include <QStyle>
 #include <QTableWidget>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -65,13 +66,14 @@ void prepareTable(QTableWidget *table)
     table->setShowGrid(false);
     table->setWordWrap(false);
     table->setTextElideMode(Qt::ElideRight);
-    table->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    table->setVerticalScrollMode(QAbstractItemView::ScrollPerItem);
     table->verticalHeader()->setVisible(false);
     table->verticalHeader()->setSectionResizeMode(QHeaderView::Fixed);
-    table->verticalHeader()->setMinimumSectionSize(56);
-    table->verticalHeader()->setDefaultSectionSize(56);
+    table->verticalHeader()->setMinimumSectionSize(60);
+    table->verticalHeader()->setDefaultSectionSize(60);
     table->horizontalHeader()->setMinimumSectionSize(40);
     table->horizontalHeader()->setStretchLastSection(false);
+    table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 }
 
 QTableWidgetItem *tableItem(const QString &text, bool centered = false)
@@ -120,22 +122,24 @@ QToolButton *tableActionButton(QTableWidget *table, int row, int column,
 {
     auto *cell = new QWidget(table);
     cell->setObjectName(QStringLiteral("tableActionCell"));
+    cell->setAttribute(Qt::WA_TranslucentBackground);
+    cell->setMinimumHeight(68);
     auto *layout = new QHBoxLayout(cell);
-    layout->setContentsMargins(8, 10, 8, 10);
+    layout->setContentsMargins(8, 14, 8, 14);
     layout->setSpacing(0);
     layout->setAlignment(Qt::AlignCenter);
     auto *action = new QToolButton(cell);
     action->setText(text);
-    action->setMinimumWidth(82);
-    action->setFixedHeight(30);
+    action->setFixedSize(104, 40);
     action->setStyleSheet(QStringLiteral(
         "QToolButton { background:#087f69; color:white; border:1px solid #087f69; "
-        "border-radius:8px; padding:0px 10px; margin:0px; font-weight:600; }"
+        "border-radius:11px; padding:0px 12px; margin:0px; font-size:15px; font-weight:700; }"
         "QToolButton:hover { background:#066b59; border-color:#066b59; }"
         "QToolButton:disabled { background:#c7d5d1; border-color:#c7d5d1; color:#758681; }"));
     layout->addWidget(action);
     table->setCellWidget(row, column, cell);
-    table->setRowHeight(row, 56);
+    table->verticalHeader()->setSectionResizeMode(row, QHeaderView::Fixed);
+    table->verticalHeader()->resizeSection(row, 72);
     return action;
 }
 
@@ -145,7 +149,7 @@ void configureActionColumn(QTableWidget *table, int actionColumn)
     for (int column = 0; column < table->columnCount(); ++column)
         header->setSectionResizeMode(column, QHeaderView::Stretch);
     header->setSectionResizeMode(actionColumn, QHeaderView::Fixed);
-    table->setColumnWidth(actionColumn, 112);
+    table->setColumnWidth(actionColumn, 136);
     table->horizontalScrollBar()->setValue(0);
 }
 
@@ -196,29 +200,41 @@ void showEmptyState(QTableWidget *table, int columns, const QString &message)
 DashboardPage::DashboardPage(QWidget *parent) : QWidget(parent)
 {
     auto *root = new QVBoxLayout(this); root->setContentsMargins(24, 22, 24, 24); root->setSpacing(16);
-    auto *top = new QHBoxLayout;
-    auto *heading = new QVBoxLayout; heading->addWidget(label(QStringLiteral("运营概览"), "pageTitle"));
-    heading->addWidget(label(QStringLiteral("查看营收、设备状态和负荷预测"), "subtitle")); top->addLayout(heading); top->addStretch();
+    auto *hero = panel();
+    hero->setProperty("variant", "dashboardHero");
+    auto *top = new QHBoxLayout(hero);
+    top->setContentsMargins(22, 16, 18, 16);
+    auto *heading = new QVBoxLayout;
+    heading->setSpacing(5);
+    heading->addWidget(label(QStringLiteral("欢迎回来，运营管理员"), "pageTitle"));
+    heading->addWidget(label(QStringLiteral("实时掌握充电网络营收、设备运行与负荷趋势"), "subtitle"));
+    top->addLayout(heading); top->addStretch();
+    auto *heroMark = label(QStringLiteral("⚡  EVCHARGE 运营中心"), "heroMark");
+    top->addWidget(heroMark);
     auto *refresh = button(QStringLiteral("刷新 Dashboard"), this);
     auto *seven = button(QStringLiteral("近 7 日"), this);
     auto *thirty = button(QStringLiteral("近 30 日"), this);
     seven->setProperty("kind", "secondary"); thirty->setProperty("kind", "secondary");
-    top->addWidget(refresh); root->addLayout(top);
+    top->addWidget(refresh);
+    root->addWidget(hero);
     auto *metrics = new QHBoxLayout;
     const QStringList names{QStringLiteral("今日营收"), QStringLiteral("本月营收"), QStringLiteral("累计营收")};
     QLabel **values[]{&m_today, &m_month, &m_total};
-    for (int i = 0; i < names.size(); ++i) { auto *card = panel(); auto *box = new QVBoxLayout(card);
-        box->setContentsMargins(20, 16, 20, 16); box->addWidget(label(names.at(i), "metricTitle"));
+    for (int i = 0; i < names.size(); ++i) { auto *card = panel(); card->setProperty("variant", "metric"); auto *box = new QVBoxLayout(card);
+        box->setContentsMargins(20, 16, 20, 16); auto *metricTop = new QHBoxLayout;
+        metricTop->addWidget(label(names.at(i), "metricTitle")); metricTop->addStretch();
+        metricTop->addWidget(label(i == 0 ? QStringLiteral("今日") : i == 1 ? QStringLiteral("本月") : QStringLiteral("累计"), "metricTag"));
+        box->addLayout(metricTop);
         *values[i] = label(QStringLiteral("¥ --"), "metricValue"); box->addWidget(*values[i]); metrics->addWidget(card, 1); }
     root->addLayout(metrics);
-    auto *period = new QHBoxLayout; period->addWidget(label(QStringLiteral("营收趋势"), "pageTitle")); period->addStretch(); period->addWidget(seven); period->addWidget(thirty); root->addLayout(period);
+    auto *period = new QHBoxLayout; period->addWidget(label(QStringLiteral("营收趋势"), "sectionTitle")); period->addStretch(); period->addWidget(seven); period->addWidget(thirty); root->addLayout(period);
     m_chartLayout = new QVBoxLayout;
     auto *chartPanel = panel(); chartPanel->setLayout(m_chartLayout); m_trendView = label(QStringLiteral("等待趋势数据"), "caption"); m_chartLayout->addWidget(m_trendView); root->addWidget(chartPanel, 2);
     auto *bottom = new QHBoxLayout;
-    auto *statusPanel = panel(); m_statusLayout = new QVBoxLayout(statusPanel); m_statusLayout->addWidget(label(QStringLiteral("电桩状态"), "pageTitle"));
+    auto *statusPanel = panel(); m_statusLayout = new QVBoxLayout(statusPanel); m_statusLayout->addWidget(label(QStringLiteral("电桩状态"), "sectionTitle"));
     m_statusView = label(QStringLiteral("等待状态数据"), "caption"); m_statusLayout->addWidget(m_statusView); bottom->addWidget(statusPanel, 1);
     auto *warningPanel = panel(); auto *warningLayout = new QVBoxLayout(warningPanel); auto *warningTop = new QHBoxLayout;
-    warningTop->addWidget(label(QStringLiteral("负荷预警"), "pageTitle")); warningTop->addStretch();
+    warningTop->addWidget(label(QStringLiteral("负荷预警"), "sectionTitle")); warningTop->addStretch();
     for (const QString &text : {QStringLiteral("1h"), QStringLiteral("6h"), QStringLiteral("24h")}) {
         auto *b = button(text, warningPanel); b->setProperty("kind", "secondary"); warningTop->addWidget(b);
         connect(b, &QPushButton::clicked, this, [this, text]() { emit warningRequested(text); });
@@ -234,9 +250,9 @@ DashboardPage::DashboardPage(QWidget *parent) : QWidget(parent)
 void DashboardPage::setRevenueSummary(const QJsonObject &data)
 {
     auto yuan = [](qint64 fen) { return QString::number(fen / 100.0, 'f', 2); };
-    m_today->setText(QStringLiteral("今日营收：%1 元").arg(yuan(data.value(QStringLiteral("todayRevenueFen")).toInteger())));
-    m_month->setText(QStringLiteral("本月营收：%1 元").arg(yuan(data.value(QStringLiteral("monthRevenueFen")).toInteger())));
-    m_total->setText(QStringLiteral("累计营收：%1 元").arg(yuan(data.value(QStringLiteral("totalRevenueFen")).toInteger())));
+    m_today->setText(QStringLiteral("¥ %1").arg(yuan(data.value(QStringLiteral("todayRevenueFen")).toInteger())));
+    m_month->setText(QStringLiteral("¥ %1").arg(yuan(data.value(QStringLiteral("monthRevenueFen")).toInteger())));
+    m_total->setText(QStringLiteral("¥ %1").arg(yuan(data.value(QStringLiteral("totalRevenueFen")).toInteger())));
 }
 
 void DashboardPage::setRevenueTrend(const QJsonObject &data)
@@ -255,30 +271,53 @@ void DashboardPage::setRevenueTrend(const QJsonObject &data)
     }
     auto *axisX = new QCategoryAxis;
     axisX->setLabelsAngle(-45);
+    qreal primaryMaximum = 0.0;
+    qreal orderMaximum = 0.0;
     for (int i = 0; i < points.size(); ++i) {
         const QJsonObject point = points.at(i).toObject();
-        revenueSeries->append(i, point.value(QStringLiteral("revenueFen")).toDouble() / 100.0);
-        energySeries->append(i, point.value(QStringLiteral("energyKwh")).toDouble());
-        orderSeries->append(i, point.value(QStringLiteral("orderCount")).toInt());
+        const qreal revenue = point.value(QStringLiteral("revenueFen")).toDouble() / 100.0;
+        const qreal energy = point.value(QStringLiteral("energyKwh")).toDouble();
+        const qreal orders = point.value(QStringLiteral("orderCount")).toInt();
+        revenueSeries->append(i, revenue);
+        energySeries->append(i, energy);
+        orderSeries->append(i, orders);
+        primaryMaximum = qMax(primaryMaximum, qMax(revenue, energy));
+        orderMaximum = qMax(orderMaximum, orders);
         axisX->append(point.value(QStringLiteral("date")).toString(), i + 0.5);
     }
     auto *chart = new QChart;
     revenueSeries->setPen(QPen(QColor(QStringLiteral("#087f69")), 3));
     energySeries->setPen(QPen(QColor(QStringLiteral("#2f80c9")), 3));
     orderSeries->setPen(QPen(QColor(QStringLiteral("#d97706")), 3));
+    revenueSeries->setPointsVisible(true);
+    energySeries->setPointsVisible(true);
+    orderSeries->setPointsVisible(true);
+    revenueSeries->setMarkerSize(7.0);
+    energySeries->setMarkerSize(7.0);
+    orderSeries->setMarkerSize(7.0);
     chart->addSeries(revenueSeries); chart->addSeries(energySeries); chart->addSeries(orderSeries);
     chart->addAxis(axisX, Qt::AlignBottom);
-    auto *axisY = new QValueAxis; axisY->setMin(0); chart->addAxis(axisY, Qt::AlignLeft);
+    auto *axisY = new QValueAxis;
+    axisY->setRange(primaryMaximum > 0.0 ? 0.0 : -1.0,
+                    primaryMaximum > 0.0 ? primaryMaximum * 1.15 : 1.0);
+    axisY->setLabelFormat(QStringLiteral("%.1f"));
+    axisY->setTickCount(5);
+    chart->addAxis(axisY, Qt::AlignLeft);
     for (QLineSeries *series : {revenueSeries, energySeries}) {
         series->attachAxis(axisX); series->attachAxis(axisY);
     }
-    auto *orderAxis = new QValueAxis; orderAxis->setMin(0);
+    auto *orderAxis = new QValueAxis;
+    orderAxis->setRange(orderMaximum > 0.0 ? 0.0 : -1.0,
+                        orderMaximum > 0.0 ? orderMaximum * 1.15 : 1.0);
+    orderAxis->setLabelFormat(QStringLiteral("%.0f"));
+    orderAxis->setTickCount(5);
     orderAxis->setTitleText(QStringLiteral("订单数"));
     chart->addAxis(orderAxis, Qt::AlignRight);
     orderSeries->attachAxis(axisX); orderSeries->attachAxis(orderAxis);
     chart->setTitle(QStringLiteral("近 %1 日营收趋势").arg(data.value(QStringLiteral("days")).toInt()));
     styleChart(chart);
     auto *view = new QChartView(chart, this);
+    view->setMinimumHeight(270);
     view->setRenderHint(QPainter::Antialiasing);
     replaceWidget(m_chartLayout, &m_trendView, view);
 }
@@ -563,32 +602,73 @@ OrderPage::OrderPage(QWidget *parent)
       m_statusFilter(new QComboBox(this)), m_table(new QTableWidget(this))
 {
     auto *root = new QVBoxLayout(this);
-    root->setContentsMargins(24, 22, 24, 24); root->setSpacing(14);
-    root->addWidget(label(QStringLiteral("订单管理"), "pageTitle"));
-    root->addWidget(label(QStringLiteral("按用户手机号和订单状态查看充电订单"), "subtitle"));
+    root->setContentsMargins(24, 22, 24, 24);
+    root->setSpacing(14);
+
+    auto *heading = new QHBoxLayout;
+    auto *headingText = new QVBoxLayout;
+    headingText->setSpacing(5);
+    headingText->addWidget(label(QStringLiteral("订单管理"), "pageTitle"));
+    headingText->addWidget(label(QStringLiteral("查询全平台充电订单，快速核对用户、站点与结算信息"), "subtitle"));
+    m_resultSummary = label(QStringLiteral("等待查询"), "summaryBadge");
+    heading->addLayout(headingText);
+    heading->addStretch();
+    heading->addWidget(m_resultSummary, 0, Qt::AlignTop);
+    root->addLayout(heading);
+
+    auto *filterPanel = panel();
+    filterPanel->setProperty("variant", "orderFilter");
+    auto *filterLayout = new QVBoxLayout(filterPanel);
+    filterLayout->setContentsMargins(18, 14, 18, 16);
+    filterLayout->setSpacing(10);
+    filterLayout->addWidget(label(QStringLiteral("筛选条件"), "filterTitle"));
     auto *tools = new QHBoxLayout;
+    tools->setSpacing(10);
     m_search->setPlaceholderText(QStringLiteral("输入用户手机号关键词"));
+    m_search->setClearButtonEnabled(true);
     m_statusFilter->addItem(QStringLiteral("全部状态"), QString());
     m_statusFilter->addItem(QStringLiteral("已创建"), QStringLiteral("CREATED"));
     m_statusFilter->addItem(QStringLiteral("充电中"), QStringLiteral("CHARGING"));
     m_statusFilter->addItem(QStringLiteral("待支付"), QStringLiteral("PENDING_PAYMENT"));
     m_statusFilter->addItem(QStringLiteral("已完成"), QStringLiteral("COMPLETED"));
     m_statusFilter->addItem(QStringLiteral("已取消"), QStringLiteral("CANCELLED"));
-    auto *query = button(QStringLiteral("查询"), this);
-    auto *clear = button(QStringLiteral("清空"), this); clear->setProperty("kind", "secondary");
-    tools->addWidget(m_search, 1); tools->addWidget(m_statusFilter);
-    tools->addWidget(query); tools->addWidget(clear); root->addLayout(tools);
+    auto *query = button(QStringLiteral("查询订单"), this);
+    auto *clear = button(QStringLiteral("重置条件"), this);
+    clear->setProperty("kind", "secondary");
+    tools->addWidget(label(QStringLiteral("用户手机号"), "fieldLabel"));
+    tools->addWidget(m_search, 1);
+    tools->addWidget(label(QStringLiteral("订单状态"), "fieldLabel"));
+    tools->addWidget(m_statusFilter);
+    tools->addWidget(query);
+    tools->addWidget(clear);
+    filterLayout->addLayout(tools);
+    root->addWidget(filterPanel);
+
+    auto *listHeading = new QHBoxLayout;
+    listHeading->addWidget(label(QStringLiteral("订单列表"), "sectionTitle"));
+    listHeading->addStretch();
+    m_loadState = label(QString(), "loadState");
+    m_loadState->setVisible(false);
+    listHeading->addWidget(m_loadState);
+    root->addLayout(listHeading);
     prepareTable(m_table);
     m_table->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    m_table->verticalHeader()->setMinimumSectionSize(54);
+    m_table->verticalHeader()->setDefaultSectionSize(54);
     root->addWidget(m_table, 1);
 
-    auto *pages = new QHBoxLayout; pages->addStretch();
+    auto *pagination = new QFrame(this);
+    pagination->setObjectName(QStringLiteral("orderPagination"));
+    auto *pages = new QHBoxLayout(pagination);
+    pages->setContentsMargins(12, 8, 12, 8);
+    pages->addStretch();
     m_previous = button(QStringLiteral("上一页"), this);
     m_next = button(QStringLiteral("下一页"), this);
     m_previous->setProperty("kind", "secondary"); m_next->setProperty("kind", "secondary");
     m_pageLabel = label(QStringLiteral("第 1 页"), "caption");
     pages->addWidget(m_previous); pages->addWidget(m_pageLabel); pages->addWidget(m_next);
-    root->addLayout(pages);
+    pages->addStretch();
+    root->addWidget(pagination);
     connect(query, &QPushButton::clicked, this, [this]() { requestPage(1); });
     connect(m_search, &QLineEdit::returnPressed, this, [this]() { requestPage(1); });
     connect(m_statusFilter, qOverload<int>(&QComboBox::currentIndexChanged),
@@ -611,12 +691,24 @@ void OrderPage::requestPage(int page)
 void OrderPage::setLoading()
 {
     m_pageLabel->setText(QStringLiteral("正在加载…"));
+    m_resultSummary->setText(QStringLiteral("查询中"));
+    m_loadState->setText(QStringLiteral("● 正在加载订单"));
+    m_loadState->setProperty("error", false);
+    m_loadState->style()->unpolish(m_loadState);
+    m_loadState->style()->polish(m_loadState);
+    m_loadState->setVisible(true);
     m_previous->setEnabled(false); m_next->setEnabled(false);
 }
 
 void OrderPage::setLoadError(const QString &message)
 {
     m_pageLabel->setText(message);
+    m_resultSummary->setText(QStringLiteral("保留上次结果"));
+    m_loadState->setText(QStringLiteral("加载失败 · 请重试"));
+    m_loadState->setProperty("error", true);
+    m_loadState->style()->unpolish(m_loadState);
+    m_loadState->style()->polish(m_loadState);
+    m_loadState->setVisible(true);
     m_previous->setEnabled(m_page > 1);
     const int pageCount = qMax(1, (m_total + m_pageSize - 1) / m_pageSize);
     m_next->setEnabled(m_page < pageCount);
@@ -628,6 +720,8 @@ void OrderPage::setOrders(const QJsonObject &data)
     m_page = data.value(QStringLiteral("page")).toInt(1);
     m_pageSize = data.value(QStringLiteral("pageSize")).toInt(20);
     m_total = data.value(QStringLiteral("total")).toInt();
+    m_loadState->setVisible(false);
+    m_resultSummary->setText(QStringLiteral("共 %1 条订单").arg(m_total));
     const int pageCount = qMax(1, (m_total + m_pageSize - 1) / m_pageSize);
     m_pageLabel->setText(QStringLiteral("第 %1 / %2 页，共 %3 条")
                          .arg(m_page).arg(pageCount).arg(m_total));
@@ -647,20 +741,28 @@ void OrderPage::setOrders(const QJsonObject &data)
         const QJsonObject order = items.at(row).toObject();
         const QString nickname = order.value(QStringLiteral("userNickname")).toString();
         const QString phone = order.value(QStringLiteral("userPhone")).toString();
-        const QString user = nickname.isEmpty() ? phone
-            : QStringLiteral("%1（%2）").arg(nickname, phone);
+        const QString user = nickname.isEmpty()
+            ? (phone.isEmpty() ? QStringLiteral("—") : phone)
+            : (phone.isEmpty() ? nickname : QStringLiteral("%1（%2）").arg(nickname, phone));
+        const auto textOrDash = [&order](const QString &key) {
+            const QString value = order.value(key).toString();
+            return value.isEmpty() ? QStringLiteral("—") : value;
+        };
+        const QJsonValue energy = order.value(QStringLiteral("energyKwh"));
+        const QJsonValue minutes = order.value(QStringLiteral("chargeMinutes"));
+        const QJsonValue amount = order.value(QStringLiteral("amountFen"));
         const QStringList values{
-            order.value(QStringLiteral("orderNo")).toString(), user,
-            order.value(QStringLiteral("stationName")).toString(),
-            order.value(QStringLiteral("pileNo")).toString(),
+            textOrDash(QStringLiteral("orderNo")), user,
+            textOrDash(QStringLiteral("stationName")),
+            textOrDash(QStringLiteral("pileNo")),
             statusText(order.value(QStringLiteral("status")).toString()),
-            QString::number(order.value(QStringLiteral("energyKwh")).toDouble(), 'f', 2)
-                + QStringLiteral(" kWh"),
-            QString::number(order.value(QStringLiteral("chargeMinutes")).toInt())
-                + QStringLiteral(" 分钟"),
-            QStringLiteral("¥") + QString::number(
-                order.value(QStringLiteral("amountFen")).toInteger() / 100.0, 'f', 2),
-            order.value(QStringLiteral("createdAt")).toString()
+            energy.isDouble() ? QString::number(energy.toDouble(), 'f', 2) + QStringLiteral(" kWh")
+                              : QStringLiteral("—"),
+            minutes.isDouble() ? QString::number(minutes.toInt()) + QStringLiteral(" 分钟")
+                               : QStringLiteral("—"),
+            amount.isDouble() ? QStringLiteral("¥") + QString::number(amount.toInteger() / 100.0, 'f', 2)
+                              : QStringLiteral("—"),
+            textOrDash(QStringLiteral("createdAt"))
         };
         for (int column = 0; column < values.size(); ++column) {
             m_table->setItem(row, column, column == 4
@@ -670,9 +772,12 @@ void OrderPage::setOrders(const QJsonObject &data)
     }
     auto *header = m_table->horizontalHeader();
     for (int column = 0; column < m_table->columnCount(); ++column)
-        header->setSectionResizeMode(column, QHeaderView::Interactive);
-    const QList<int> widths{170, 190, 180, 80, 90, 100, 90, 100};
+        header->setSectionResizeMode(column, QHeaderView::Fixed);
+    const QList<int> widths{200, 150, 150, 115, 90, 100, 90, 100, 170};
     for (int column = 0; column < widths.size(); ++column)
         m_table->setColumnWidth(column, widths.at(column));
+    header->setSectionResizeMode(1, QHeaderView::Stretch);
+    header->setSectionResizeMode(2, QHeaderView::Stretch);
     header->setSectionResizeMode(8, QHeaderView::Stretch);
+    header->setStretchLastSection(false);
 }
