@@ -13,6 +13,7 @@ const QSet<QString> &tcpTypes()
         UserLogin, UserProfileGet, UserProfileUpdate, UserAvatarUpload, UserAvatarGet,
         UserAvatarRemove,
         UserRecharge, UserOrderList, StationListNearby, StationDetailGet,
+        UserStationFavoriteToggle, UserStationFavoriteList,
         MapGeocode, MapRoutePlan, OrderActiveCheck, OrderCreate, OrderCancel, OrderStart,
         OrderStop, OrderSettle, AdminLogin, AdminRevenueSummary,
         AdminRevenueTrend, AdminPileStatusSummary, AdminPileList,

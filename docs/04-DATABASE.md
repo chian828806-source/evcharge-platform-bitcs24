@@ -242,7 +242,21 @@ erDiagram
 - 经纬度由地图 API 或演示数据提供；
 - 新增站点时，由服务层按输入数量自动创建电桩。
 
-### 5.4 `charging_pile`
+### 5.4 `user_station_favorite`
+
+用途：保存普通用户与收藏充电站的关联关系，不复制站点资料。
+
+| 字段 | 类型 | Null | 默认 | 说明 | 对外字段 |
+| --- | --- | --- | --- | --- | --- |
+| `id` | `INTEGER PRIMARY KEY AUTOINCREMENT` | N |  | 收藏关系 ID | 不直接返回 |
+| `user_id` | `INTEGER` | N |  | 用户 ID | `userId` |
+| `station_id` | `INTEGER` | N |  | 站点 ID | `stationId` |
+| `created_at` | `TEXT` | N |  | 收藏时间 | `createdAt` |
+
+约束：`user_id`、`station_id` 分别引用用户和站点；`UNIQUE(user_id, station_id)`
+保证同一用户不会重复收藏同一站点。取消收藏只删除关联关系，站点停用不删除收藏。
+
+### 5.5 `charging_pile`
 
 用途：保存充电桩基础信息、实时状态和累计统计。
 
@@ -273,7 +287,7 @@ erDiagram
 - `current_order_id` 只在 `RESERVED` 或 `CHARGING` 时填写，释放后置空；
 - 只有 `AVAILABLE` 电桩可被用户创建订单。
 
-### 5.5 `charging_order`
+### 5.6 `charging_order`
 
 用途：保存预约、充电、停止、结算和取消全过程。
 
@@ -318,7 +332,7 @@ erDiagram
 - `ORDER_CANCEL` 只允许取消 `CREATED`；
 - `ORDER_SETTLE` 必须和用户余额扣减在同一事务中完成。
 
-### 5.6 `recharge_record`
+### 5.7 `recharge_record`
 
 用途：保存钱包充值流水。
 
@@ -340,7 +354,7 @@ erDiagram
 - `balance_after_fen >= 0`；
 - 充值成功时，`user.balance_fen` 与 `recharge_record` 写入必须在同一事务中完成。
 
-### 5.7 `prediction`
+### 5.8 `prediction`
 
 用途：保存 ML 预测结果，供用户端推荐、管理端预警和 WebSocket 大屏展示。
 
@@ -374,7 +388,7 @@ stationLoad = chargingPileMinutes / (totalPileCount * windowMinutes)
 - `chargingPileMinutes` 只统计 `CHARGING` 占用时长，不统计 `RESERVED`、`FAULT`、`OFFLINE`、`RESTARTING`；
 - 每条预测必须属于一个 `prediction_batch`；`(batch_id, station_id, prediction_time, horizon)` 唯一。重复导入同一 batch 必须幂等，内容不一致时拒绝；不同 batch 的历史记录可以并存。
 
-### 5.7.1 `prediction_batch`
+### 5.8.1 `prediction_batch`
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
@@ -383,7 +397,7 @@ stationLoad = chargingPileMinutes / (totalPileCount * windowMinutes)
 | `generated_at` | `TEXT` | 批次生成时间，必填 |
 | `created_at` | `TEXT` | 批次入库时间，必填 |
 
-### 5.8 `operation_log`
+### 5.9 `operation_log`
 
 用途：保存管理员操作、远程重启、冻结解冻和关键异常。
 
@@ -415,17 +429,17 @@ stationLoad = chargingPileMinutes / (totalPileCount * windowMinutes)
 
 远程重启必须记录管理员、电桩、操作前状态、操作后状态和结果消息。
 
-### 5.9 `data_import_batch`
+### 5.10 `data_import_batch`
 
 用途：记录公开数据或模拟数据的来源、授权、文件哈希、时间平移量和质量计数。核心字段为 `batch_no`、`source_name`、`source_url`、`license_name`、`source_sha256`、`source_row_count`、`accepted_row_count` 和 `imported_at`。`batch_no` 全局唯一，接收数量不得超过来源数量。
 
-### 5.10 `charging_session_history`
+### 5.11 `charging_session_history`
 
 用途：保存外部数据真实提供的会话事实，不伪造成 `charging_order`、用户消费或钱包交易。字段包括来源批次、来源会话键、项目站点 ID、UTC 开始/结束时间、持续秒数和电量。`batch_id + source_session_key` 唯一。
 
 该表只用于模型历史和数据溯源，不参与用户订单状态机、计费、支付和营收统计。
 
-### 5.11 `station_hourly_metric`
+### 5.12 `station_hourly_metric`
 
 用途：保存服务端可直接导出给 ML 的连续小时指标。主要字段如下：
 
@@ -453,6 +467,7 @@ CREATE UNIQUE INDEX idx_order_no ON charging_order(order_no);
 CREATE UNIQUE INDEX idx_recharge_no ON recharge_record(record_no);
 
 CREATE INDEX idx_station_district ON charging_station(district);
+CREATE INDEX idx_favorite_user_created ON user_station_favorite(user_id, created_at DESC);
 CREATE INDEX idx_pile_station_status ON charging_pile(station_id, status);
 CREATE INDEX idx_order_user_status ON charging_order(user_id, status);
 CREATE INDEX idx_order_pile_status ON charging_order(pile_id, status);
@@ -674,6 +689,7 @@ stationLoad = 360 / (10 * 60) = 0.6
 | --- | --- | --- |
 | 登录/资料 | `user` | `phone`, `nickname`, `avatar_path`, `balance_fen`, `status` |
 | 站点列表 | `charging_station`, `charging_pile` | `name`, `address`, `longitude`, `latitude`, `price_fen_per_kwh`, `status` |
+| 我的收藏 | `user_station_favorite`, `charging_station`, `charging_pile` | `station_id`, `created_at`, `status`, `isFavorite` |
 | 电桩列表 | `charging_pile` | `pile_no`, `type`, `power_kw`, `status` |
 | 订单流程 | `charging_order`, `charging_pile`, `user` | `status`, `energy_kwh`, `amount_fen`, `balance_fen` |
 | 推荐站点 | `prediction`, `charging_station` | `predicted_load`, `predicted_available_count` |

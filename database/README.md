@@ -1,13 +1,14 @@
 # database/ — 数据库脚本
 
-对齐 `docs/04-DATABASE.md` 契约（12 表 + 21 索引 + 事务规则 + ML 历史交换）。
+对齐 `docs/04-DATABASE.md` 契约（含用户站点收藏关系、事务规则与 ML 历史交换）。
 
 ## 文件
 
 | 文件 | 作用 |
 | --- | --- |
-| `schema.sql` | 建库脚本：12 张表 + 21 个索引，可重复执行（先 DROP 再 CREATE） |
+| `schema.sql` | 完整建库脚本，可重复执行（先 DROP 再 CREATE） |
 | `init_data.sql` | 演示种子数据：满足 04 文档第 11 节全部初始化要求 |
+| `migrations/20260909_add_user_station_favorite.sql` | 已有数据库的收藏功能增量升级，不清空原数据 |
 | `evcharge.db` | 运行时生成的 SQLite 数据库文件（已被 .gitignore 忽略，不入库） |
 | `evcharge_cary_simulation.db` | 含 CC0 历史会话和小时指标的预构建演示数据库 |
 | `simulation/` | 可重复建库和导出模型 CSV 的参考工具 |

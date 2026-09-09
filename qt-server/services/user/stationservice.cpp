@@ -6,6 +6,7 @@
 #include "database/databasemanager.h"
 #include "repositories/stationrepository.h"
 #include "repositories/predictionrepository.h"
+#include "repositories/favoriterepository.h"
 #include "shared/protocol/errorcodes.h"
 
 #include <QSqlDatabase>
@@ -18,9 +19,11 @@
 StationService::StationService(DatabaseManager *databaseManager,
                                StationRepository *stationRepository,
                                PredictionRepository *predictionRepository,
-                               MapAdapter *mapAdapter)
+                               MapAdapter *mapAdapter,
+                               FavoriteRepository *favoriteRepository)
     : m_databaseManager(databaseManager), m_stationRepository(stationRepository),
-      m_predictionRepository(predictionRepository), m_mapAdapter(mapAdapter)
+      m_predictionRepository(predictionRepository), m_mapAdapter(mapAdapter),
+      m_favoriteRepository(favoriteRepository)
 {
 }
 
@@ -55,7 +58,7 @@ void StationService::planRoute(double originLongitude, double originLatitude,
 }
 
 ServiceResult<QList<StationInfo>> StationService::listNearby(
-    double longitude, double latitude, const QString &district, int limit)
+    double longitude, double latitude, const QString &district, int limit, qint64 userId)
 {
     if (!isValidCoordinate(longitude, latitude) || limit < 1 || limit > 50) {
         return ServiceResult<QList<StationInfo>>::failure(
@@ -80,6 +83,17 @@ ServiceResult<QList<StationInfo>> StationService::listNearby(
         station.distanceKm = distanceKm(longitude, latitude,
                                         station.longitude, station.latitude);
     }
+    if (userId > 0 && m_favoriteRepository) {
+        const QSet<qint64> favorites = m_favoriteRepository->stationIds(database, userId,
+                                                                         &databaseError);
+        if (!databaseError.isEmpty()) {
+            return ServiceResult<QList<StationInfo>>::failure(
+                ErrorCodes::DatabaseError, QStringLiteral("query favorites failed"));
+        }
+        for (StationInfo &station : stations) {
+            station.isFavorite = favorites.contains(station.stationId);
+        }
+    }
     std::sort(stations.begin(), stations.end(), [](const StationInfo &left,
                                                     const StationInfo &right) {
         return left.distanceKm < right.distanceKm;
@@ -90,7 +104,7 @@ ServiceResult<QList<StationInfo>> StationService::listNearby(
     return ServiceResult<QList<StationInfo>>::success(std::move(stations));
 }
 
-ServiceResult<StationDetail> StationService::detail(qint64 stationId)
+ServiceResult<StationDetail> StationService::detail(qint64 stationId, qint64 userId)
 {
     if (stationId <= 0) {
         return ServiceResult<StationDetail>::failure(
@@ -104,8 +118,19 @@ ServiceResult<StationDetail> StationService::detail(qint64 stationId)
             ErrorCodes::DatabaseError, QStringLiteral("database unavailable"));
     }
 
-    const auto station = m_stationRepository->findEnabledById(
-        database, stationId, &databaseError);
+    auto station = m_stationRepository->findEnabledById(database, stationId, &databaseError);
+    bool favorite = false;
+    if (!station.has_value() && databaseError.isEmpty() && userId > 0
+        && m_favoriteRepository) {
+        if (!m_favoriteRepository->isFavorite(database, userId, stationId,
+                                              &favorite, &databaseError)) {
+            return ServiceResult<StationDetail>::failure(
+                ErrorCodes::DatabaseError, QStringLiteral("query favorite failed"));
+        }
+        if (favorite) {
+            station = m_stationRepository->findById(database, stationId, &databaseError);
+        }
+    }
     if (!station.has_value()) {
         return ServiceResult<StationDetail>::failure(
             databaseError.isEmpty() ? ErrorCodes::StationNotFound
@@ -113,17 +138,26 @@ ServiceResult<StationDetail> StationService::detail(qint64 stationId)
             databaseError.isEmpty() ? QStringLiteral("station not found")
                                     : QStringLiteral("query station failed"));
     }
+    StationInfo stationInfo = *station;
+    if (userId > 0 && m_favoriteRepository) {
+        if (!m_favoriteRepository->isFavorite(database, userId, stationId,
+                                              &favorite, &databaseError)) {
+            return ServiceResult<StationDetail>::failure(
+                ErrorCodes::DatabaseError, QStringLiteral("query favorite failed"));
+        }
+        stationInfo.isFavorite = favorite;
+    }
     const QList<ChargingPileInfo> piles = m_stationRepository->listPiles(
         database, stationId, &databaseError);
     if (!databaseError.isEmpty()) {
         return ServiceResult<StationDetail>::failure(
             ErrorCodes::DatabaseError, QStringLiteral("query piles failed"));
     }
-    return ServiceResult<StationDetail>::success({*station, piles});
+    return ServiceResult<StationDetail>::success({stationInfo, piles});
 }
 
 ServiceResult<QList<StationInfo>> StationService::recommendations(
-    double longitude, double latitude, int limit, const QString &horizon)
+    double longitude, double latitude, int limit, const QString &horizon, qint64 userId)
 {
     static const QSet<QString> allowedHorizons{
         QStringLiteral("1h"), QStringLiteral("6h"), QStringLiteral("24h")
@@ -137,7 +171,7 @@ ServiceResult<QList<StationInfo>> StationService::recommendations(
         return ServiceResult<QList<StationInfo>>::failure(
             ErrorCodes::InvalidSocketMessage, QStringLiteral("invalid recommendation query"));
     }
-    const auto nearbyResult = listNearby(longitude, latitude, QString(), 50);
+    const auto nearbyResult = listNearby(longitude, latitude, QString(), 50, userId);
     if (!nearbyResult.ok) {
         return nearbyResult;
     }

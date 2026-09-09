@@ -50,6 +50,7 @@ bool hasRequiredTables(QSqlDatabase &database, QString *errorMessage)
     const QStringList requiredTables = {
         QStringLiteral("user"), QStringLiteral("admin"),
         QStringLiteral("charging_station"), QStringLiteral("charging_pile"),
+        QStringLiteral("user_station_favorite"),
         QStringLiteral("charging_order"), QStringLiteral("recharge_record"),
         QStringLiteral("prediction_batch"), QStringLiteral("prediction"),
         QStringLiteral("operation_log"), QStringLiteral("data_import_batch"),

@@ -1,17 +1,21 @@
 #include "registeruserbackend.h"
 
 #include "registerorderhandlers.h"
+#include "registerfavoritehandlers.h"
 #include "registerstationhandlers.h"
 #include "registeruserhandlers.h"
 #include "orderhandler.h"
+#include "favoritehandler.h"
 #include "stationhandler.h"
 #include "userhandler.h"
 #include "map/mapadapter.h"
 #include "repositories/orderrepository.h"
+#include "repositories/favoriterepository.h"
 #include "repositories/predictionrepository.h"
 #include "repositories/stationrepository.h"
 #include "repositories/userrepository.h"
 #include "services/user/orderservice.h"
+#include "services/user/favoriteservice.h"
 #include "services/user/stationservice.h"
 #include "services/user/userservice.h"
 
@@ -24,16 +28,21 @@ public:
         : mapAdapter(mapApiKey, mapSigningSecret),
           userService(databaseManager, &userRepository, avatarDirectory),
           userHandler(&userService, sessions),
-          stationService(databaseManager, &stationRepository, &predictionRepository, &mapAdapter),
+          stationService(databaseManager, &stationRepository, &predictionRepository, &mapAdapter,
+                         &favoriteRepository),
           stationHandler(&stationService),
+          favoriteService(databaseManager, &favoriteRepository, &userRepository, &stationRepository),
+          favoriteHandler(&favoriteService),
           orderService(databaseManager, &userRepository, &orderRepository, deviceControl), orderHandler(&orderService)
     {
         registerUserHandlers(dispatcher, &userHandler);
         registerStationHandlers(dispatcher, &stationHandler);
+        registerFavoriteHandlers(dispatcher, &favoriteHandler);
         registerOrderHandlers(dispatcher, &orderHandler);
     }
     UserRepository userRepository;
     StationRepository stationRepository;
+    FavoriteRepository favoriteRepository;
     OrderRepository orderRepository;
     PredictionRepository predictionRepository;
     MapAdapter mapAdapter;
@@ -41,6 +50,8 @@ public:
     UserHandler userHandler;
     StationService stationService;
     StationHandler stationHandler;
+    FavoriteService favoriteService;
+    FavoriteHandler favoriteHandler;
     OrderService orderService;
     OrderHandler orderHandler;
 };

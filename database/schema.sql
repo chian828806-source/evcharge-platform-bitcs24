@@ -23,6 +23,7 @@ DROP TABLE IF EXISTS prediction_batch;
 DROP TABLE IF EXISTS recharge_record;
 DROP TABLE IF EXISTS charging_order;
 DROP TABLE IF EXISTS charging_pile;
+DROP TABLE IF EXISTS user_station_favorite;
 DROP TABLE IF EXISTS charging_station;
 DROP TABLE IF EXISTS admin;
 DROP TABLE IF EXISTS user;
@@ -83,7 +84,18 @@ CREATE TABLE charging_station (
 );
 
 -- ----------------------------------------------------------------------------
--- 4. 充电桩表 charging_pile —— 桩信息、实时状态、累计统计（04 文档 5.4）
+-- 4. 用户站点收藏表 —— 只保存用户与站点关系，站点数据仍以主表为准
+-- ----------------------------------------------------------------------------
+CREATE TABLE user_station_favorite (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES user(id),
+    station_id INTEGER NOT NULL REFERENCES charging_station(id),
+    created_at TEXT    NOT NULL,
+    UNIQUE(user_id, station_id)
+);
+
+-- ----------------------------------------------------------------------------
+-- 5. 充电桩表 charging_pile —— 桩信息、实时状态、累计统计（04 文档 5.4）
 --    状态机(3.3)：AVAILABLE -> RESERVED -> CHARGING -> AVAILABLE
 --                 AVAILABLE -> RESERVED -> AVAILABLE (订单取消, BR-005)
 --    current_order_id：占用指针，仅 RESERVED/CHARGING 时填写，释放后置空；
@@ -311,6 +323,7 @@ CREATE UNIQUE INDEX idx_order_no             ON charging_order(order_no);
 CREATE UNIQUE INDEX idx_recharge_no          ON recharge_record(record_no);
 
 CREATE INDEX idx_station_district        ON charging_station(district);
+CREATE INDEX idx_favorite_user_created   ON user_station_favorite(user_id, created_at DESC);
 CREATE INDEX idx_pile_station_status     ON charging_pile(station_id, status);
 CREATE INDEX idx_order_user_status       ON charging_order(user_id, status);      -- 活动订单检查 BR-003
 CREATE INDEX idx_order_pile_status       ON charging_order(pile_id, status);      -- 单桩互斥 BR-004

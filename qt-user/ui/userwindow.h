@@ -29,6 +29,7 @@ private:
         StationDetail,
         Charging,
         Profile,
+        Favorites,
         Navigation
     };
 
@@ -50,6 +51,7 @@ private:
     QLabel *m_chargeStatisticsLabel = nullptr;
     QLabel *m_stationDetailTitle = nullptr;
     QLabel *m_stationDetailSummary = nullptr;
+    QPushButton *m_stationFavoriteButton = nullptr;
     QLabel *m_avatarLabel = nullptr;
     QLineEdit *m_phoneEdit = nullptr;
     QPushButton *m_startButton = nullptr;
@@ -69,9 +71,11 @@ private:
     QJsonObject m_selectedStation;
     QJsonArray m_nearbyStations;
     QJsonArray m_recommendedStations;
+    QJsonArray m_favoriteStations;
     QVBoxLayout *m_stationListLayout = nullptr;
     QVBoxLayout *m_pileListLayout = nullptr;
     QVBoxLayout *m_orderListLayout = nullptr;
+    QVBoxLayout *m_favoriteListLayout = nullptr;
     QTimer *m_orderPollTimer = nullptr;
     int m_balanceFenInFen = 0;
     double m_originLongitude = 121.538;
@@ -79,12 +83,14 @@ private:
     QString m_originName = QStringLiteral("默认位置 · 甘井子区");
     QString m_locationDistrict = QStringLiteral("甘井子区");
     Page m_navigationSource = Home;
+    Page m_stationDetailSource = Home;
 
     QWidget *buildLoginPage();
     QWidget *buildHomePage();
     QWidget *buildStationDetailPage();
     QWidget *buildChargingPage();
     QWidget *buildProfilePage();
+    QWidget *buildFavoritesPage();
     QWidget *buildNavigationPage();
     QWidget *buildPageHeader(const QString &eyebrow, const QString &title,
                              const QString &subtitle = {});
@@ -106,6 +112,8 @@ private:
     void uploadAvatar();
     QString sendRequest(const QString &type, const QJsonObject &payload = {});
     void requestInitialData();
+    void requestFavoriteList();
+    void toggleFavorite(int stationId);
     void requestActiveOrder();
     void applyUser(const QJsonObject &user);
     void requestAvatar(const QString &avatarPath);
@@ -114,6 +122,8 @@ private:
     void renderStations(const QJsonArray &stations);
     void renderStationDetail(const QJsonObject &station, const QJsonArray &piles);
     void renderOrders(const QJsonArray &orders);
+    void renderFavorites(const QJsonArray &stations);
+    void applyFavoriteState(int stationId, bool isFavorite);
     void clearLayout(QVBoxLayout *layout);
     void handleResponse(const QJsonObject &response);
 };

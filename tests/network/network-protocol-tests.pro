@@ -22,6 +22,8 @@ SOURCES += \
     $$REPO_ROOT/qt-server/handlers/user/registeruserhandlers.cpp \
     $$REPO_ROOT/qt-server/handlers/user/registerstationhandlers.cpp \
     $$REPO_ROOT/qt-server/handlers/user/registerorderhandlers.cpp \
+    $$REPO_ROOT/qt-server/handlers/user/registerfavoritehandlers.cpp \
+    $$REPO_ROOT/qt-server/handlers/user/favoritehandler.cpp \
     $$REPO_ROOT/qt-server/handlers/user/orderhandler.cpp \
     $$REPO_ROOT/qt-server/handlers/user/stationhandler.cpp \
     $$REPO_ROOT/qt-server/handlers/user/userhandler.cpp \
@@ -33,10 +35,12 @@ SOURCES += \
     $$REPO_ROOT/qt-server/network/sessionmanager.cpp \
     $$REPO_ROOT/qt-server/network/socketserver.cpp \
     $$REPO_ROOT/qt-server/repositories/userrepository.cpp \
+    $$REPO_ROOT/qt-server/repositories/favoriterepository.cpp \
     $$REPO_ROOT/qt-server/repositories/stationrepository.cpp \
     $$REPO_ROOT/qt-server/repositories/orderrepository.cpp \
     $$REPO_ROOT/qt-server/repositories/predictionrepository.cpp \
     $$REPO_ROOT/qt-server/services/user/orderservice.cpp \
+    $$REPO_ROOT/qt-server/services/user/favoriteservice.cpp \
     $$REPO_ROOT/qt-server/services/user/stationservice.cpp \
     $$REPO_ROOT/qt-server/services/user/userservice.cpp \
     $$REPO_ROOT/qt-server/services/prediction/predictionservice.cpp \
@@ -55,6 +59,8 @@ HEADERS += \
     $$REPO_ROOT/qt-server/handlers/user/registeruserhandlers.h \
     $$REPO_ROOT/qt-server/handlers/user/registerstationhandlers.h \
     $$REPO_ROOT/qt-server/handlers/user/registerorderhandlers.h \
+    $$REPO_ROOT/qt-server/handlers/user/registerfavoritehandlers.h \
+    $$REPO_ROOT/qt-server/handlers/user/favoritehandler.h \
     $$REPO_ROOT/qt-server/handlers/user/orderhandler.h \
     $$REPO_ROOT/qt-server/handlers/user/stationhandler.h \
     $$REPO_ROOT/qt-server/handlers/user/userhandler.h \
@@ -71,11 +77,13 @@ HEADERS += \
     $$REPO_ROOT/qt-server/models/predictioninfo.h \
     $$REPO_ROOT/qt-server/models/rechargeinfo.h \
     $$REPO_ROOT/qt-server/repositories/orderrepository.h \
+    $$REPO_ROOT/qt-server/repositories/favoriterepository.h \
     $$REPO_ROOT/qt-server/repositories/predictionrepository.h \
     $$REPO_ROOT/qt-server/repositories/stationrepository.h \
     $$REPO_ROOT/qt-server/repositories/userrepository.h \
     $$REPO_ROOT/qt-server/services/user/stationservice.h \
     $$REPO_ROOT/qt-server/services/user/orderservice.h \
+    $$REPO_ROOT/qt-server/services/user/favoriteservice.h \
     $$REPO_ROOT/qt-server/services/user/userservice.h \
     $$REPO_ROOT/qt-server/services/prediction/predictionservice.h \
     $$REPO_ROOT/qt-server/devices/deviceregistry.h \

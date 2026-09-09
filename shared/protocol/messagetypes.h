@@ -20,6 +20,8 @@ inline const QString UserOrderList = QStringLiteral("USER_ORDER_LIST");
 
 inline const QString StationListNearby = QStringLiteral("STATION_LIST_NEARBY");
 inline const QString StationDetailGet = QStringLiteral("STATION_DETAIL_GET");
+inline const QString UserStationFavoriteToggle = QStringLiteral("USER_STATION_FAVORITE_TOGGLE");
+inline const QString UserStationFavoriteList = QStringLiteral("USER_STATION_FAVORITE_LIST");
 inline const QString MapGeocode = QStringLiteral("MAP_GEOCODE");
 inline const QString MapRoutePlan = QStringLiteral("MAP_ROUTE_PLAN");
 
@@ -51,7 +53,7 @@ inline const QString PredictionImport = QStringLiteral("PREDICTION_IMPORT");
 inline const QString DashboardSubscribe = QStringLiteral("DASHBOARD_SUBSCRIBE");
 inline const QString DashboardUpdate = QStringLiteral("DASHBOARD_UPDATE");
 
-// 返回文档中34种TCP消息的只读集合。
+// 返回已登记TCP消息的只读集合。
 const QSet<QString> &tcpTypes();
 // 返回大屏允许订阅的4个主题。
 const QSet<QString> &dashboardTopics();
