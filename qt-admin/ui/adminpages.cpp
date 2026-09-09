@@ -412,28 +412,29 @@ void PilePage::applyFilter()
         if (wanted.isEmpty() || value.toObject().value(QStringLiteral("status")).toString() == wanted)
             piles.append(value);
     }
-    m_table->clear(); m_table->clearSpans(); m_table->setRowCount(piles.size()); m_table->setColumnCount(8);
-    m_table->setHorizontalHeaderLabels({QStringLiteral("桩号"), QStringLiteral("站点"), QStringLiteral("类型"), QStringLiteral("功率"), QStringLiteral("状态"), QStringLiteral("次数"), QStringLiteral("分钟"), QStringLiteral("操作")});
+    m_table->clear(); m_table->clearSpans(); m_table->setRowCount(piles.size()); m_table->setColumnCount(11);
+    m_table->setHorizontalHeaderLabels({QStringLiteral("桩号"), QStringLiteral("站点"), QStringLiteral("类型"), QStringLiteral("额定功率"), QStringLiteral("状态"), QStringLiteral("设备"), QStringLiteral("实时功率"), QStringLiteral("温度/故障"), QStringLiteral("次数"), QStringLiteral("分钟"), QStringLiteral("操作")});
     if (piles.isEmpty()) {
-        showEmptyState(m_table, 8, wanted.isEmpty() ? QStringLiteral("暂无电桩")
+        showEmptyState(m_table, 11, wanted.isEmpty() ? QStringLiteral("暂无电桩")
                                                    : QStringLiteral("当前筛选条件下暂无电桩"));
         return;
     }
     for (int row = 0; row < piles.size(); ++row) {
         const QJsonObject pile = piles.at(row).toObject();
-        const QStringList values = {pile.value(QStringLiteral("pileNo")).toString(), pile.value(QStringLiteral("stationName")).toString(), pile.value(QStringLiteral("type")).toString() == QStringLiteral("FAST") ? QStringLiteral("快充") : QStringLiteral("慢充"), QString::number(pile.value(QStringLiteral("powerKw")).toDouble()) + QStringLiteral(" kW"), statusText(pile.value(QStringLiteral("status")).toString()), QString::number(pile.value(QStringLiteral("totalChargeCount")).toInt()), QString::number(pile.value(QStringLiteral("totalChargeMinutes")).toInt()) + QStringLiteral(" 分钟")};
+        const QString fault = pile.value(QStringLiteral("faultCode")).toString();
+        const QStringList values = {pile.value(QStringLiteral("pileNo")).toString(), pile.value(QStringLiteral("stationName")).toString(), pile.value(QStringLiteral("type")).toString() == QStringLiteral("FAST") ? QStringLiteral("快充") : QStringLiteral("慢充"), QString::number(pile.value(QStringLiteral("powerKw")).toDouble()) + QStringLiteral(" kW"), statusText(pile.value(QStringLiteral("status")).toString()), pile.value(QStringLiteral("deviceOnline")).toBool() ? QStringLiteral("在线") : QStringLiteral("未接入/离线"), QString::number(pile.value(QStringLiteral("measuredPowerKw")).toDouble(), 'f', 1) + QStringLiteral(" kW"), fault.isEmpty() ? QString::number(pile.value(QStringLiteral("temperatureC")).toDouble(), 'f', 1) + QStringLiteral(" °C") : fault + QStringLiteral(" ") + pile.value(QStringLiteral("faultMessage")).toString(), QString::number(pile.value(QStringLiteral("totalChargeCount")).toInt()), QString::number(pile.value(QStringLiteral("totalChargeMinutes")).toInt()) + QStringLiteral(" 分钟")};
         for (int column = 0; column < values.size(); ++column) {
             m_table->setItem(row, column,
                 column == 4 ? statusItem(pile.value(QStringLiteral("status")).toString())
                             : tableItem(values.at(column), column != 1));
         }
-        auto *restart = tableActionButton(m_table, row, 7, QStringLiteral("远程重启"));
+        auto *restart = tableActionButton(m_table, row, 10, QStringLiteral("远程重启"));
         const QString status = pile.value(QStringLiteral("status")).toString();
         restart->setEnabled(!m_actionBusy && status != QStringLiteral("RESERVED") && status != QStringLiteral("CHARGING") && status != QStringLiteral("RESTARTING"));
         const qint64 pileId = pile.value(QStringLiteral("pileId")).toInteger();
         connect(restart, &QToolButton::clicked, this, [this, pileId]() { emit restartRequested(pileId); });
     }
-    configureActionColumn(m_table, 7);
+    configureActionColumn(m_table, 10);
 }
 
 void PilePage::setActionBusy(bool busy)

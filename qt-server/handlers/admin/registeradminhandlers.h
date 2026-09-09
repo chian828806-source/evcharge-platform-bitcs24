@@ -7,12 +7,15 @@
 class MessageDispatcher;
 class SessionManager;
 class DatabaseManager;
+class DeviceRegistry;
+class DeviceControlService;
 
 class AdminHandlerRegistry
 {
 public:
     AdminHandlerRegistry(DatabaseManager *databaseManager, SessionManager *sessions,
-                         MessageDispatcher *dispatcher);
+                         MessageDispatcher *dispatcher, DeviceRegistry *deviceRegistry = nullptr,
+                         DeviceControlService *deviceControl = nullptr);
 
 private:
     AdminAuthService m_auth;

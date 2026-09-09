@@ -7,12 +7,15 @@
 #include "repositories/userrepository.h"
 #include "repositories/orderrepository.h"
 class DatabaseManager;
+class DeviceRegistry;
+class DeviceControlService;
 
 class AdminManagementService : public QObject
 {
 public:
     explicit AdminManagementService(DatabaseManager *databaseManager,
-                                    QObject *parent = nullptr);
+                                    QObject *parent = nullptr, DeviceRegistry *deviceRegistry = nullptr,
+                                    DeviceControlService *deviceControl = nullptr);
     ResponseMessage pileList(const RequestMessage &request) const;
     ResponseMessage restartPile(const RequestMessage &request, qint64 adminId) const;
     ResponseMessage stationList(const RequestMessage &request) const;
@@ -27,4 +30,6 @@ private:
     StationRepository m_stationRepository;
     UserRepository m_userRepository;
     OrderRepository m_orderRepository;
+    DeviceRegistry *m_deviceRegistry = nullptr;
+    DeviceControlService *m_deviceControl = nullptr;
 };

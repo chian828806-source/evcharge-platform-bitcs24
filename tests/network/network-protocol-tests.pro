@@ -39,7 +39,13 @@ SOURCES += \
     $$REPO_ROOT/qt-server/services/user/orderservice.cpp \
     $$REPO_ROOT/qt-server/services/user/stationservice.cpp \
     $$REPO_ROOT/qt-server/services/user/userservice.cpp \
-    $$REPO_ROOT/qt-server/services/prediction/predictionservice.cpp
+    $$REPO_ROOT/qt-server/services/prediction/predictionservice.cpp \
+    $$REPO_ROOT/qt-server/repositories/repositorybase.cpp \
+    $$REPO_ROOT/qt-server/repositories/pilerepository.cpp \
+    $$REPO_ROOT/qt-server/repositories/operationlogrepository.cpp \
+    $$REPO_ROOT/qt-server/devices/deviceregistry.cpp \
+    $$REPO_ROOT/qt-server/devices/devicecontrolservice.cpp \
+    $$REPO_ROOT/qt-server/devices/devicesession.cpp
 
 HEADERS += \
     $$REPO_ROOT/qt-user/network/socketclient.h \
@@ -71,6 +77,9 @@ HEADERS += \
     $$REPO_ROOT/qt-server/services/user/stationservice.h \
     $$REPO_ROOT/qt-server/services/user/orderservice.h \
     $$REPO_ROOT/qt-server/services/user/userservice.h \
-    $$REPO_ROOT/qt-server/services/prediction/predictionservice.h
+    $$REPO_ROOT/qt-server/services/prediction/predictionservice.h \
+    $$REPO_ROOT/qt-server/devices/deviceregistry.h \
+    $$REPO_ROOT/qt-server/devices/devicecontrolservice.h \
+    $$REPO_ROOT/qt-server/devices/devicesession.h
 
 include($$REPO_ROOT/shared/protocol/protocol.pri)

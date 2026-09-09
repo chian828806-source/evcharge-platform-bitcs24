@@ -32,10 +32,11 @@ bool validOrderStatus(const QString &status)
 
 AdminHandlerRegistry::AdminHandlerRegistry(DatabaseManager *databaseManager,
                                            SessionManager *sessions,
-                                           MessageDispatcher *dispatcher)
+                                           MessageDispatcher *dispatcher, DeviceRegistry *deviceRegistry,
+                                           DeviceControlService *deviceControl)
     : m_auth(databaseManager, sessions),
       m_analytics(databaseManager),
-      m_management(databaseManager)
+      m_management(databaseManager, nullptr, deviceRegistry, deviceControl)
 {
     dispatcher->registerHandler(
         MessageTypes::AdminLogin, MessageDispatcher::Access::Public,

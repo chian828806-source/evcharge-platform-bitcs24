@@ -312,7 +312,7 @@ Key，也不自行把地址解析为坐标。请求为 `district: string`、`add
 | `ADMIN_REVENUE_SUMMARY` | 空对象 | `todayRevenueFen`，`monthRevenueFen`，`totalRevenueFen` | `4003` Session 无效，`5001` 数据库错误 |
 | `ADMIN_REVENUE_TREND` | `days: int`，必填且仅允许 `7` 或 `30` | `days`，`points [{ date, revenueFen, energyKwh, orderCount }]`；无订单日期全部补 0 | `4003`，`4401`，`5001` |
 | `ADMIN_PILE_STATUS_SUMMARY` | 空对象 | `total`，`statuses [{ status, count, ratio }]` | `4003`，`5001` |
-| `ADMIN_PILE_LIST` | `stationId: int`，可选；省略表示全部站点 | `piles [{ pileId, pileNo, stationId, stationName, type, powerKw, status, totalChargeCount, totalChargeMinutes }]` | `4003`，`5001` |
+| `ADMIN_PILE_LIST` | `stationId: int`，可选；省略表示全部站点 | `piles [{ pileId, pileNo, stationId, stationName, type, powerKw, status, totalChargeCount, totalChargeMinutes, deviceOnline?, lastHeartbeatAt?, measuredPowerKw?, temperatureC?, faultCode?, faultMessage? }]`；后六项为设备运行时可选字段 | `4003`，`5001` |
 | `ADMIN_PILE_RESTART` | `pileId: int` | `pileId`，`status=RESTARTING`，`restoreStatus` | `4003`，`4102` 当前状态禁止重启，`4202` 电桩不存在，`5001` |
 | `ADMIN_STATION_LIST` | 空对象 | `stations [{ stationId, stationNo, name, address, longitude, latitude, pileCount, onlineRate }]` | `4003`，`5001` |
 | `ADMIN_STATION_CREATE` | `name`，`address`，`longitude`，`latitude`，`pileCount`；`priceFenPerKwh` 可选，默认 120，范围 1～10000 | `stationId`，`stationNo`，`pileCount` | `4003`，`4401` 参数非法，`5001`；站点和模拟电桩在同一事务创建 |

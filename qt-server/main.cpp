@@ -8,6 +8,9 @@
 #include "network/messagedispatcher.h"
 #include "network/sessionmanager.h"
 #include "network/socketserver.h"
+#include "devices/devicegatewayserver.h"
+#include "devices/deviceregistry.h"
+#include "devices/devicecontrolservice.h"
 #include "shared/protocol/messagetypes.h"
 
 #include <QCommandLineParser>
@@ -81,6 +84,8 @@ int main(int argc, char *argv[])
                       QStringLiteral("TCP listen port"), QStringLiteral("port"), QStringLiteral("18080")});
     parser.addOption({{QStringLiteral("w"), QStringLiteral("websocket-port")},
                       QStringLiteral("WebSocket listen port"), QStringLiteral("port"), QStringLiteral("18081")});
+    parser.addOption({QStringLiteral("device-port"), QStringLiteral("Device TCP listen port"),
+                      QStringLiteral("port"), QStringLiteral("18082")});
     parser.addOption({{QStringLiteral("d"), QStringLiteral("database")},
                       QStringLiteral("SQLite database path"), QStringLiteral("path"),
                       defaultDatabasePath()});
@@ -100,9 +105,11 @@ int main(int argc, char *argv[])
 
     bool tcpOk = false;
     bool websocketOk = false;
+    bool deviceOk = false;
     const quint16 tcpPort = parser.value(QStringLiteral("tcp-port")).toUShort(&tcpOk);
     const quint16 websocketPort = parser.value(QStringLiteral("websocket-port")).toUShort(&websocketOk);
-    if (!tcpOk || !websocketOk) {
+    const quint16 devicePort = parser.value(QStringLiteral("device-port")).toUShort(&deviceOk);
+    if (!tcpOk || !websocketOk || !deviceOk) {
         QTextStream(stderr) << "Invalid port value\n";
         return 2;
     }
@@ -120,6 +127,8 @@ int main(int argc, char *argv[])
 
     SessionManager sessions;
     MessageDispatcher dispatcher(&sessions);
+    DeviceRegistry deviceRegistry;
+    DeviceControlService deviceControl(&databaseManager, &deviceRegistry);
     const QString mapApiKey = parser.isSet(QStringLiteral("tencent-map-key"))
         ? parser.value(QStringLiteral("tencent-map-key"))
         : qEnvironmentVariable("TENCENT_MAP_KEY");
@@ -128,14 +137,28 @@ int main(int argc, char *argv[])
         : qEnvironmentVariable("TENCENT_MAP_SK");
     UserBackendRegistry userHandlers(&databaseManager, &sessions, &dispatcher,
                                      parser.value(QStringLiteral("avatar-dir")), mapApiKey,
-                                     mapSigningSecret);
-    AdminHandlerRegistry adminHandlers(&databaseManager, &sessions, &dispatcher);
+                                     mapSigningSecret, &deviceControl);
+    AdminHandlerRegistry adminHandlers(&databaseManager, &sessions, &dispatcher, &deviceRegistry,
+                                       &deviceControl);
     PredictionHandlerRegistry predictionHandlers(&databaseManager, &dispatcher);
     SocketServer socketServer(&dispatcher);
     if (!socketServer.listen(QHostAddress::Any, tcpPort)) {
         QTextStream(stderr) << "TCP listen failed: " << socketServer.errorString() << '\n';
         return 1;
     }
+    DeviceGatewayServer deviceServer(&databaseManager, &deviceRegistry, &deviceControl);
+    if (!deviceServer.listen(QHostAddress::Any, devicePort)) {
+        QTextStream(stderr) << "Device TCP listen failed: " << deviceServer.errorString() << '\n';
+        return 1;
+    }
+    QObject::connect(&deviceRegistry, &DeviceRegistry::becameOffline, &deviceControl,
+                     [&deviceControl](qint64 pileId) { deviceControl.handleOffline(pileId); });
+    QTimer deviceHeartbeatWatchdog;
+    deviceHeartbeatWatchdog.setInterval(1000);
+    QObject::connect(&deviceHeartbeatWatchdog, &QTimer::timeout, [&deviceRegistry, &deviceControl]() {
+        for (qint64 pileId : deviceRegistry.expiredPiles()) deviceControl.handleOffline(pileId);
+    });
+    deviceHeartbeatWatchdog.start();
     DashboardWebSocketServer dashboardServer;
     DashboardDataService dashboardData(&databaseManager);
     dashboardServer.setSnapshotProvider([&dashboardData](const QString &topic, QString *errorMessage) {
@@ -150,7 +173,9 @@ int main(int argc, char *argv[])
         return 1;
     }
     QTextStream(stdout) << "TCP listening on " << tcpPort << '\n'
-                        << "WebSocket listening on " << websocketPort << " path /dashboard\n";
+                        << "WebSocket listening on " << websocketPort << " path /dashboard\n"
+                        << "Device TCP listening on " << devicePort << '\n'
+                        << "Database path: " << databaseManager.databasePath() << '\n';
     QTimer dashboardRefreshTimer;
     dashboardRefreshTimer.setInterval(3000);
     QObject::connect(&dashboardRefreshTimer, &QTimer::timeout, [&dashboardData, &dashboardServer]() {
