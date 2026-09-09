@@ -41,6 +41,11 @@ void registerUserHandlers(MessageDispatcher *dispatcher, UserHandler *userHandle
             return userHandler->avatarGet(request, context);
         });
     dispatcher->registerHandler(
+        MessageTypes::UserAvatarRemove, MessageDispatcher::Access::User,
+        [userHandler](const RequestMessage &request, const SessionContext &context) {
+            return userHandler->avatarRemove(request, context);
+        });
+    dispatcher->registerHandler(
         MessageTypes::UserRecharge, MessageDispatcher::Access::User,
         [userHandler](const RequestMessage &request, const SessionContext &context) {
             return userHandler->recharge(request, context);
