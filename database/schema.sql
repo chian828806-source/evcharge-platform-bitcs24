@@ -96,7 +96,7 @@ CREATE TABLE charging_pile (
     pile_no              TEXT    NOT NULL,          -- 桩编号，站内唯一(idx_pile_station_no)
     type                 TEXT    NOT NULL,          -- FAST 快充 / SLOW 慢充
     power_kw             REAL    NOT NULL,          -- 额定功率 kW
-    status               TEXT    NOT NULL DEFAULT 'AVAILABLE',  -- 6 态见 04 文档 3.3
+    status               TEXT    NOT NULL DEFAULT 'OFFLINE',    -- 设备接入成功后才变为 AVAILABLE
     current_order_id     INTEGER,                   -- 当前占用订单ID(占用时填写)
     total_charge_count   INTEGER NOT NULL DEFAULT 0,-- 累计完成充电次数(结算时累加, 7.6)
     total_charge_minutes INTEGER NOT NULL DEFAULT 0,-- 累计充电分钟数

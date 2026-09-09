@@ -110,6 +110,18 @@ bool ensureCouponSchema(QSqlDatabase &database, QString *errorMessage)
     return true;
 }
 
+bool markDisconnectedPilesOffline(QSqlDatabase &database, QString *errorMessage)
+{
+    QSqlQuery query(database);
+    if (!query.exec(QStringLiteral(
+            "UPDATE charging_pile SET status='OFFLINE', current_order_id=NULL "
+            "WHERE status='AVAILABLE'"))) {
+        if (errorMessage) *errorMessage = query.lastError().text();
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 int main(int argc, char *argv[])
@@ -158,7 +170,8 @@ int main(int argc, char *argv[])
         QTextStream(stderr) << "SQLite open failed: " << error << '\n';
         return 3;
     }
-    if (!ensureCouponSchema(database, &error) || !hasRequiredTables(database, &error)) {
+    if (!ensureCouponSchema(database, &error) || !hasRequiredTables(database, &error)
+        || !markDisconnectedPilesOffline(database, &error)) {
         QTextStream(stderr) << "SQLite schema is unavailable: " << error << '\n';
         return 3;
     }

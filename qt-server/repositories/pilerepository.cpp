@@ -102,7 +102,7 @@ bool PileRepository::createForStation(qint64 stationId, int count, const QString
     for (int number = 1; number <= count; ++number) {
         QSqlQuery query(m_database);
         query.prepare(QStringLiteral("INSERT INTO charging_pile(station_id, pile_no, type, power_kw, status, created_at, updated_at) "
-                                     "VALUES(:stationId, :number, :type, :power, 'AVAILABLE', :now, :now)"));
+                                     "VALUES(:stationId, :number, :type, :power, 'OFFLINE', :now, :now)"));
         query.bindValue(QStringLiteral(":stationId"), stationId);
         query.bindValue(QStringLiteral(":number"), QStringLiteral("P%1").arg(number, 3, 10, QLatin1Char('0')));
         query.bindValue(QStringLiteral(":type"), number % 2 ? QStringLiteral("FAST") : QStringLiteral("SLOW"));

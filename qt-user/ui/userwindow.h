@@ -5,7 +5,9 @@
 #include <QHash>
 #include <QSet>
 #include <QMainWindow>
+#include <QPointer>
 
+class QDialog;
 class QLabel;
 class QLineEdit;
 class MapNavigationPage;
@@ -47,6 +49,8 @@ private:
     QLabel *m_nicknameLabel = nullptr;
     MapNavigationPage *m_mapNavigationPage = nullptr;
     QLabel *m_profilePhoneLabel = nullptr;
+    QLabel *m_profileIdLabel = nullptr;
+    QLabel *m_profileStatusLabel = nullptr;
     QLabel *m_orderSummaryLabel = nullptr;
     QLabel *m_chargeStatisticsLabel = nullptr;
     QLabel *m_stationDetailTitle = nullptr;
@@ -73,6 +77,7 @@ private:
     QVBoxLayout *m_stationListLayout = nullptr;
     QVBoxLayout *m_pileListLayout = nullptr;
     QVBoxLayout *m_orderListLayout = nullptr;
+    QPointer<QDialog> m_ordersDialog;
     QTimer *m_orderPollTimer = nullptr;
     QTimer *m_couponPollTimer = nullptr;
     QJsonArray m_coupons;
