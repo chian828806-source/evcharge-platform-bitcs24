@@ -123,6 +123,14 @@ AdminHandlerRegistry::AdminHandlerRegistry(DatabaseManager *databaseManager,
             return m_management.setUserFrozen(request, session.principalId, true);
         });
     dispatcher->registerHandler(
+        MessageTypes::AdminCouponIssue, MessageDispatcher::Access::Admin,
+        [this](const RequestMessage &request, const SessionContext &session) {
+            if (!isPositiveInteger(request.payload, QStringLiteral("userId"))) {
+                return invalidPayload(request, QStringLiteral("userId must be a positive integer"));
+            }
+            return m_management.issueCoupon(request, session.principalId);
+        });
+    dispatcher->registerHandler(
         MessageTypes::AdminUserUnfreeze, MessageDispatcher::Access::Admin,
         [this](const RequestMessage &request, const SessionContext &session) {
             if (!isPositiveInteger(request.payload, QStringLiteral("userId"))) {

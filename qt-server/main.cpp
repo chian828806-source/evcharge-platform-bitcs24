@@ -18,9 +18,12 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QHostAddress>
+#include <QList>
+#include <QPair>
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
+#include <QSet>
 #include <QTextStream>
 #include <QTimer>
 
@@ -50,7 +53,10 @@ bool hasRequiredTables(QSqlDatabase &database, QString *errorMessage)
     const QStringList requiredTables = {
         QStringLiteral("user"), QStringLiteral("admin"),
         QStringLiteral("charging_station"), QStringLiteral("charging_pile"),
-        QStringLiteral("charging_order"), QStringLiteral("recharge_record"),
+        QStringLiteral("charging_order"), QStringLiteral("coupon"),
+        QStringLiteral("user_station_favorite"),
+        QStringLiteral("membership_product"), QStringLiteral("membership_purchase"),
+        QStringLiteral("recharge_record"),
         QStringLiteral("prediction_batch"), QStringLiteral("prediction"),
         QStringLiteral("operation_log"), QStringLiteral("data_import_batch"),
         QStringLiteral("charging_session_history"),
@@ -66,6 +72,92 @@ bool hasRequiredTables(QSqlDatabase &database, QString *errorMessage)
                     ? query.lastError().text()
                     : QStringLiteral("required table is missing: %1").arg(table);
             }
+            return false;
+        }
+    }
+    return true;
+}
+
+bool ensureCouponSchema(QSqlDatabase &database, QString *errorMessage)
+{
+    QSqlQuery query(database);
+    if (!query.exec(QStringLiteral(
+            "CREATE TABLE IF NOT EXISTS coupon ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES user(id), "
+            "discount_rate INTEGER NOT NULL DEFAULT 80, status TEXT NOT NULL DEFAULT 'AVAILABLE', "
+            "order_id INTEGER, issued_by INTEGER NOT NULL REFERENCES admin(id), issued_at TEXT NOT NULL, "
+            "used_at TEXT, CHECK(discount_rate > 0 AND discount_rate <= 100), "
+            "CHECK(status IN ('AVAILABLE','LOCKED','USED')))"))) {
+        if (errorMessage) *errorMessage = query.lastError().text();
+        return false;
+    }
+    if (!query.exec(QStringLiteral("CREATE INDEX IF NOT EXISTS idx_coupon_user_status ON coupon(user_id, status, issued_at DESC)"))) {
+        if (errorMessage) *errorMessage = query.lastError().text();
+        return false;
+    }
+    QSet<QString> columns;
+    if (!query.exec(QStringLiteral("PRAGMA table_info(charging_order)"))) {
+        if (errorMessage) *errorMessage = query.lastError().text();
+        return false;
+    }
+    while (query.next()) columns.insert(query.value(1).toString());
+    if (!columns.contains(QStringLiteral("coupon_id"))
+        && !query.exec(QStringLiteral("ALTER TABLE charging_order ADD COLUMN coupon_id INTEGER REFERENCES coupon(id)"))) {
+        if (errorMessage) *errorMessage = query.lastError().text();
+        return false;
+    }
+    if (!columns.contains(QStringLiteral("discount_rate"))
+        && !query.exec(QStringLiteral("ALTER TABLE charging_order ADD COLUMN discount_rate INTEGER NOT NULL DEFAULT 100"))) {
+        if (errorMessage) *errorMessage = query.lastError().text();
+        return false;
+    }
+    return true;
+}
+
+bool markDisconnectedPilesOffline(QSqlDatabase &database, QString *errorMessage)
+{
+    QSqlQuery query(database);
+    if (!query.exec(QStringLiteral(
+            "UPDATE charging_pile SET status='OFFLINE', current_order_id=NULL "
+            "WHERE status='AVAILABLE'"))) {
+        if (errorMessage) *errorMessage = query.lastError().text();
+        return false;
+    }
+    return true;
+}
+
+bool ensureProfileFeatureSchema(QSqlDatabase &database, QString *errorMessage)
+{
+    QSqlQuery query(database);
+    const QStringList statements{
+        QStringLiteral("CREATE TABLE IF NOT EXISTS user_station_favorite (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES user(id), station_id INTEGER NOT NULL REFERENCES charging_station(id), created_at TEXT NOT NULL, UNIQUE(user_id, station_id))"),
+        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_favorite_user_created ON user_station_favorite(user_id, created_at DESC)"),
+        QStringLiteral("CREATE TABLE IF NOT EXISTS membership_product (id INTEGER PRIMARY KEY AUTOINCREMENT, product_no TEXT NOT NULL UNIQUE, name TEXT NOT NULL, card_type TEXT NOT NULL, duration_days INTEGER NOT NULL, sale_price_fen INTEGER NOT NULL, service_fee_discount_bps INTEGER NOT NULL DEFAULT 8000, status TEXT NOT NULL DEFAULT 'ON_SALE', created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
+        QStringLiteral("CREATE TABLE IF NOT EXISTS membership_purchase (id INTEGER PRIMARY KEY AUTOINCREMENT, purchase_no TEXT NOT NULL UNIQUE, user_id INTEGER NOT NULL REFERENCES user(id), product_id INTEGER NOT NULL REFERENCES membership_product(id), amount_fen INTEGER NOT NULL, balance_after_fen INTEGER NOT NULL, expires_at TEXT NOT NULL, created_at TEXT NOT NULL)"),
+        QStringLiteral("INSERT OR IGNORE INTO membership_product(product_no,name,card_type,duration_days,sale_price_fen,service_fee_discount_bps,status,created_at,updated_at) VALUES('VIP-MONTH','VIP月卡','MONTH',30,64800,8000,'ON_SALE',datetime('now','localtime'),datetime('now','localtime'))"),
+        QStringLiteral("INSERT OR IGNORE INTO membership_product(product_no,name,card_type,duration_days,sale_price_fen,service_fee_discount_bps,status,created_at,updated_at) VALUES('VIP-SEASON','VIP季卡','SEASON',90,99900,8000,'ON_SALE',datetime('now','localtime'),datetime('now','localtime'))")};
+    for (const QString &statement : statements) {
+        if (!query.exec(statement)) {
+            if (errorMessage) *errorMessage = query.lastError().text();
+            return false;
+        }
+    }
+    QSet<QString> columns;
+    if (!query.exec(QStringLiteral("PRAGMA table_info(user)"))) {
+        if (errorMessage) *errorMessage = query.lastError().text();
+        return false;
+    }
+    while (query.next()) columns.insert(query.value(1).toString());
+    const QList<QPair<QString, QString>> additions{
+        {QStringLiteral("is_member"), QStringLiteral("INTEGER NOT NULL DEFAULT 0")},
+        {QStringLiteral("membership_remaining_days"), QStringLiteral("INTEGER NOT NULL DEFAULT 0")},
+        {QStringLiteral("membership_expires_at"), QStringLiteral("TEXT")},
+        {QStringLiteral("membership_discount_bps"), QStringLiteral("INTEGER NOT NULL DEFAULT 10000")}};
+    for (const auto &addition : additions) {
+        if (!columns.contains(addition.first)
+            && !query.exec(QStringLiteral("ALTER TABLE user ADD COLUMN %1 %2")
+                               .arg(addition.first, addition.second))) {
+            if (errorMessage) *errorMessage = query.lastError().text();
             return false;
         }
     }
@@ -120,7 +212,10 @@ int main(int argc, char *argv[])
         QTextStream(stderr) << "SQLite open failed: " << error << '\n';
         return 3;
     }
-    if (!hasRequiredTables(database, &error)) {
+    if (!ensureCouponSchema(database, &error)
+        || !ensureProfileFeatureSchema(database, &error)
+        || !hasRequiredTables(database, &error)
+        || !markDisconnectedPilesOffline(database, &error)) {
         QTextStream(stderr) << "SQLite schema is unavailable: " << error << '\n';
         return 3;
     }

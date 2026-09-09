@@ -85,7 +85,15 @@ USER_AVATAR_GET
 USER_AVATAR_REMOVE
 USER_RECHARGE
 USER_ORDER_LIST
+USER_STATION_FAVORITE_TOGGLE
+USER_STATION_FAVORITE_LIST
 ```
+
+收藏接口均要求普通用户 Session。`USER_STATION_FAVORITE_TOGGLE` 请求携带
+`stationId`，成功响应返回 `stationId` 和服务端确认后的 `isFavorite`；
+`USER_STATION_FAVORITE_LIST` 可携带 `longitude`、`latitude` 用于计算距离，
+成功响应的 `stations` 为当前用户已收藏的站点数组。站点列表和详情对象统一使用
+`isFavorite` 表示当前用户的收藏状态，客户端不得自行伪造该状态。
 
 站点与导航：
 
@@ -256,7 +264,7 @@ Response:
 | `STATION_LIST_NEARBY` | `longitude: number`、`latitude: number`；可选 `district: string`、`limit: integer`（默认 `20`，范围 `1` 至 `50`）。 | `stations`，每项为站点对象，包含站点基本信息、分项单价、综合单价、总桩数、空闲桩数和 `distanceKm`。只返回 `NORMAL` 站点。 | `4003` Session 无效，`4401` 坐标、区域或数量非法，`5001` 查询失败。 |
 | `STATION_DETAIL_GET` | `stationId: integer`，必须大于 `0`。 | `station`、`piles`。`piles` 中每项包含 `pileId`、`stationId`、`pileNo`、`type`、`powerKw`、`status`。 | `4003` Session 无效，`4201` 站点不存在或已禁用，`4401` 站点 ID 非法，`5001` 查询失败。 |
 | `ORDER_ACTIVE_CHECK` | 空对象。 | `hasActiveOrder`、`balanceFen`、`order`。没有活动订单时 `order` 为 `null`；活动订单包含 `CREATED`、`CHARGING`、`PENDING_PAYMENT` 状态。 | `4003` Session 无效，`5001` 查询失败。 |
-| `ORDER_CREATE` | `pileId: integer`，必须大于 `0`。 | `order`。服务端保存创建订单时的价格快照，并在同一事务中将电桩设为 `RESERVED`。 | `4002` 用户冻结，`4101` 已有活动订单，`4102` 电桩不可用，`4202` 电桩不存在，`4401` 电桩 ID 非法，`5001` 事务失败。 |
+| `ORDER_CREATE` | `pileId: integer`，必须大于 `0`；可选 `couponId: integer`。 | `order`。服务端校验优惠券并保存价格与折扣快照，同时锁定优惠券、预约电桩。取消预约会退回优惠券，结算成功后核销。 | `4002` 用户冻结，`4101` 已有活动订单，`4102` 电桩或优惠券不可用，`4202` 电桩不存在，`4401` 参数非法，`5001` 事务失败。 |
 | `ORDER_CANCEL` | `orderId: integer`，必须大于 `0`；可选 `reason: string`。 | `order`。仅允许取消 `CREATED` 订单，成功后释放电桩。 | `4003` Session 无效，`4105` 订单不可取消，`4401` 参数非法，`5001` 事务失败。 |
 | `ORDER_START` | `orderId: integer`，必须大于 `0`。 | `order`。仅允许将本人 `CREATED` 订单启动为 `CHARGING`。 | `4002` 用户冻结，`4003` Session 无效，`4102` 电桩预约状态无效，`4104` 订单状态非法，`4401` 订单 ID 非法，`5001` 事务失败。 |
 | `ORDER_STOP` | `orderId: integer`，必须大于 `0`。 | `order`，包含最终 `chargeSeconds`、`chargeMinutes`、`energyKwh`、`amountFen`。服务端计算金额并释放电桩，订单进入 `PENDING_PAYMENT`。 | `4003` Session 无效，`4102` 电桩释放失败，`4104` 订单状态非法，`4401` 订单 ID 非法，`5001` 事务失败。 |
@@ -266,6 +274,7 @@ Response:
 | `USER_AVATAR_REMOVE` | 空对象。只移除当前 Session 所属用户的头像。 | 更新后的 `user`，其 `avatarPath` 为 `null`。没有头像时同样成功，便于客户端重复点击演示。 | `4002` 用户冻结，`4003` Session 无效，`5001` 数据库失败，`5002` 头像路径非法。 |
 | `USER_RECHARGE` | `amountFen: integer`，范围为 `1` 至 `100000000`。 | `rechargeId`、`recordNo`、`amountFen`、`balanceFen`、`createdAt`。 | `4002` 用户冻结，`4003` Session 无效，`4401` 金额不是正整数或超出范围，`5001` 余额与充值流水事务失败。 |
 | `USER_ORDER_LIST` | 可选 `page: integer`（默认 `1`）、`pageSize: integer`（默认 `20`，最大 `50`）、`status: string`。`status` 只允许 `CREATED`、`CHARGING`、`PENDING_PAYMENT`、`COMPLETED`、`CANCELLED`。 | `items`、`page`、`pageSize`、`total`。`items` 按 `createdAt DESC, orderId DESC` 排序，每项为订单对象。 | `4003` Session 无效，`4401` 分页或状态筛选非法，`5001` 查询失败。 |
+| `USER_COUPON_LIST` | 空对象。 | `items`，每项包含 `couponId`、`discountRate`、`status`、`issuedAt`、`usedAt`。 | `4003` Session 无效，`5001` 查询失败。 |
 | `PREDICTION_RECOMMENDATION` | `longitude: number`、`latitude: number`；可选 `limit: integer`（默认 `5`，范围 `1` 至 `20`）、`horizon: string`（默认 `1h`，可选 `1h`、`6h`、`24h`）。 | `stations`。每项为站点对象，并额外含 `recommended: true`、`predictedLoad`、`predictedAvailablePileCount`、`recommendationReason`。结果按预测负荷升序、距离升序、预测空闲桩数降序排列。无合格推荐时返回空数组。 | `4003` Session 无效，`4401` 坐标、数量或预测窗口非法，`5001` 站点或预测数据查询失败，`5002` 推荐模块未装配。 |
 
 以上为 19 个用户可调用接口。`PREDICTION_LIST` 由 Prediction Registry 提供，
@@ -325,6 +334,7 @@ Key，也不自行把地址解析为坐标。请求为 `district: string`、`add
 | `ADMIN_STATION_LIST` | 空对象 | `stations [{ stationId, stationNo, name, address, longitude, latitude, pileCount, onlineRate }]` | `4003`，`5001` |
 | `ADMIN_STATION_CREATE` | `name`，`address`，`longitude`，`latitude`，`pileCount`；`priceFenPerKwh` 可选，默认 120，范围 1～10000 | `stationId`，`stationNo`，`pileCount` | `4003`，`4401` 参数非法，`5001`；站点和模拟电桩在同一事务创建 |
 | `ADMIN_USER_LIST` | `phoneKeyword: string`，可选；支持手机号部分匹配 | `users [{ userId, phone, nickname, balanceFen, createdAt, status }]` | `4003`，`5001` |
+| `ADMIN_COUPON_ISSUE` | `userId: integer`，必须大于 `0` | 新优惠券的 `couponId`、`userId`、`discountRate`、`status`、`issuedAt` | `4003`，`4401` 用户不存在或参数非法，`5001` |
 | `ADMIN_USER_FREEZE` | `userId: int` | `userId`，`status=FROZEN`，`changed` | `4001` 用户不存在，`4003`，`4401`，`5001` |
 | `ADMIN_USER_UNFREEZE` | `userId: int` | `userId`，`status=NORMAL`，`changed` | `4001` 用户不存在，`4003`，`4401`，`5001` |
 | `ADMIN_ORDER_LIST` | 可选 `page`、`pageSize`、`phoneKeyword`、`status`；`pageSize` 最大 50 | `items`、`page`、`pageSize`、`total`；订单项额外含 `userPhone`、`userNickname` | `4003`，`4401` 筛选或分页非法，`5001` |
@@ -695,3 +705,6 @@ Qt Socket对象具有线程归属，必须在其所属线程读取和写入。�
 | 修改数据库字段 | 数据库、业务、网络 |
 
 文档未定义的业务字段不得由网络层猜测。应先形成评审结论，再按“文档→代码→测试”的顺序修改。
+# 会员接口补充
+
+`MEMBERSHIP_PRODUCT_LIST`、`MEMBERSHIP_STATUS_GET` 和 `MEMBERSHIP_PURCHASE` 已由用户端服务注册。购买请求携带 `productNo`，服务端按 requestId 与用户维度幂等处理。

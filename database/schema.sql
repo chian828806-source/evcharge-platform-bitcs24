@@ -21,8 +21,12 @@ DROP TABLE IF EXISTS operation_log;
 DROP TABLE IF EXISTS prediction;
 DROP TABLE IF EXISTS prediction_batch;
 DROP TABLE IF EXISTS recharge_record;
+DROP TABLE IF EXISTS membership_purchase;
+DROP TABLE IF EXISTS membership_product;
 DROP TABLE IF EXISTS charging_order;
+DROP TABLE IF EXISTS coupon;
 DROP TABLE IF EXISTS charging_pile;
+DROP TABLE IF EXISTS user_station_favorite;
 DROP TABLE IF EXISTS charging_station;
 DROP TABLE IF EXISTS admin;
 DROP TABLE IF EXISTS user;
@@ -36,11 +40,18 @@ CREATE TABLE user (
     nickname      TEXT    NOT NULL,                    -- 昵称 2~20 字符，自动注册默认"用户+后四位"
     avatar_path   TEXT,                                -- 头像相对路径，空 = 默认灰色头像
     balance_fen   INTEGER NOT NULL DEFAULT 0,          -- 钱包余额(分)，约束 >= 0
+    is_member     INTEGER NOT NULL DEFAULT 0,          -- 是否为VIP会员：0否/1是
+    membership_remaining_days INTEGER NOT NULL DEFAULT 0, -- VIP剩余天数
+    membership_expires_at TEXT,                         -- VIP到期时间，事实依据
+    membership_discount_bps INTEGER NOT NULL DEFAULT 10000, -- 服务费折扣万分比
     status        TEXT    NOT NULL DEFAULT 'NORMAL',   -- NORMAL 正常 / FROZEN 冻结
     last_login_at TEXT,                                -- 最近登录时间(7.1 登录事务更新)
     created_at    TEXT    NOT NULL,                    -- 注册时间
     updated_at    TEXT    NOT NULL,                    -- 更新时间
     CHECK (balance_fen >= 0),
+    CHECK (is_member IN (0, 1)),
+    CHECK (membership_remaining_days >= 0),
+    CHECK (membership_discount_bps BETWEEN 0 AND 10000),
     CHECK (status IN ('NORMAL', 'FROZEN'))
 );
 
@@ -83,7 +94,18 @@ CREATE TABLE charging_station (
 );
 
 -- ----------------------------------------------------------------------------
--- 4. 充电桩表 charging_pile —— 桩信息、实时状态、累计统计（04 文档 5.4）
+-- 4. 用户站点收藏表 —— 只保存用户与站点关系，站点数据仍以主表为准
+-- ----------------------------------------------------------------------------
+CREATE TABLE user_station_favorite (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES user(id),
+    station_id INTEGER NOT NULL REFERENCES charging_station(id),
+    created_at TEXT    NOT NULL,
+    UNIQUE(user_id, station_id)
+);
+
+-- ----------------------------------------------------------------------------
+-- 5. 充电桩表 charging_pile —— 桩信息、实时状态、累计统计（04 文档 5.4）
 --    状态机(3.3)：AVAILABLE -> RESERVED -> CHARGING -> AVAILABLE
 --                 AVAILABLE -> RESERVED -> AVAILABLE (订单取消, BR-005)
 --    current_order_id：占用指针，仅 RESERVED/CHARGING 时填写，释放后置空；
@@ -95,7 +117,7 @@ CREATE TABLE charging_pile (
     pile_no              TEXT    NOT NULL,          -- 桩编号，站内唯一(idx_pile_station_no)
     type                 TEXT    NOT NULL,          -- FAST 快充 / SLOW 慢充
     power_kw             REAL    NOT NULL,          -- 额定功率 kW
-    status               TEXT    NOT NULL DEFAULT 'AVAILABLE',  -- 6 态见 04 文档 3.3
+    status               TEXT    NOT NULL DEFAULT 'OFFLINE',    -- 设备接入成功后才变为 AVAILABLE
     current_order_id     INTEGER,                   -- 当前占用订单ID(占用时填写)
     total_charge_count   INTEGER NOT NULL DEFAULT 0,-- 累计完成充电次数(结算时累加, 7.6)
     total_charge_minutes INTEGER NOT NULL DEFAULT 0,-- 累计充电分钟数
@@ -133,6 +155,8 @@ CREATE TABLE charging_order (
     charge_minutes          INTEGER NOT NULL DEFAULT 0,-- 充电分钟数
     energy_kwh              REAL    NOT NULL DEFAULT 0,-- 充电量 kWh
     amount_fen              INTEGER NOT NULL DEFAULT 0,-- 应付金额(分)，计费公式见 7.5
+    coupon_id               INTEGER REFERENCES coupon(id), -- 使用的优惠券
+    discount_rate           INTEGER NOT NULL DEFAULT 100, -- 折扣百分比，80 表示八折
     paid_at                 TEXT,                      -- 结算时间(7.6 写入，营收统计口径)
     cancelled_at            TEXT,                      -- 取消时间(7.3 写入)
     cancel_reason           TEXT,                      -- 取消原因
@@ -145,6 +169,21 @@ CREATE TABLE charging_order (
     CHECK (amount_fen >= 0),
     CHECK (charge_minutes >= 0)
 );
+
+-- 管理员下发的八折优惠券；每张券只能用于一个订单。
+CREATE TABLE coupon (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL REFERENCES user(id),
+    discount_rate INTEGER NOT NULL DEFAULT 80,
+    status        TEXT NOT NULL DEFAULT 'AVAILABLE',
+    order_id      INTEGER,
+    issued_by     INTEGER NOT NULL REFERENCES admin(id),
+    issued_at     TEXT NOT NULL,
+    used_at       TEXT,
+    CHECK (discount_rate > 0 AND discount_rate <= 100),
+    CHECK (status IN ('AVAILABLE', 'LOCKED', 'USED'))
+);
+CREATE INDEX idx_coupon_user_status ON coupon(user_id, status, issued_at DESC);
 
 -- ----------------------------------------------------------------------------
 -- 6. 充值流水表 recharge_record —— 钱包充值流水（04 文档 5.6）
@@ -162,6 +201,38 @@ CREATE TABLE recharge_record (
     CHECK (amount_fen > 0),
     CHECK (balance_after_fen >= 0),
     CHECK (status IN ('SUCCESS', 'FAILED'))
+);
+
+-- 会员产品与购买流水：月卡648元/30天，季卡999元/90天，统一服务费8折。
+CREATE TABLE membership_product (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_no TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    card_type TEXT NOT NULL,
+    duration_days INTEGER NOT NULL,
+    sale_price_fen INTEGER NOT NULL,
+    service_fee_discount_bps INTEGER NOT NULL DEFAULT 8000,
+    status TEXT NOT NULL DEFAULT 'ON_SALE',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    CHECK (card_type IN ('MONTH', 'SEASON')),
+    CHECK (duration_days > 0),
+    CHECK (sale_price_fen > 0),
+    CHECK (service_fee_discount_bps BETWEEN 0 AND 10000),
+    CHECK (status IN ('ON_SALE', 'OFF_SALE'))
+);
+
+CREATE TABLE membership_purchase (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    purchase_no TEXT NOT NULL UNIQUE,
+    user_id INTEGER NOT NULL REFERENCES user(id),
+    product_id INTEGER NOT NULL REFERENCES membership_product(id),
+    amount_fen INTEGER NOT NULL,
+    balance_after_fen INTEGER NOT NULL,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    CHECK (amount_fen > 0),
+    CHECK (balance_after_fen >= 0)
 );
 
 -- ----------------------------------------------------------------------------
@@ -311,6 +382,7 @@ CREATE UNIQUE INDEX idx_order_no             ON charging_order(order_no);
 CREATE UNIQUE INDEX idx_recharge_no          ON recharge_record(record_no);
 
 CREATE INDEX idx_station_district        ON charging_station(district);
+CREATE INDEX idx_favorite_user_created   ON user_station_favorite(user_id, created_at DESC);
 CREATE INDEX idx_pile_station_status     ON charging_pile(station_id, status);
 CREATE INDEX idx_order_user_status       ON charging_order(user_id, status);      -- 活动订单检查 BR-003
 CREATE INDEX idx_order_pile_status       ON charging_order(pile_id, status);      -- 单桩互斥 BR-004

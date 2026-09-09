@@ -14,10 +14,12 @@
 #include "qt-server/map/mapadapter.h"
 #include "qt-server/handlers/prediction/registerpredictionhandlers.h"
 #include "qt-server/repositories/stationrepository.h"
+#include "qt-server/repositories/favoriterepository.h"
 #include "qt-server/repositories/orderrepository.h"
 #include "qt-server/repositories/predictionrepository.h"
 #include "qt-server/repositories/userrepository.h"
 #include "qt-server/services/user/stationservice.h"
+#include "qt-server/services/user/favoriteservice.h"
 #include "qt-server/services/user/orderservice.h"
 #include "qt-server/services/user/userservice.h"
 #include "qt-server/network/socketserver.h"
@@ -193,8 +195,8 @@ void testSessionAndDispatcherBoundaries()
 void testKnownMessageRegistry()
 {
     // 数量变化意味着公共文档与代码可能发生漏登或私自扩展。
-    check(MessageTypes::tcpTypes().size() == 34,
-          QStringLiteral("all 34 documented TCP message types are registered"));
+    check(MessageTypes::tcpTypes().size() == 41,
+          QStringLiteral("all 41 documented TCP message types are registered"));
     check(MessageTypes::dashboardTopics().size() == 4,
           QStringLiteral("all four dashboard topics are registered"));
 }
@@ -422,7 +424,7 @@ void testUserProfileWalletOrdersAndRecommendations()
             "user_id INTEGER, station_id INTEGER, pile_id INTEGER, status TEXT, "
             "price_fen_per_kwh INTEGER, service_fee_fen_per_kwh INTEGER, start_at TEXT, "
             "end_at TEXT, charge_minutes INTEGER, energy_kwh REAL, amount_fen INTEGER, "
-            "created_at TEXT, updated_at TEXT)"))
+            "created_at TEXT, updated_at TEXT, coupon_id INTEGER, discount_rate INTEGER DEFAULT 100)"))
         && schema.exec(QStringLiteral(
             "CREATE TABLE prediction (id INTEGER PRIMARY KEY, station_id INTEGER, "
             "prediction_time TEXT, horizon TEXT, predicted_load REAL, "
@@ -447,9 +449,9 @@ void testUserProfileWalletOrdersAndRecommendations()
         && schema.exec(QStringLiteral(
             "INSERT INTO charging_order VALUES "
             "(1, 'O-OLD', 1, 1, 1, 'COMPLETED', 100, 20, NULL, NULL, 30, 5.0, 600, "
-            "'2026-01-01 10:00:00', '2026-01-01 10:00:00'), "
+            "'2026-01-01 10:00:00', '2026-01-01 10:00:00', NULL, 100), "
             "(2, 'O-NEW', 1, 2, 2, 'PENDING_PAYMENT', 100, 20, NULL, NULL, 10, 2.0, 240, "
-            "'2026-01-02 10:00:00', '2026-01-02 10:00:00')"))
+            "'2026-01-02 10:00:00', '2026-01-02 10:00:00', NULL, 100)"))
         && schema.exec(QStringLiteral(
             "INSERT INTO prediction VALUES "
             "(1, 1, '2026-01-03 11:00:00', '1h', 0.80, 1, 'HIGH', 'demo', 0.1, 0.1, "
@@ -746,10 +748,15 @@ void testOrderCreateAndActiveCheckFlow()
         "service_fee_fen_per_kwh INTEGER, start_at TEXT, end_at TEXT, "
         "charge_minutes INTEGER DEFAULT 0, energy_kwh REAL DEFAULT 0, "
         "amount_fen INTEGER DEFAULT 0, paid_at TEXT, cancelled_at TEXT, "
-        "cancel_reason TEXT, created_at TEXT, updated_at TEXT)"));
-    check(userTableCreated && stationTableCreated && pileTableCreated && orderTableCreated,
+        "cancel_reason TEXT, created_at TEXT, updated_at TEXT, coupon_id INTEGER, "
+        "discount_rate INTEGER DEFAULT 100)"));
+    const bool couponTableCreated = schema.exec(QStringLiteral(
+        "CREATE TABLE coupon (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, "
+        "discount_rate INTEGER DEFAULT 80, status TEXT DEFAULT 'AVAILABLE', order_id INTEGER, "
+        "issued_by INTEGER, issued_at TEXT, used_at TEXT)"));
+    check(userTableCreated && stationTableCreated && pileTableCreated && orderTableCreated && couponTableCreated,
           QStringLiteral("order backend test schema is created"));
-    if (!userTableCreated || !stationTableCreated || !pileTableCreated || !orderTableCreated) {
+    if (!userTableCreated || !stationTableCreated || !pileTableCreated || !orderTableCreated || !couponTableCreated) {
         return;
     }
 
@@ -764,7 +771,10 @@ void testOrderCreateAndActiveCheckFlow()
             "VALUES (1, '演示站点', 'NORMAL', 120, 30)"))
         && schema.exec(QStringLiteral(
             "INSERT INTO charging_pile (id, station_id, pile_no, power_kw, status) VALUES "
-            "(1, 1, 'A-01', 60, 'AVAILABLE'), (2, 1, 'A-02', 60, 'AVAILABLE')"));
+            "(1, 1, 'A-01', 60, 'AVAILABLE'), (2, 1, 'A-02', 60, 'AVAILABLE')"))
+        && schema.exec(QStringLiteral(
+            "INSERT INTO coupon(id, user_id, discount_rate, status, issued_by, issued_at) "
+            "VALUES(1, 1, 80, 'AVAILABLE', 9, '2026-01-01 00:00:00')"));
     check(demoDataCreated, QStringLiteral("order backend test demo data is created"));
     if (!demoDataCreated) {
         return;
@@ -783,7 +793,7 @@ void testOrderCreateAndActiveCheckFlow()
 
     RequestMessage createRequest{
         QStringLiteral("REQ-ORDER-CREATE"), MessageTypes::OrderCreate, userOneSession,
-        {{QStringLiteral("pileId"), 1}}
+        {{QStringLiteral("pileId"), 1}, {QStringLiteral("couponId"), 1}}
     };
     const ResponseMessage createResponse = dispatcher.dispatch(createRequest);
     const QJsonObject createdOrder = createResponse.data.value(QStringLiteral("order")).toObject();
@@ -796,6 +806,7 @@ void testOrderCreateAndActiveCheckFlow()
               && createdOrder.value(QStringLiteral("status")).toString()
                     == QStringLiteral("CREATED")
               && createdOrder.value(QStringLiteral("priceFenPerKwh")).toInt() == 120
+              && createdOrder.value(QStringLiteral("discountRate")).toInt() == 80
               && pileCheck.value(0).toString() == QStringLiteral("RESERVED")
               && pileCheck.value(1).toLongLong() == createdOrderId,
           QStringLiteral("create order atomically reserves available pile with price snapshot"));
@@ -833,6 +844,9 @@ void testOrderCreateAndActiveCheckFlow()
     const ResponseMessage startResponse = dispatcher.dispatch(startRequest);
     pileCheck.exec(QStringLiteral("SELECT status FROM charging_pile WHERE id = 1"));
     pileCheck.next();
+    QSqlQuery couponCheck(database);
+    couponCheck.exec(QStringLiteral("SELECT status FROM coupon WHERE id=1"));
+    couponCheck.next();
     check(startResponse.code == ErrorCodes::Success
               && startResponse.data.value(QStringLiteral("order")).toObject()
                      .value(QStringLiteral("status")).toString() == QStringLiteral("CHARGING")
@@ -887,6 +901,8 @@ void testOrderCreateAndActiveCheckFlow()
               && pileCheck.value(1).toInt() > 0
               && pileCheck.value(2).toDouble() > 0.0,
           QStringLiteral("settlement deducts balance and accumulates pile statistics once"));
+    check(couponCheck.value(0).toString() == QStringLiteral("USED"),
+          QStringLiteral("settlement marks the selected coupon as used"));
 
     const ResponseMessage repeatedSettleResponse = dispatcher.dispatch(settleRequest);
     check(repeatedSettleResponse.code == ErrorCodes::Success
@@ -897,6 +913,7 @@ void testOrderCreateAndActiveCheckFlow()
     createRequest.requestId = QStringLiteral("REQ-CANCEL-CREATE");
     createRequest.sessionId = userOneSession;
     createRequest.payload.insert(QStringLiteral("pileId"), 1);
+    createRequest.payload.remove(QStringLiteral("couponId"));
     const ResponseMessage secondCreateResponse = dispatcher.dispatch(createRequest);
     const qint64 secondOrderId = static_cast<qint64>(
         secondCreateResponse.data.value(QStringLiteral("order")).toObject()
@@ -1035,6 +1052,78 @@ void testUserClientRequestTimeout()
           QStringLiteral("user client reports request timeout"));
 }
 
+void testStationFavoriteFlow()
+{
+    QTemporaryDir directory;
+    const QString path = directory.filePath(QStringLiteral("favorites.db"));
+    DatabaseManager manager(path, QStringLiteral("favorite-test"));
+    QSqlDatabase database;
+    QString error;
+    check(manager.database(&database, &error), QStringLiteral("favorite test database opens"));
+    QSqlQuery query(database);
+    check(query.exec(QStringLiteral(
+        "CREATE TABLE user(id INTEGER PRIMARY KEY, phone TEXT, nickname TEXT, avatar_path TEXT, "
+        "balance_fen INTEGER, status TEXT, created_at TEXT, updated_at TEXT)")),
+        QStringLiteral("favorite test user table created"));
+    check(query.exec(QStringLiteral(
+        "CREATE TABLE charging_station(id INTEGER PRIMARY KEY, station_no TEXT, name TEXT, "
+        "address TEXT, district TEXT, longitude REAL, latitude REAL, price_fen_per_kwh INTEGER, "
+        "service_fee_fen_per_kwh INTEGER, status TEXT, created_at TEXT, updated_at TEXT)")),
+        QStringLiteral("favorite test station table created"));
+    check(query.exec(QStringLiteral(
+        "CREATE TABLE charging_pile(id INTEGER PRIMARY KEY, station_id INTEGER, pile_no TEXT, "
+        "type TEXT, power_kw REAL, status TEXT)")),
+        QStringLiteral("favorite test pile table created"));
+    check(query.exec(QStringLiteral(
+        "CREATE TABLE user_station_favorite(id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "user_id INTEGER NOT NULL, station_id INTEGER NOT NULL, created_at TEXT NOT NULL, "
+        "UNIQUE(user_id, station_id))")),
+        QStringLiteral("favorite relation table created"));
+    check(query.exec(QStringLiteral(
+        "INSERT INTO user VALUES(1,'13800000001','A',NULL,0,'NORMAL','2026-09-01','2026-09-01')"))
+        && query.exec(QStringLiteral(
+        "INSERT INTO user VALUES(2,'13800000002','B',NULL,0,'NORMAL','2026-09-01','2026-09-01')"))
+        && query.exec(QStringLiteral(
+        "INSERT INTO user VALUES(3,'13800000003','C',NULL,0,'FROZEN','2026-09-01','2026-09-01')")),
+        QStringLiteral("favorite test users inserted"));
+    check(query.exec(QStringLiteral(
+        "INSERT INTO charging_station VALUES(10,'S10','正常站','地址A','甘井子区',121.5,38.8,100,10,'NORMAL','2026-09-01','2026-09-01')"))
+        && query.exec(QStringLiteral(
+        "INSERT INTO charging_station VALUES(11,'S11','停用站','地址B','甘井子区',121.6,38.9,100,10,'DISABLED','2026-09-01','2026-09-01')")),
+        QStringLiteral("favorite test stations inserted"));
+
+    UserRepository users;
+    StationRepository stations;
+    FavoriteRepository favorites;
+    FavoriteService service(&manager, &favorites, &users, &stations);
+
+    const auto added = service.toggle(1, 10);
+    check(added.ok && added.value.isFavorite,
+          QStringLiteral("normal user can favorite station"));
+    const auto userOneList = service.list(1, true, 121.5, 38.8);
+    check(userOneList.ok && userOneList.value.size() == 1
+              && userOneList.value.first().isFavorite,
+          QStringLiteral("favorite list returns server favorite state"));
+    const auto userTwoList = service.list(2, false, 0, 0);
+    check(userTwoList.ok && userTwoList.value.isEmpty(),
+          QStringLiteral("favorites are isolated per user"));
+    const auto removed = service.toggle(1, 10);
+    check(removed.ok && !removed.value.isFavorite
+              && service.list(1, false, 0, 0).value.isEmpty(),
+          QStringLiteral("second toggle removes relation without duplicates"));
+    check(service.toggle(1, 11).ok
+              && service.list(1, false, 0, 0).value.first().status == QStringLiteral("DISABLED"),
+          QStringLiteral("disabled station remains visible in favorites"));
+    StationService stationService(&manager, &stations, nullptr, nullptr, &favorites);
+    check(stationService.detail(11, 1).ok && !stationService.detail(11, 2).ok,
+          QStringLiteral("only a favoriting user can open disabled station detail"));
+    const auto frozenResult = service.toggle(3, 10);
+    check(!frozenResult.ok && frozenResult.code == ErrorCodes::UserFrozen,
+          QStringLiteral("frozen user cannot change favorites"));
+    check(!service.toggle(1, 999).ok,
+          QStringLiteral("unknown station is rejected"));
+}
+
 void testAdminClientRequestTimeout()
 {
     QTcpServer server;
@@ -1082,6 +1171,7 @@ int main(int argc, char *argv[])
     testUserLoginProfileAndNicknameFlow();
     testUserProfileWalletOrdersAndRecommendations();
     testStationListAndDetailFlow();
+    testStationFavoriteFlow();
     testOrderCreateAndActiveCheckFlow();
     testUserLoginOverTcp();
     testUserClientRequestTimeout();

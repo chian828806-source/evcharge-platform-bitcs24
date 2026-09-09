@@ -6,6 +6,7 @@
 
 #include "common/serviceresult.h"
 #include "models/chargingorder.h"
+#include <QJsonArray>
 
 class DatabaseManager;
 class OrderRepository;
@@ -44,7 +45,9 @@ public:
     ServiceResult<ActiveOrderResult> activeOrder(qint64 userId);
     ServiceResult<OrderListResult> list(qint64 userId, int page, int pageSize,
                                         const QString &status);
-    ServiceResult<ChargingOrderInfo> create(qint64 userId, qint64 pileId);
+    ServiceResult<QJsonArray> coupons(qint64 userId);
+    ServiceResult<ChargingOrderInfo> create(qint64 userId, qint64 pileId,
+                                            qint64 couponId = 0);
     ServiceResult<ChargingOrderInfo> start(qint64 userId, qint64 orderId);
     ServiceResult<ChargingOrderInfo> stop(qint64 userId, qint64 orderId);
     ServiceResult<ChargingOrderInfo> cancel(qint64 userId, qint64 orderId,

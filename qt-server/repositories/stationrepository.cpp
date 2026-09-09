@@ -71,6 +71,20 @@ std::optional<StationInfo> StationRepository::findEnabledById(
     return mapStation(query);
 }
 
+std::optional<StationInfo> StationRepository::findById(
+    QSqlDatabase &database, qint64 stationId, QString *errorMessage) const
+{
+    QSqlQuery query(database);
+    query.prepare(stationSummarySql(QStringLiteral("WHERE s.id = :stationId")));
+    query.bindValue(QStringLiteral(":stationId"), stationId);
+    if (!query.exec()) {
+        if (errorMessage) *errorMessage = query.lastError().text();
+        return std::nullopt;
+    }
+    if (!query.next()) return std::nullopt;
+    return mapStation(query);
+}
+
 QList<ChargingPileInfo> StationRepository::listPiles(QSqlDatabase &database,
                                                       qint64 stationId,
                                                       QString *errorMessage) const

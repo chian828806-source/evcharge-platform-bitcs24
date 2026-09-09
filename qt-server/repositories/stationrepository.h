@@ -24,6 +24,8 @@ public:
     std::optional<StationInfo> findEnabledById(QSqlDatabase &database,
                                                qint64 stationId,
                                                QString *errorMessage) const;
+    std::optional<StationInfo> findById(QSqlDatabase &database, qint64 stationId,
+                                        QString *errorMessage) const;
     QList<ChargingPileInfo> listPiles(QSqlDatabase &database, qint64 stationId,
                                       QString *errorMessage) const;
     QJsonArray listForAdmin(QSqlDatabase &database, QString *errorMessage) const;

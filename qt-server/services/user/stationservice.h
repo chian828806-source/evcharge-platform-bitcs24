@@ -15,6 +15,7 @@ class DatabaseManager;
 class QSqlDatabase;
 class StationRepository;
 class PredictionRepository;
+class FavoriteRepository;
 
 class StationService
 {
@@ -22,13 +23,16 @@ public:
     StationService(DatabaseManager *databaseManager,
                    StationRepository *stationRepository,
                    PredictionRepository *predictionRepository = nullptr,
-                   MapAdapter *mapAdapter = nullptr);
+                   MapAdapter *mapAdapter = nullptr,
+                   FavoriteRepository *favoriteRepository = nullptr);
 
     ServiceResult<QList<StationInfo>> listNearby(double longitude, double latitude,
-                                                 const QString &district, int limit);
-    ServiceResult<StationDetail> detail(qint64 stationId);
+                                                 const QString &district, int limit,
+                                                 qint64 userId = 0);
+    ServiceResult<StationDetail> detail(qint64 stationId, qint64 userId = 0);
     ServiceResult<QList<StationInfo>> recommendations(double longitude, double latitude,
-                                                      int limit, const QString &horizon);
+                                                      int limit, const QString &horizon,
+                                                      qint64 userId = 0);
     void geocode(const QString &district, const QString &address,
                  MapAdapter::Callback callback);
     void planRoute(double originLongitude, double originLatitude,
@@ -45,4 +49,5 @@ private:
     StationRepository *m_stationRepository = nullptr;
     PredictionRepository *m_predictionRepository = nullptr;
     MapAdapter *m_mapAdapter = nullptr;
+    FavoriteRepository *m_favoriteRepository = nullptr;
 };

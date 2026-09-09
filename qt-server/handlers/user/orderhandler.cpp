@@ -100,14 +100,32 @@ ResponseMessage OrderHandler::create(const RequestMessage &request,
         return ResponseMessage::error(request.requestId, ErrorCodes::InternalError,
                                       QStringLiteral("order module is unavailable"));
     }
+    const QJsonValue couponIdValue = request.payload.value(QStringLiteral("couponId"));
+    if (!couponIdValue.isUndefined() && !couponIdValue.isNull()
+        && !isPositiveInteger(couponIdValue)) {
+        return ResponseMessage::error(request.requestId, ErrorCodes::InvalidSocketMessage,
+                                      QStringLiteral("couponId must be a positive integer"));
+    }
+    const qint64 couponId = couponIdValue.isDouble()
+        ? static_cast<qint64>(couponIdValue.toDouble()) : 0;
     const auto result = m_orderService->create(
-        context.principalId, static_cast<qint64>(pileIdValue.toDouble()));
+        context.principalId, static_cast<qint64>(pileIdValue.toDouble()), couponId);
     if (!result.ok) {
         return ResponseMessage::error(request.requestId, result.code, result.message);
     }
     return ResponseMessage::success(request.requestId, {
         {QStringLiteral("order"), result.value.toJson()}
     });
+}
+
+ResponseMessage OrderHandler::couponList(const RequestMessage &request,
+                                          const SessionContext &context)
+{
+    if (!m_orderService) return ResponseMessage::error(request.requestId, ErrorCodes::InternalError,
+                                                        QStringLiteral("order module is unavailable"));
+    const auto result = m_orderService->coupons(context.principalId);
+    if (!result.ok) return ResponseMessage::error(request.requestId, result.code, result.message);
+    return ResponseMessage::success(request.requestId, {{QStringLiteral("items"), result.value}});
 }
 
 ResponseMessage OrderHandler::start(const RequestMessage &request,
