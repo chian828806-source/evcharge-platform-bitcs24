@@ -25,6 +25,8 @@
 #include <QPair>
 #include <QPixmap>
 #include <QProgressBar>
+#include <QPainter>
+#include <QPainterPath>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
@@ -81,6 +83,23 @@ QScrollArea *makeScrollArea(QWidget *content)
 QString displayMoney(int amountFen)
 {
     return QStringLiteral("¥%1").arg(amountFen / 100.0, 0, 'f', 2);
+}
+
+QPixmap circularAvatar(const QPixmap &source, const QSize &size)
+{
+    QPixmap result(size);
+    result.fill(Qt::transparent);
+
+    QPainter painter(&result);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    QPainterPath clip;
+    clip.addEllipse(result.rect());
+    painter.setClipPath(clip);
+    const QPixmap scaled = source.scaled(size, Qt::KeepAspectRatioByExpanding,
+                                         Qt::SmoothTransformation);
+    painter.drawPixmap((size.width() - scaled.width()) / 2,
+                       (size.height() - scaled.height()) / 2, scaled);
+    return result;
 }
 
 QString pileTypeText(const QString &type)
@@ -696,7 +715,8 @@ QWidget *UserWindow::buildProfilePage()
     profileLayout->setContentsMargins(20, 20, 20, 20);
     m_avatarLabel = makeLabel(QStringLiteral("U"), "avatar");
     m_avatarLabel->setAlignment(Qt::AlignCenter);
-    m_avatarLabel->setFixedSize(58, 58);
+    m_avatarLabel->setFixedSize(66, 66);
+    m_avatarLabel->setProperty("hasAvatar", false);
     profileLayout->addWidget(m_avatarLabel);
     auto *identity = new QVBoxLayout;
     m_nicknameLabel = makeLabel(QStringLiteral("用户信息加载中"), "cardTitle");
@@ -1124,6 +1144,9 @@ void UserWindow::resetAvatar()
     }
     m_avatarLabel->setPixmap(QPixmap());
     m_avatarLabel->setText(QStringLiteral("U"));
+    m_avatarLabel->setProperty("hasAvatar", false);
+    m_avatarLabel->style()->unpolish(m_avatarLabel);
+    m_avatarLabel->style()->polish(m_avatarLabel);
 }
 
 void UserWindow::requestAvatar(const QString &avatarPath)
@@ -1317,9 +1340,10 @@ void UserWindow::handleResponse(const QJsonObject &response)
             return;
         }
         m_avatarLabel->setText(QString());
-        m_avatarLabel->setPixmap(avatar.scaled(m_avatarLabel->size(),
-                                                Qt::KeepAspectRatioByExpanding,
-                                                Qt::SmoothTransformation));
+        m_avatarLabel->setProperty("hasAvatar", true);
+        m_avatarLabel->style()->unpolish(m_avatarLabel);
+        m_avatarLabel->style()->polish(m_avatarLabel);
+        m_avatarLabel->setPixmap(circularAvatar(avatar, QSize(56, 56)));
     } else if (type == MessageTypes::StationListNearby
                || type == MessageTypes::PredictionRecommendation) {
         if (type == MessageTypes::StationListNearby) {

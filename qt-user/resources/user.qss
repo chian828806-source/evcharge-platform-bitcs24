@@ -72,9 +72,14 @@ QLabel[role="walletAmount"] { color: #118268; font-size: 26px; font-weight: 800;
 QLabel[role="avatar"] {
     color: white;
     background: #18a67e;
-    border-radius: 29px;
+    border: 3px solid #d8f5e9;
+    border-radius: 33px;
     font-size: 22px;
     font-weight: 700;
+}
+QLabel[role="avatar"][hasAvatar="true"] {
+    background: #effbf6;
+    border: 3px solid #35b989;
 }
 QLabel[role="badgeGood"] {
     color: #08765c; background: #dff7ed; border-radius: 9px;
