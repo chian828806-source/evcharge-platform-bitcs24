@@ -207,11 +207,13 @@ function initMap() {
     + '<path d="M21 1C10 1 2 9 2 20c0 14 19 30 19 30s19-16 19-30C40 9 32 1 21 1z" fill="' + color + '" stroke="#fff" stroke-width="3"/>'
     + '<circle cx="21" cy="20" r="12" fill="#fff"/>'
     + '<text x="21" y="25" text-anchor="middle" font-family="Microsoft YaHei,sans-serif" font-size="15" font-weight="700" fill="' + color + '">' + text + '</text></svg>');
-  const arrowGlyphs = ['↑','↗','→','↘','↓','↙','←','↖'];
-  const arrowIcon = glyph => svgDataUri(
+  // 采用导航软件常见的白色人字箭头：无圆形底，视觉上贴合蓝色路线。
+  // 基础图标指向东，按路线方位旋转为八个方向。
+  const arrowAngles = [-90,-45,0,45,90,135,180,225];
+  const arrowIcon = angle => svgDataUri(
     '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">'
-    + '<circle cx="12" cy="12" r="10" fill="#1677ff" stroke="#fff" stroke-width="2"/>'
-    + '<text x="12" y="17" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="700" fill="#fff">' + glyph + '</text></svg>');
+    + '<path d="M8 5L16 12L8 19" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" transform="rotate(' + angle + ' 12 12)"/>'
+    + '</svg>');
   const distanceMeters = (a, b) => {
     const rad = Math.PI / 180;
     const dLat = (b.latitude - a.latitude) * rad;
@@ -220,20 +222,20 @@ function initMap() {
       + Math.cos(a.latitude * rad) * Math.cos(b.latitude * rad) * Math.sin(dLon / 2) ** 2;
     return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
   };
-  const directionGlyph = (a, b) => {
+  const directionAngleIndex = (a, b) => {
     const latitude = ((a.latitude + b.latitude) / 2) * Math.PI / 180;
     const east = (b.longitude - a.longitude) * Math.cos(latitude);
     const north = b.latitude - a.latitude;
-    const index = (Math.round(Math.atan2(east, north) / (Math.PI / 4)) + 8) % 8;
-    return arrowGlyphs[index];
+    // atan2(east, north) 以正北为 0°；SVG 基础箭头以正东为 0°。
+    return (Math.round(Math.atan2(east, north) / (Math.PI / 4)) + 8) % 8;
   };
   const markerStyles = {
     start: new TMap.MarkerStyle({width:42,height:52,anchor:{x:21,y:50},src:pinIcon('#1677ff','起')}),
     end: new TMap.MarkerStyle({width:42,height:52,anchor:{x:21,y:50},src:pinIcon('#16a36a','终')})
   };
-  arrowGlyphs.forEach(glyph => {
-    markerStyles['arrow-' + glyph.charCodeAt(0)] = new TMap.MarkerStyle({
-      width:24, height:24, anchor:{x:12,y:12}, src:arrowIcon(glyph)
+  arrowAngles.forEach((angle, index) => {
+    markerStyles['arrow-' + index] = new TMap.MarkerStyle({
+      width:24, height:24, anchor:{x:12,y:12}, src:arrowIcon(angle)
     });
   });
   const arrowGeometries = [];
@@ -245,9 +247,9 @@ function initMap() {
   for (let index = 1; index < route.length && arrowGeometries.length < 8; index += 1) {
     travelled += distanceMeters(route[index - 1], route[index]);
     if (travelled >= arrowSpacing) {
-      const glyph = directionGlyph(route[index - 1], route[index]);
+      const directionIndex = directionAngleIndex(route[index - 1], route[index]);
       arrowGeometries.push({id:'route-arrow-' + index,
-        styleId:'arrow-' + glyph.charCodeAt(0), position:toLatLng(route[index])});
+        styleId:'arrow-' + directionIndex, position:toLatLng(route[index])});
       travelled = 0;
     }
   }
