@@ -8,6 +8,7 @@
 #include "repositories/pilerepository.h"
 #include "services/user/chargingprogress.h"
 #include <QDateTime>
+#include <QSqlQuery>
 #include <QTimer>
 #include <QUuid>
 
@@ -32,7 +33,7 @@ void DeviceControlService::finishRestart(qint64 pileId,const QString &commandId,
 static void interruptForDevice(DatabaseManager *manager,qint64 pileId,const QString &target,const QString &reason)
 { QSqlDatabase db;QString error;if(!manager->database(&db,&error)||!db.transaction())return;PileRepository piles(db);const auto pile=piles.deviceState(pileId);if(!pile||pile->status==target||pile->status==QStringLiteral("RESTARTING")){db.rollback();return;}bool ok=true;const QString now=deviceNow();OrderRepository orders;
  if(pile->status==QStringLiteral("CHARGING")&&pile->currentOrderId>0){const auto order=orders.findById(db,pile->currentOrderId,&error);if(!order||order->status!=QStringLiteral("CHARGING"))ok=false;else{const auto progress=chargingProgressAt(*order,QDateTime::currentDateTime());bool stopped=false;ok=orders.stopOrder(db,order->orderId,now,progress.chargeMinutes,progress.energyKwh,progress.amountFen,&stopped,&error)&&stopped;}}
- else if(pile->status==QStringLiteral("RESERVED")&&pile->currentOrderId>0){bool cancelled=false;const QString cancelReason=target==QStringLiteral("FAULT")?QStringLiteral("设备故障自动取消"):QStringLiteral("设备离线自动取消");ok=orders.cancelOrder(db,pile->currentOrderId,now,cancelReason,&cancelled,&error)&&cancelled;}
+ else if(pile->status==QStringLiteral("RESERVED")&&pile->currentOrderId>0){const auto order=orders.findById(db,pile->currentOrderId,&error);bool cancelled=false;const QString cancelReason=target==QStringLiteral("FAULT")?QStringLiteral("设备故障自动取消"):QStringLiteral("设备离线自动取消");ok=order&&orders.cancelOrder(db,pile->currentOrderId,now,cancelReason,&cancelled,&error)&&cancelled;if(ok&&order->couponId>0){QSqlQuery coupon(db);coupon.prepare(QStringLiteral("UPDATE coupon SET status='AVAILABLE', order_id=NULL WHERE id=:couponId AND order_id=:orderId AND status='LOCKED'"));coupon.bindValue(QStringLiteral(":couponId"),order->couponId);coupon.bindValue(QStringLiteral(":orderId"),order->orderId);ok=coupon.exec()&&coupon.numRowsAffected()==1;}}
  ok=ok&&piles.transitionDeviceState(pileId,pile->status,target,now,pile->currentOrderId);OperationLogRepository log(db);ok=ok&&log.add(std::nullopt,target==QStringLiteral("FAULT")?QStringLiteral("DEVICE_FAULT"):QStringLiteral("DEVICE_OFFLINE"),QStringLiteral("PILE"),pileId,pile->status,target,reason,now);if(ok)db.commit();else db.rollback(); }
 void DeviceControlService::handleFault(qint64 pileId,const QString &code,const QString &message){m_registry->fault(pileId,code,message);interruptForDevice(m_databaseManager,pileId,QStringLiteral("FAULT"),code+QStringLiteral(": ")+message);}
 void DeviceControlService::handleOffline(qint64 pileId){interruptForDevice(m_databaseManager,pileId,QStringLiteral("OFFLINE"),QStringLiteral("设备离线自动取消/中断"));}
