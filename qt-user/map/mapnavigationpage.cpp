@@ -199,13 +199,65 @@ function initMap() {
     styles: { route: new TMap.PolylineStyle({color:'#1677ff',width:7,borderWidth:2,borderColor:'#ffffff',lineCap:'round'}) },
     geometries: [{id:'planned-route',styleId:'route',paths:points}]
   });
+
+  // 起、终点使用不同颜色和文字；路线箭头由相邻坐标计算，无需服务端额外字段。
+  const svgDataUri = svg => 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+  const pinIcon = (color, text) => svgDataUri(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="42" height="52" viewBox="0 0 42 52">'
+    + '<path d="M21 1C10 1 2 9 2 20c0 14 19 30 19 30s19-16 19-30C40 9 32 1 21 1z" fill="' + color + '" stroke="#fff" stroke-width="3"/>'
+    + '<circle cx="21" cy="20" r="12" fill="#fff"/>'
+    + '<text x="21" y="25" text-anchor="middle" font-family="Microsoft YaHei,sans-serif" font-size="15" font-weight="700" fill="' + color + '">' + text + '</text></svg>');
+  const arrowGlyphs = ['↑','↗','→','↘','↓','↙','←','↖'];
+  const arrowIcon = glyph => svgDataUri(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">'
+    + '<circle cx="12" cy="12" r="10" fill="#1677ff" stroke="#fff" stroke-width="2"/>'
+    + '<text x="12" y="17" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="700" fill="#fff">' + glyph + '</text></svg>');
+  const distanceMeters = (a, b) => {
+    const rad = Math.PI / 180;
+    const dLat = (b.latitude - a.latitude) * rad;
+    const dLon = (b.longitude - a.longitude) * rad;
+    const h = Math.sin(dLat / 2) ** 2
+      + Math.cos(a.latitude * rad) * Math.cos(b.latitude * rad) * Math.sin(dLon / 2) ** 2;
+    return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+  };
+  const directionGlyph = (a, b) => {
+    const latitude = ((a.latitude + b.latitude) / 2) * Math.PI / 180;
+    const east = (b.longitude - a.longitude) * Math.cos(latitude);
+    const north = b.latitude - a.latitude;
+    const index = (Math.round(Math.atan2(east, north) / (Math.PI / 4)) + 8) % 8;
+    return arrowGlyphs[index];
+  };
+  const markerStyles = {
+    start: new TMap.MarkerStyle({width:42,height:52,anchor:{x:21,y:50},src:pinIcon('#1677ff','起')}),
+    end: new TMap.MarkerStyle({width:42,height:52,anchor:{x:21,y:50},src:pinIcon('#16a36a','终')})
+  };
+  arrowGlyphs.forEach(glyph => {
+    markerStyles['arrow-' + glyph.charCodeAt(0)] = new TMap.MarkerStyle({
+      width:24, height:24, anchor:{x:12,y:12}, src:arrowIcon(glyph)
+    });
+  });
+  const arrowGeometries = [];
+  let totalDistance = 0;
+  for (let index = 1; index < route.length; index += 1) totalDistance += distanceMeters(route[index - 1], route[index]);
+  // 目标显示约 5–7 个箭头；短路线至少保留一个，长路线最多八个，避免遮住道路。
+  const arrowSpacing = Math.max(260, totalDistance / 6);
+  let travelled = 0;
+  for (let index = 1; index < route.length && arrowGeometries.length < 8; index += 1) {
+    travelled += distanceMeters(route[index - 1], route[index]);
+    if (travelled >= arrowSpacing) {
+      const glyph = directionGlyph(route[index - 1], route[index]);
+      arrowGeometries.push({id:'route-arrow-' + index,
+        styleId:'arrow-' + glyph.charCodeAt(0), position:toLatLng(route[index])});
+      travelled = 0;
+    }
+  }
   new TMap.MultiMarker({
     map: map,
-    styles: { marker: new TMap.MarkerStyle({width:25,height:35,anchor:{x:12,y:35},
-      src:'https://mapapi.qq.com/web/lbs/javascriptGL/demo/img/markerDefault.png'}) },
+    styles: markerStyles,
     geometries: [
-      {id:'route-start',styleId:'marker',position:points[0],properties:{title:'起点'}},
-      {id:'route-end',styleId:'marker',position:points[points.length-1],properties:{title:'终点'}}
+      {id:'route-start',styleId:'start',position:points[0],properties:{title:'起点'}},
+      {id:'route-end',styleId:'end',position:points[points.length-1],properties:{title:'终点'}},
+      ...arrowGeometries
     ]
   });
 }
