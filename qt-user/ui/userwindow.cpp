@@ -764,15 +764,36 @@ QWidget *UserWindow::buildStationCard(const QJsonObject &station)
     layout->addLayout(titleRow);
     layout->addWidget(makeLabel(QStringLiteral("⌖ %1").arg(address), "caption"));
     auto *metrics = new QHBoxLayout;
-    metrics->addWidget(makeLabel(QStringLiteral("综合价 %1 / 度").arg(
-        displayMoney(station.value(QStringLiteral("totalPriceFenPerKwh")).toInt())), "metric"));
-    metrics->addWidget(makeLabel(QStringLiteral("%1 / %2 空闲")
-        .arg(station.value(QStringLiteral("availablePileCount")).toInt())
-        .arg(station.value(QStringLiteral("pileCount")).toInt()), "metric"));
-    metrics->addStretch();
-    metrics->addWidget(makeLabel(QStringLiteral("%1 km").arg(
-        station.value(QStringLiteral("distanceKm")).toDouble(), 0, 'f', 2), "distance"));
+    metrics->setSpacing(10);
+    const auto addStationMetric = [metrics](const QString &title, const QString &value,
+                                            const char *valueRole) {
+        auto *block = new QFrame;
+        block->setObjectName(QStringLiteral("stationMetricBlock"));
+        block->setProperty("metricKind", valueRole);
+        auto *blockLayout = new QHBoxLayout(block);
+        blockLayout->setContentsMargins(12, 9, 12, 9);
+        blockLayout->setSpacing(7);
+        blockLayout->addWidget(makeLabel(title, "stationMetricTitle"));
+        blockLayout->addStretch();
+        auto *valueLabel = makeLabel(value, valueRole);
+        valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        blockLayout->addWidget(valueLabel);
+        metrics->addWidget(block, 1);
+    };
+    addStationMetric(QStringLiteral("综合价"),
+        QStringLiteral("%1 / 度").arg(displayMoney(
+            station.value(QStringLiteral("totalPriceFenPerKwh")).toInt())),
+        "stationPriceValue");
+    addStationMetric(QStringLiteral("空闲"),
+        QStringLiteral("%1 / %2 个").arg(
+            station.value(QStringLiteral("availablePileCount")).toInt())
+            .arg(station.value(QStringLiteral("pileCount")).toInt()),
+        "stationAvailabilityValue");
     layout->addLayout(metrics);
+    auto *distanceLabel = makeLabel(QStringLiteral("距当前位置 %1 km").arg(
+        station.value(QStringLiteral("distanceKm")).toDouble(), 0, 'f', 2), "distance");
+    distanceLabel->setAlignment(Qt::AlignRight);
+    layout->addWidget(distanceLabel);
     auto *actions = new QHBoxLayout;
     auto *detailButton = makeButton(QStringLiteral("查看详情"), "secondary");
     auto *navigationButton = makeButton(QStringLiteral("导航到这里"), "primary");
@@ -947,8 +968,27 @@ QWidget *UserWindow::buildChargingPage()
     progressLayout->setContentsMargins(20, 20, 20, 20);
     progressLayout->setSpacing(15);
     progressLayout->addWidget(makeLabel(QStringLiteral("本次充电"), "sectionTitle"));
-    m_chargeStatisticsLabel = makeLabel(QStringLiteral("0 秒　0.00 kWh　¥0.00"), "metricLarge");
-    progressLayout->addWidget(m_chargeStatisticsLabel);
+    auto *statistics = new QHBoxLayout;
+    statistics->setSpacing(10);
+    const auto addStatistic = [statistics](const QString &title, const QString &initialValue,
+                                           QLabel **valueLabel) {
+        auto *block = new QFrame;
+        block->setObjectName(QStringLiteral("chargeMetricBlock"));
+        auto *blockLayout = new QVBoxLayout(block);
+        blockLayout->setContentsMargins(8, 11, 8, 10);
+        blockLayout->setSpacing(4);
+        auto *titleLabel = makeLabel(title, "chargeMetricTitle");
+        titleLabel->setAlignment(Qt::AlignCenter);
+        blockLayout->addWidget(titleLabel);
+        *valueLabel = makeLabel(initialValue, "chargeMetricValue");
+        (*valueLabel)->setAlignment(Qt::AlignCenter);
+        blockLayout->addWidget(*valueLabel);
+        statistics->addWidget(block, 1);
+    };
+    addStatistic(QStringLiteral("充电时间"), QStringLiteral("0 秒"), &m_chargeTimeValueLabel);
+    addStatistic(QStringLiteral("充电电量"), QStringLiteral("0.00 kWh"), &m_chargeEnergyValueLabel);
+    addStatistic(QStringLiteral("当前费用"), QStringLiteral("¥0.00"), &m_chargeAmountValueLabel);
+    progressLayout->addLayout(statistics);
     m_energyFlow = new EnergyFlowWidget(progressCard);
     progressLayout->addWidget(m_energyFlow);
     m_orderHintLabel = makeLabel(QString(), "hint");
@@ -1976,10 +2016,18 @@ void UserWindow::applyOrder(const QJsonObject &order)
         .arg(order.value(QStringLiteral("stationName")).toString(),
              order.value(QStringLiteral("pileNo")).toString(),
              order.value(QStringLiteral("orderNo")).toString()));
-    m_chargeStatisticsLabel->setText(QStringLiteral("%1 秒　%2 kWh　%3")
-        .arg(order.value(QStringLiteral("chargeSeconds")).toInt())
-        .arg(order.value(QStringLiteral("energyKwh")).toDouble(), 0, 'f', 2)
-        .arg(displayMoney(order.value(QStringLiteral("amountFen")).toInt())));
+    if (m_chargeTimeValueLabel) {
+        m_chargeTimeValueLabel->setText(QStringLiteral("%1 秒").arg(
+            order.value(QStringLiteral("chargeSeconds")).toInt()));
+    }
+    if (m_chargeEnergyValueLabel) {
+        m_chargeEnergyValueLabel->setText(QStringLiteral("%1 kWh").arg(
+            order.value(QStringLiteral("energyKwh")).toDouble(), 0, 'f', 2));
+    }
+    if (m_chargeAmountValueLabel) {
+        m_chargeAmountValueLabel->setText(displayMoney(
+            order.value(QStringLiteral("amountFen")).toInt()));
+    }
     setOrderStatus(status);
 }
 

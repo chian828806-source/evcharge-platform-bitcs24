@@ -27,6 +27,23 @@ QFrame#card[variant="pile"] { background: #fbfdfc; }
 QFrame#card[variant="orderHero"] { background: #173b34; border: none; }
 QFrame#card[variant="orderHero"] QLabel[role="cardTitle"], QFrame#card[variant="orderHero"] QLabel[role="caption"] { color: #f3fbf8; }
 QFrame#card[variant="chargeProgress"] { border-color: #c9e9df; }
+QFrame#chargeMetricBlock {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #e5f8f2, stop:1 #f7fcfa);
+    border: 1px solid #cce9e0;
+    border-radius: 13px;
+}
+QFrame#stationMetricBlock {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 #f2f6f7, stop:1 #fbfcfc);
+    border: 1px solid #dce6e7;
+    border-radius: 11px;
+}
+QFrame#stationMetricBlock[metricKind="stationAvailabilityValue"] {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 #edf7f3, stop:1 #fbfdfc);
+    border-color: #d6e9e2;
+}
 QFrame#card[variant="profile"] { background: #173b34; border: none; }
 QFrame#card[variant="profile"] QLabel[role="cardTitle"] { color: #ffffff; font-size: 17px; }
 QFrame#card[variant="profile"] QLabel[role="caption"] { color: #b8d6ce; }
@@ -125,6 +142,17 @@ QLabel[role="sectionTitle"] { color: #182b27; font-size: 16px; font-weight: 800;
 QLabel[role="cardTitle"] { color: #172824; font-size: 15px; font-weight: 800; }
 QLabel[role="metric"] { color: #174f43; font-size: 12px; font-weight: 700; }
 QLabel[role="metricLarge"] { color: #183c35; font-size: 15px; font-weight: 700; }
+QLabel[role="chargeMetricTitle"] { color: #648078; font-size: 10px; font-weight: 600; }
+QLabel[role="chargeMetricValue"] { color: #087f69; font-size: 17px; font-weight: 800; }
+QLabel[role="stationMetricTitle"] {
+    color: #476874; background: #e1ecef; border-radius: 7px;
+    padding: 4px 7px; font-size: 11px; font-weight: 800;
+}
+QFrame#stationMetricBlock[metricKind="stationAvailabilityValue"] QLabel[role="stationMetricTitle"] {
+    color: #ffffff; background: #54a58e;
+}
+QLabel[role="stationPriceValue"] { color: #263f47; font-size: 14px; font-weight: 800; }
+QLabel[role="stationAvailabilityValue"] { color: #24745f; font-size: 15px; font-weight: 900; }
 QLabel[role="distance"] { color: #14866d; font-size: 12px; font-weight: 700; }
 QLabel[role="walletAmount"] { color: #118268; font-size: 26px; font-weight: 800; }
 QLabel[role="avatar"] {

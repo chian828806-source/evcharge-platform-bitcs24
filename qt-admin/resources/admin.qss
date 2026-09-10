@@ -31,12 +31,38 @@ QPushButton:pressed { background: #075f50; }
 QPushButton:disabled { background: #c7d5d1; color: #758681; }
 QPushButton[kind="secondary"] { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f4fbf9, stop:1 #e4f3ef); color: #087f69; border: 1px solid #cee5de; }
 QPushButton[kind="danger"] { background: #fff0ef; color: #c53b32; }
-QTabWidget#managementTabs::pane { border: 0; border-top: 1px solid #dce7e4; background: #f2f6f8; top: -1px; }
-QTabWidget#managementTabs QTabBar { background: #ffffff; }
-QTabWidget#managementTabs QTabBar::tab { background: #ffffff; color: #61746f; padding: 16px 18px 14px 18px; margin: 0 2px; min-width: 104px; border: 0; border-bottom: 3px solid transparent; font-size: 15px; }
-QTabWidget#managementTabs QTabBar::tab:hover { color: #087f69; background: #f4faf8; }
-QTabWidget#managementTabs QTabBar::tab:selected { color: #087f69; background: #ffffff; border-bottom: 3px solid #0b9b7d; font-weight: 700; }
-QWidget#accountBar { background: #ffffff; }
+QTabWidget#managementTabs::pane {
+    border: 0; border-top: 1px solid #b9dcd1;
+    background: #f2f6f8; top: -1px;
+}
+QTabWidget#managementTabs QTabBar {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 #d7f1e9, stop:0.55 #e8f7f2, stop:1 #cceadf);
+}
+QTabWidget#managementTabs QTabBar::tab {
+    background: transparent; color: #285f53;
+    padding: 14px 20px; margin: 6px 3px;
+    min-width: 104px; border: 1px solid transparent;
+    border-radius: 10px; font-size: 15px; font-weight: 600;
+}
+QTabWidget#managementTabs QTabBar::tab:hover {
+    color: #075f4d; background: rgba(255, 255, 255, 150);
+    border-color: #a9d7ca;
+}
+QTabWidget#managementTabs QTabBar::tab:selected {
+    color: #ffffff;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 #087f69, stop:1 #19a57f);
+    border-color: #087f69; font-weight: 800;
+}
+QWidget#accountBar {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 #cceadf, stop:1 #dff3ed);
+}
+QWidget#accountBar QPushButton[kind="secondary"] {
+    background: rgba(255, 255, 255, 190);
+    border-color: #9bcfc0;
+}
 QTableWidget { background: white; alternate-background-color: #f8fbfa; border: 1px solid #dce8e4; border-radius: 10px; gridline-color: #edf2f0; selection-background-color: #d9f2ea; selection-color: #173b34; font-size: 16px; }
 QHeaderView::section { background: #edf5f2; color: #35514b; border: 0; border-bottom: 1px solid #d5e3df; padding: 12px 9px; font-size: 16px; font-weight: 700; }
 QTableWidget::item { padding: 10px 9px; border-bottom: 1px solid #edf2f0; }

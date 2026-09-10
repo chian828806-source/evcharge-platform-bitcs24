@@ -61,7 +61,9 @@ private:
     QLabel *m_profileIdLabel = nullptr;
     QLabel *m_profileStatusLabel = nullptr;
     QLabel *m_orderSummaryLabel = nullptr;
-    QLabel *m_chargeStatisticsLabel = nullptr;
+    QLabel *m_chargeTimeValueLabel = nullptr;
+    QLabel *m_chargeEnergyValueLabel = nullptr;
+    QLabel *m_chargeAmountValueLabel = nullptr;
     QLabel *m_membershipStatusLabel = nullptr;
     QLabel *m_membershipPeriodLabel = nullptr;
     QLabel *m_membershipBalanceLabel = nullptr;
