@@ -6,6 +6,7 @@
 
 #include "shared/protocol/protocolmessage.h"
 
+#include <QDebug>
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QTcpSocket>
@@ -20,7 +21,14 @@ SocketClient::SocketClient(QObject *parent)
             this, &SocketClient::connected);
     connect(m_socket, &QTcpSocket::disconnected,
             this, &SocketClient::disconnected);
+    // 演示日志只记录连接状态和地址，不输出Session或业务数据。
+    connect(m_socket, &QTcpSocket::connected, this, [this]() {
+        qInfo().noquote() << QStringLiteral("[USER-NET] CONNECTED  %1:%2")
+                                .arg(m_socket->peerAddress().toString())
+                                .arg(m_socket->peerPort());
+    });
     connect(m_socket, &QTcpSocket::disconnected, this, [this]() {
+        qInfo().noquote() << QStringLiteral("[USER-NET] DISCONNECTED");
         failAllPending(QStringLiteral("socket disconnected"));
     });
     connect(m_socket, &QTcpSocket::readyRead,
@@ -28,6 +36,9 @@ SocketClient::SocketClient(QObject *parent)
     // 页面不需要理解QAbstractSocket枚举，直接接收可显示的错误文本。
     connect(m_socket, &QTcpSocket::errorOccurred, this,
             [this](QAbstractSocket::SocketError) {
+                qWarning().noquote()
+                    << QStringLiteral("[USER-NET] ERROR      %1")
+                           .arg(m_socket->errorString());
                 emit socketError(m_socket->errorString());
             });
 }
@@ -40,6 +51,9 @@ void SocketClient::connectToServer(const QString &host, quint16 port)
     }
     // 新连接不能继承旧连接遗留的半条消息。
     m_codec.clear();
+    qInfo().noquote() << QStringLiteral("[USER-NET] CONNECTING %1:%2")
+                            .arg(host)
+                            .arg(port);
     m_socket->connectToHost(host, port);
 }
 
@@ -75,10 +89,16 @@ QString SocketClient::sendRequest(const QString &type,
     const RequestMessage request{
         actualRequestId, type, sessionId, payload
     };
-    if (m_socket->write(JsonLineCodec::encode(request.toJson())) < 0) {
+    const QByteArray encoded = JsonLineCodec::encode(request.toJson());
+    if (m_socket->write(encoded) < 0) {
         emit socketError(m_socket->errorString());
         return {};
     }
+
+    qInfo().noquote()
+        << QStringLiteral("[USER-NET] SEND       type=%1  requestId=%2  bytes=%3")
+               .arg(type, actualRequestId)
+               .arg(encoded.size());
 
     // 文档要求客户端按requestId维护待处理请求并提供超时反馈。
     clearPendingRequest(actualRequestId);
@@ -95,6 +115,9 @@ QString SocketClient::sendRequest(const QString &type,
         const QString type = iterator->type;
         iterator->timer->deleteLater();
         m_pendingRequests.erase(iterator);
+        qWarning().noquote()
+            << QStringLiteral("[USER-NET] TIMEOUT    type=%1  requestId=%2")
+                   .arg(type, actualRequestId);
         emit requestTimedOut(actualRequestId, type);
     });
     timer->start(timeoutMs > 0 ? timeoutMs : 5000);
@@ -131,7 +154,14 @@ void SocketClient::readAvailableData()
             emit protocolError(QStringLiteral("server returned invalid response"));
             continue;
         }
-        clearPendingRequest(response.value(QStringLiteral("requestId")).toString());
+        const QString responseRequestId =
+            response.value(QStringLiteral("requestId")).toString();
+        const int responseCode = response.value(QStringLiteral("code")).toInt();
+        qInfo().noquote()
+            << QStringLiteral("[USER-NET] RECEIVE    requestId=%1  code=%2")
+                   .arg(responseRequestId)
+                   .arg(responseCode);
+        clearPendingRequest(responseRequestId);
         // 业务页面再按requestId和code处理具体结果。
         emit responseReceived(response);
     }
