@@ -6,6 +6,7 @@
 
 | 目录 | 功能 |
 | --- | --- |
+| first-stage | 第一阶段六张测试表的 48 个用例追踪与统一运行入口 |
 | network | 公共协议、分帧、Session和Dispatcher测试 |
 | admin | 管理端服务和数据写入测试 |
 | integration | 真实服务端进程、TCP和临时SQLite的系统集成测试 |
@@ -17,3 +18,9 @@
 修改服务端入口、Registry 装配、User/Admin 路由边界或跨模块数据库链路时，至少运行 system-integration-tests。
 修改 ML 数据字段、特征、模型选择或输出 JSON 时，至少运行 `python -m unittest discover -s ml/tests -v`。
 修改数据库历史表或导出契约时，至少运行 `python -m unittest discover -s tests/database -v`。
+
+第一阶段交付前，在仓库根目录统一执行：
+
+```bash
+bash tests/first-stage/run-first-stage.sh
+```

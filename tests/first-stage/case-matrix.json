@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "scope": "first-stage",
+  "modules": {
+    "01-用户账户": [
+      {"id":"USR-001","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"testUserLoginProfileAndNicknameFlow"},
+      {"id":"USR-002","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"testUserLoginProfileAndNicknameFlow"},
+      {"id":"USR-003","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"testUserLoginProfileAndNicknameFlow"},
+      {"id":"USR-004","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"testOrderCreateAndActiveCheckFlow"},
+      {"id":"USR-005","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"testUserProfileWalletOrdersAndRecommendations"},
+      {"id":"USR-006","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"testUserProfileWalletOrdersAndRecommendations"},
+      {"id":"USR-007","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"avatar remove clears the profile path"},
+      {"id":"USR-008","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"recharge updates balance and record atomically"}
+    ],
+    "02-站点地图": [
+      {"id":"MAP-001","mode":"source-contract","file":"qt-user/map/mapnavigationpage.cpp","token":"MapNavigationPage"},
+      {"id":"MAP-002","mode":"source-contract","file":"qt-server/map/mapadapter.cpp","token":"MapAdapter"},
+      {"id":"MAP-003","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"testStationListAndDetailFlow"},
+      {"id":"MAP-004","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"testStationListAndDetailFlow"},
+      {"id":"MAP-005","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"testStationListAndDetailFlow"},
+      {"id":"MAP-006","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"testStationFavoriteFlow"},
+      {"id":"MAP-007","mode":"source-contract","file":"qt-user/map/stationmapwidget.cpp","token":"StationMapWidget"},
+      {"id":"MAP-008","mode":"source-contract","file":"qt-server/map/mapadapter.cpp","token":"MapAdapter"}
+    ],
+    "03-订单充电": [
+      {"id":"ORD-001","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"testOrderCreateAndActiveCheckFlow"},
+      {"id":"ORD-002","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"testOrderCreateAndActiveCheckFlow"},
+      {"id":"ORD-003","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"testOrderCreateAndActiveCheckFlow"},
+      {"id":"ORD-004","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"testOrderCreateAndActiveCheckFlow"},
+      {"id":"ORD-005","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"testOrderCreateAndActiveCheckFlow"},
+      {"id":"ORD-006","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"testOrderCreateAndActiveCheckFlow"},
+      {"id":"ORD-007","mode":"source-contract","file":"qt-server/services/user/orderservice.cpp","token":"InsufficientBalance"},
+      {"id":"ORD-008","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"repeated settlement is idempotent"}
+    ],
+    "04-管理端": [
+      {"id":"ADM-001","mode":"automated","file":"tests/integration/tst_systemintegration.cpp","token":"roleBoundary"},
+      {"id":"ADM-002","mode":"automated","file":"tests/integration/tst_systemintegration.cpp","token":"roleBoundary"},
+      {"id":"ADM-003","mode":"source-contract","file":"qt-admin/ui/adminpages.h","token":"DashboardPage"},
+      {"id":"ADM-004","mode":"automated","file":"tests/admin/tst_adminmanagement.cpp","token":"chargingOfflineIsIdempotent"},
+      {"id":"ADM-005","mode":"automated","file":"tests/admin/tst_adminmanagement.cpp","token":"createStationAndListPiles"},
+      {"id":"ADM-006","mode":"automated","file":"tests/admin/tst_adminmanagement.cpp","token":"freezeAndUnfreezeAreIdempotent"},
+      {"id":"ADM-007","mode":"automated","file":"tests/admin/tst_adminmanagement.cpp","token":"listOrdersForAdmin"},
+      {"id":"ADM-008","mode":"source-contract","file":"qt-admin/network/adminsocketclient.cpp","token":"AdminSocketClient"}
+    ],
+    "05-网络会话": [
+      {"id":"NET-001","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"testJsonLinesHandlesSplitAndStickyPackets"},
+      {"id":"NET-002","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"testJsonLinesRejectsOversizedTrailingPartialFrame"},
+      {"id":"NET-003","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"testRequestValidationAndResponseShape"},
+      {"id":"NET-004","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"testSessionAndDispatcherBoundaries"},
+      {"id":"NET-005","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"testKnownMessageRegistry"},
+      {"id":"NET-006","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"testUserLoginOverTcp"},
+      {"id":"NET-007","mode":"automated","file":"tests/network/tst_networkprotocol.cpp","token":"testUserClientRequestTimeout"},
+      {"id":"NET-008","mode":"source-contract","file":"qt-server/network/clientsession.cpp","token":"disconnected"}
+    ],
+    "06-设备通信": [
+      {"id":"DEV-001","mode":"source-contract","file":"qt-server/devices/deviceprotocol.h","token":"DeviceProtocol"},
+      {"id":"DEV-002","mode":"source-contract","file":"qt-server/devices/devicesession.cpp","token":"DeviceSession"},
+      {"id":"DEV-003","mode":"source-contract","file":"qt-server/devices/deviceregistry.cpp","token":"DeviceRegistry"},
+      {"id":"DEV-004","mode":"source-contract","file":"qt-server/devices/devicegatewayserver.cpp","token":"DeviceGatewayServer"},
+      {"id":"DEV-005","mode":"automated","file":"tests/admin/tst_adminmanagement.cpp","token":"chargingFaultStopsOrderAndWritesSystemLog"},
+      {"id":"DEV-006","mode":"automated","file":"tests/admin/tst_adminmanagement.cpp","token":"reservedFaultCancelsOrder"},
+      {"id":"DEV-007","mode":"automated","file":"tests/admin/tst_adminmanagement.cpp","token":"reconnectRestoresOnlyUnoccupiedOfflinePile"},
+      {"id":"DEV-008","mode":"automated","file":"tests/admin/tst_adminmanagement.cpp","token":"restartCorrectAckCompletesOnce"}
+    ]
+  }
+}

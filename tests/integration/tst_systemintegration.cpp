@@ -120,12 +120,16 @@ public:
         QSqlDatabase::removeDatabase(connectionName);
         m_tcpPort = unusedPort();
         m_webSocketPort = unusedPort();
-        if (!m_tcpPort || !m_webSocketPort || m_tcpPort == m_webSocketPort) {
+        m_devicePort = unusedPort();
+        if (!m_tcpPort || !m_webSocketPort || !m_devicePort
+            || m_tcpPort == m_webSocketPort || m_tcpPort == m_devicePort
+            || m_webSocketPort == m_devicePort) {
             *error = QStringLiteral("could not reserve distinct ephemeral ports"); return false;
         }
         m_process.setProcessChannelMode(QProcess::MergedChannels);
         m_process.start(serverBinary(), {QStringLiteral("--tcp-port"), QString::number(m_tcpPort),
                                          QStringLiteral("--websocket-port"), QString::number(m_webSocketPort),
+                                         QStringLiteral("--device-port"), QString::number(m_devicePort),
                                          QStringLiteral("--database"), m_databasePath,
                                          QStringLiteral("--avatar-dir"), m_dir.filePath(QStringLiteral("avatars"))});
         if (!m_process.waitForStarted(TimeoutMs)) { *error = m_process.errorString(); return false; }
@@ -175,6 +179,7 @@ private:
     QString m_databasePath;
     quint16 m_tcpPort = 0;
     quint16 m_webSocketPort = 0;
+    quint16 m_devicePort = 0;
     mutable int m_requestId = 0;
     QProcess m_process;
 };

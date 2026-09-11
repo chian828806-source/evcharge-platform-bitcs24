@@ -844,9 +844,6 @@ void testOrderCreateAndActiveCheckFlow()
     const ResponseMessage startResponse = dispatcher.dispatch(startRequest);
     pileCheck.exec(QStringLiteral("SELECT status FROM charging_pile WHERE id = 1"));
     pileCheck.next();
-    QSqlQuery couponCheck(database);
-    couponCheck.exec(QStringLiteral("SELECT status FROM coupon WHERE id=1"));
-    couponCheck.next();
     check(startResponse.code == ErrorCodes::Success
               && startResponse.data.value(QStringLiteral("order")).toObject()
                      .value(QStringLiteral("status")).toString() == QStringLiteral("CHARGING")
@@ -901,6 +898,9 @@ void testOrderCreateAndActiveCheckFlow()
               && pileCheck.value(1).toInt() > 0
               && pileCheck.value(2).toDouble() > 0.0,
           QStringLiteral("settlement deducts balance and accumulates pile statistics once"));
+    QSqlQuery couponCheck(database);
+    couponCheck.exec(QStringLiteral("SELECT status FROM coupon WHERE id=1"));
+    couponCheck.next();
     check(couponCheck.value(0).toString() == QStringLiteral("USED"),
           QStringLiteral("settlement marks the selected coupon as used"));
 
