@@ -22,6 +22,10 @@ ML 自动训练与生产级设备接入仍按各模块文档持续迭代。
 
 Spring Boot、MySQL 和 REST 不再作为项目主架构组成部分。
 
+> 第二阶段补充架构：`bigdata/` 提供独立的 Hadoop/Spark 分析子系统。它使用 Flask REST
+> 向 Vue + ECharts 提供**分析结果**，不替换一期 Qt/C++ 业务 Socket 服务。范围、契约和
+> 实施顺序见 [`docs/bigdata/README.md`](docs/bigdata/README.md)。
+
 ## 1. 项目目标
 
 系统最终应形成真实业务数据闭环：
@@ -135,6 +139,7 @@ evcharge-platform/
 ├── qt-device-simulator/    # 独立设备协议模拟器
 ├── web-dashboard/
 ├── ml/
+├── bigdata/                 # Phase 2：HDFS、Spark、Flask、MLlib 的目录骨架
 ├── docs/
 │   ├── 00-SRS-V1.0.md
 │   ├── 01-ARCHITECTURE.md
@@ -143,7 +148,8 @@ evcharge-platform/
 │   ├── 04-DATABASE.md
 │   ├── 05-GIT-WORKFLOW.md
 │   ├── 06-AGENT-GUIDE.md
-│   └── 07-DEVICE-PROTOCOL.md
+│   ├── 07-DEVICE-PROTOCOL.md
+│   └── bigdata/             # Phase 2 SRS、架构、Contract、数仓、API、验收
 ├── README.md
 └── .gitignore
 ```
@@ -162,6 +168,7 @@ evcharge-platform/
 | `docs/07-DEVICE-PROTOCOL.md` | 远程重启模拟与扩展设备协议 |
 | `docs/09-USER-BACKEND-DESIGN.md` | 用户、头像、钱包、地图、订单与推荐实现设计 |
 | `docs/10-SERVER-BACKEND-V1-DEMO.md` | 当前统一服务端的组成、运行和验证说明 |
+| `docs/bigdata/README.md` | 第二阶段大数据平台基线与文档导航 |
 
 ## 6. 当前待确认事项
 
