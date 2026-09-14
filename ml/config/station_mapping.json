@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "1.0",
+  "calendarTimezone": "America/New_York",
+  "stations": [
+    {
+      "sourceKey": "801 HIGH HOUSE ROAD|27513",
+      "stationId": 1,
+      "sourcePortCount": 2,
+      "projectPileCount": 4,
+      "label": "Bond Park"
+    },
+    {
+      "sourceKey": "113 WALNUT ST|27511",
+      "stationId": 2,
+      "sourcePortCount": 9,
+      "projectPileCount": 4,
+      "label": "Walnut Street"
+    },
+    {
+      "sourceKey": "228 AMBASSADOR LOOP|27513",
+      "stationId": 3,
+      "sourcePortCount": 2,
+      "projectPileCount": 4,
+      "label": "Page-Walker Hotel"
+    }
+  ]
+}

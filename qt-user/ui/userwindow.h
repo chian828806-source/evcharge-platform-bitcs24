@@ -1,0 +1,175 @@
+#pragma once
+
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QHash>
+#include <QSet>
+#include <QMainWindow>
+class QLabel;
+class QLineEdit;
+class EnergyFlowWidget;
+class MapNavigationPage;
+class QPushButton;
+class QSplitter;
+class QStackedWidget;
+class QVBoxLayout;
+class QTimer;
+class SocketClient;
+class StationMapWidget;
+class StationSheet;
+struct MapRoute;
+
+class UserWindow final : public QMainWindow
+{
+    Q_OBJECT
+
+public:
+    explicit UserWindow(QWidget *parent = nullptr);
+
+private:
+    enum Page {
+        Login,
+        Promotion,
+        Home,
+        StationDetail,
+        Charging,
+        Profile,
+        Favorites,
+        Orders,
+        Coupons,
+        Membership,
+        Navigation
+    };
+
+    enum class SessionMode {
+        None,
+        Real
+    };
+
+    SocketClient *m_socketClient = nullptr;
+    QStackedWidget *m_pages = nullptr;
+    QLabel *m_connectionLabel = nullptr;
+    QLabel *m_orderStatusLabel = nullptr;
+    QLabel *m_orderHintLabel = nullptr;
+    QLabel *m_balanceLabel = nullptr;
+    QLabel *m_nicknameLabel = nullptr;
+    MapNavigationPage *m_mapNavigationPage = nullptr;
+    StationMapWidget *m_stationMap = nullptr;
+    StationSheet *m_stationSheet = nullptr;
+    QSplitter *m_homeSplitter = nullptr;
+    QLabel *m_profilePhoneLabel = nullptr;
+    QLabel *m_profileIdLabel = nullptr;
+    QLabel *m_profileStatusLabel = nullptr;
+    QLabel *m_orderSummaryLabel = nullptr;
+    QLabel *m_chargeStatisticsLabel = nullptr;
+    QLabel *m_membershipStatusLabel = nullptr;
+    QLabel *m_membershipPeriodLabel = nullptr;
+    QLabel *m_membershipBalanceLabel = nullptr;
+    EnergyFlowWidget *m_energyFlow = nullptr;
+    QLabel *m_stationDetailTitle = nullptr;
+    QLabel *m_stationDetailSummary = nullptr;
+    QPushButton *m_stationFavoriteButton = nullptr;
+    QLabel *m_avatarLabel = nullptr;
+    QLineEdit *m_phoneEdit = nullptr;
+    QPushButton *m_startButton = nullptr;
+    QPushButton *m_cancelButton = nullptr;
+    QPushButton *m_stopButton = nullptr;
+    QPushButton *m_settleButton = nullptr;
+    QString m_sessionId;
+    SessionMode m_sessionMode = SessionMode::None;
+    QString m_loginRequestId;
+    QString m_routePlanRequestId;
+    QString m_avatarRequestId;
+    QString m_avatarRequestPath;
+    QString m_avatarPath;
+    QHash<QString, QString> m_requestTypes;
+    QString m_orderStatus = QStringLiteral("CREATED");
+    QJsonObject m_activeOrder;
+    QJsonObject m_selectedStation;
+    QJsonArray m_nearbyStations;
+    QJsonArray m_recommendedStations;
+    QJsonArray m_displayStations;
+    QJsonArray m_favoriteStations;
+    QJsonArray m_membershipProducts;
+    QVBoxLayout *m_stationListLayout = nullptr;
+    QVBoxLayout *m_pileListLayout = nullptr;
+    QVBoxLayout *m_orderListLayout = nullptr;
+    QVBoxLayout *m_favoriteListLayout = nullptr;
+    QVBoxLayout *m_couponListLayout = nullptr;
+    QVBoxLayout *m_membershipProductLayout = nullptr;
+    QTimer *m_orderPollTimer = nullptr;
+    QTimer *m_promotionTimer = nullptr;
+    QTimer *m_couponPollTimer = nullptr;
+    QHash<int, QWidget *> m_stationCards;
+    int m_balanceFenInFen = 0;
+    int m_selectedHomeStationId = -1;
+    int m_homeSheetStartHeight = 0;
+    bool m_homeSheetInitialized = false;
+    int m_promotionSecondsRemaining = 0;
+    QJsonArray m_coupons;
+    QSet<qint64> m_knownCouponIds;
+    bool m_couponSnapshotReady = false;
+    bool m_isMember = false;
+    int m_membershipRemainingDays = 0;
+    int m_membershipDiscountBps = 10000;
+    QString m_membershipExpiresAt;
+    double m_originLongitude = 121.538;
+    double m_originLatitude = 38.889;
+    QString m_originName = QStringLiteral("默认位置 · 甘井子区");
+    QString m_locationDistrict = QStringLiteral("甘井子区");
+    Page m_navigationSource = Home;
+    Page m_stationDetailSource = Home;
+
+    QWidget *buildLoginPage();
+    QWidget *buildPromotionPage();
+    QWidget *buildHomePage();
+    QWidget *buildStationDetailPage();
+    QWidget *buildChargingPage();
+    QWidget *buildProfilePage();
+    QWidget *buildFavoritesPage();
+    QWidget *buildOrdersPage();
+    QWidget *buildCouponsPage();
+    QWidget *buildMembershipPage();
+    QWidget *buildNavigationPage();
+    QWidget *buildPageHeader(const QString &eyebrow, const QString &title,
+                             const QString &subtitle = {});
+    QWidget *buildBottomNavigation(Page activePage);
+    QWidget *buildStationCard(const QJsonObject &station);
+    QWidget *buildPileCard(const QJsonObject &pile);
+    QWidget *buildOrderCard(const QJsonObject &order);
+
+    void showPage(Page page);
+    void showPromotion();
+    void finishPromotion();
+    void updatePromotionSkipText();
+    void openNavigation(const QJsonObject &station, Page source);
+    void requestRoutePlan(const MapRoute &route, bool driving);
+    void attemptLogin();
+    void setConnected(bool connected);
+    void setOrderStatus(const QString &status);
+    void showNotice(const QString &message, bool error = false);
+    void showRechargeDialog();
+    void showRenameDialog();
+    void uploadAvatar();
+    QString sendRequest(const QString &type, const QJsonObject &payload = {});
+    void requestInitialData();
+    void requestFavoriteList();
+    void toggleFavorite(int stationId);
+    void requestActiveOrder();
+    void applyUser(const QJsonObject &user);
+    void requestAvatar(const QString &avatarPath);
+    void resetAvatar();
+    void applyOrder(const QJsonObject &order);
+    void renderStations(const QJsonArray &stations);
+    void selectHomeStation(int stationId);
+    void setHomeSheetHeight(int sheetHeight);
+    void snapHomeSheet();
+    void renderStationDetail(const QJsonObject &station, const QJsonArray &piles);
+    void renderOrders(const QJsonArray &orders);
+    void renderFavorites(const QJsonArray &stations);
+    void renderCoupons(const QJsonArray &coupons);
+    void renderMembership();
+    void applyFavoriteState(int stationId, bool isFavorite);
+    void clearLayout(QVBoxLayout *layout);
+    void handleResponse(const QJsonObject &response);
+};

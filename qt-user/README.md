@@ -1,0 +1,78 @@
+﻿# qt-user — Qt 用户端
+
+本目录承载车主侧 Qt 界面，并提供可供页面复用的 SocketClient 与地图导航页组件。
+
+用户端是业务客户端，只连接 `qt-server`，不连接 `qt-admin`，不直接访问 SQLite。
+
+## 文件说明
+
+| 路径 | 功能 |
+| --- | --- |
+| network/ | TCP连接、请求发送和响应接收 |
+| qt-user-network.pro | qmake静态库工程 |
+| ui/ | 用户端页面、页面导航和交互状态 |
+| resources/ | 用户端统一 QSS 样式 |
+| qt-user.pro | 可运行的 Qt Widgets 用户端工程 |
+| map/mapnavigationpage.h/.cpp | U06 地图导航组件；使用 QWebEngineView 和腾讯 JavaScript API GL 展示可拖动、可缩放的真实地图与服务端路线 |
+| map/stationmapwidget.h/.cpp | U02 首页地图组件；展示模拟当前位置、附近站点图钉和站点选中状态 |
+| ui/stationsheet.h/.cpp | U02 站点列表抽屉；顶部把手支持鼠标/触摸拖动，并在半屏与全屏间吸附 |
+| qt-user-map.pro | 地图导航组件独立静态库工程（供单独编译或复用） |
+
+## UI V1 页面
+
+| 编号 | 页面 | 当前状态 |
+| --- | --- | --- |
+| U01 | 手机号登录 | 已接入 `USER_LOGIN`、格式校验和 Session 保存 |
+| U01A | 登录活动页 | 登录成功后展示本地活动图 3 秒；右上角可随时跳过，期间首页数据在后台加载 |
+| U02 | 首页/附近充电站 | 已接入附近站点、智能推荐列表、可交互地图和可拖动站点抽屉 |
+| U03 | 充电站详情 | 已接入站点详情、电桩状态和选桩下单 |
+| U04 | 当前充电/订单处理 | 已接入活动订单轮询、开始、停止、取消和结算 |
+| U05 | 我的 | 已接入资料、昵称、头像上传、钱包充值和订单列表 |
+| U06 | 地图导航 | 已接入 `QWebEngineView`、驾车/步行切换和服务端路线规划 |
+
+程序启动后会自动连接本机 `qt-server`。服务未连接时只显示离线与重试状态，
+不会创建虚拟会话或加载任何本地业务样例数据。
+
+## 构建运行
+
+在安装 Qt 6.2 或更高版本的环境中：
+
+```bash
+qmake qt-user/qt-user.pro
+make
+./evcharge-user
+```
+
+Windows 使用对应编译套件的 `mingw32-make` 或 `nmake`。
+
+## 后端联调状态
+
+冻结登录、头像读取、充电秒数和站点综合单价的 Socket 契约已在
+`docs/03-API.md` 冻结。U06 的路线展示页已接入：页面发送 `MAP_ROUTE_PLAN`，服务端
+`MapAdapter` 调用腾讯路线规划后返回距离、时长和解压后的路线折线；其余页面只以真实
+所有页面数据和业务状态均由 Socket 响应更新，服务未连接时禁止提交业务操作。
+
+U06 使用两类职责不同的配置：服务端通过 `TENCENT_MAP_KEY`（以及启用签名时的
+`TENCENT_MAP_SK`）调用 WebService 计算路线；用户端通过运行环境
+`TENCENT_MAP_JS_KEY` 加载腾讯 JavaScript API GL 并展示真实、可交互的地图。JS Key
+不是服务端 SK，必须单独创建并限制在地图页面的可信域名；两种 Key 都不得写入源码、
+资源文件或提交到 Git。
+
+## 页面调用原则
+
+页面只调用 `SocketClient::sendRequest`，不直接操作 `QTcpSocket`。页面保存 `sendRequest` 返回的 `requestId`，并在 `responseReceived` 信号中按 `requestId` 匹配响应。
+
+登录成功后，页面所属的Session对象应保存服务端返回的sessionId；之后的受保护请求都传入该值。
+
+## 地图页接入
+
+首页 U02 的 `StationMapWidget` 使用同一个 `TENCENT_MAP_JS_KEY` 展示模拟当前位置和
+服务端返回的附近站点坐标；点击地图图钉会高亮相应列表卡片。首页的 `StationSheet` 仅在
+顶部把手区域处理鼠标/触摸拖动，地图仍可独立平移和缩放。
+
+首页 U02 或站点详情 U03 创建 `MapRoute` 并调用 `MapNavigationPage::setRoute()`；
+页面通过 `retryRequested(route, mode)` 向上层发送 `MAP_ROUTE_PLAN`，再调用
+`setRoutePlan()` 将服务端确认的路线坐标叠加到腾讯 JavaScript API GL 真实底图；
+用户可拖动和缩放。开发时 `QWebEngineView` 使用 `https://localhost/` 作为页面来源，
+因此 JS Key 的域名白名单应允许 `localhost`。地图 Key 只在 Qt Creator 的本地运行环境中
+配置，不得写入 Qt 用户端源码、资源文件或 Git。

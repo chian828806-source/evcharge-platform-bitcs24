@@ -1,85 +1,19 @@
-# 远程重启与设备扩展规范
+# Device Simulator protocol
 
-## 1. 定位
+Device traffic is separate from the User/Admin TCP session protocol. The server listens on `--device-port` (default `18082`) using JSON Lines: one compact JSON object per newline. This is a simulator protocol, not OCPP, and it has no production-grade authentication or TLS.
 
-任务书明确要求管理端能够模拟发送远程重启指令。V1 必做范围是远程重启模拟，不要求完整设备网关、心跳、遥测或串口协议。
+## Messages
 
-完整设备接入可作为 OPTIONAL 扩展，不能替代 Qt 用户端与 Qt/C++ PC 服务端之间的 Socket 主业务通信。
+The first message must be `DEVICE_HELLO` with `messageId`, `pileId`, `pileNo`, `protocolVersion: "1.0"`, and `simulatorVersion`. The server validates the existing pile and pile number, then replies `DEVICE_HELLO_ACK` with `heartbeatIntervalSeconds` (2), `ratedPowerKw`, and the database-authoritative expected status. A newer valid connection replaces the prior connection for that pile.
 
-## 2. V1 必做范围
+Thereafter the simulator sends `DEVICE_HEARTBEAT` every two seconds, `DEVICE_TELEMETRY` (`powerKw`, `voltageV`, `currentA`, `temperatureC`, `sessionEnergyKwh`, `timestamp`) and `DEVICE_STATUS`. Fault states use `TEMP_HIGH`, `OVERVOLTAGE`, or `EMERGENCY_STOP` with a code/message. Telemetry is held only in server memory; heartbeat updates the pre-existing `charging_pile.last_heartbeat_at` field.
 
-远程重启流程：
+Server commands are `DEVICE_COMMAND` with stable `commandId`, `pileId`, `command` (`START_CHARGING`, `STOP_CHARGING`, or `RESTART`) and a payload. The simulator responds with `DEVICE_ACK` containing `commandId`, `pileId`, `command`, `success`, and `message`.
 
-```text
-管理员选择电桩
-        ↓
-点击远程重启
-        ↓
-PC 服务与管理端记录操作
-        ↓
-电桩状态变为 RESTARTING
-        ↓
-模拟处理完成
-        ↓
-返回 AVAILABLE 或原可用状态
-```
+## Safety and recovery
 
-## 3. 状态
+Only piles that completed HELLO during the current server process are managed. They time out after six seconds without heartbeat; this does not change untouched legacy piles at startup. Fault and loss of a managed device transition its pile to `FAULT`/`OFFLINE`; repeated reports are idempotent. Normal order state remains server authoritative, and normal start/stop controls are optional post-transaction effects so an offline simulator cannot break legacy User flows.
 
-```text
-AVAILABLE
-RESERVED
-CHARGING
-FAULT
-OFFLINE
-RESTARTING
-```
+On a valid reconnect, the server again reads the database-authoritative pile state. A managed `OFFLINE` pile with no active order or reservation is restored to `AVAILABLE`; `FAULT` remains `FAULT` after `DEVICE_HELLO` and must be recovered through the formal Admin restart flow. Reconnect never lets a simulator-reported normal state overwrite `RESERVED`, `CHARGING`, `FAULT`, or `RESTARTING`.
 
-远程重启只允许作用于存在的电桩。对于 `RESERVED` 或 `CHARGING` 状态电桩，V1 可拒绝重启并提示“电桩正在使用中”。
-
-## 4. Socket 主业务消息
-
-远程重启作为管理端主业务消息，定义在 `docs/03-API.md`：
-
-```text
-ADMIN_PILE_RESTART
-```
-
-示例：
-
-```json
-{
-  "requestId": "REQ-RESTART-001",
-  "type": "ADMIN_PILE_RESTART",
-  "sessionId": "ADMIN-S-001",
-  "payload": {
-    "pileId": 1
-  }
-}
-```
-
-## 5. 日志
-
-远程重启必须记录：
-
-- 管理员；
-- 电桩；
-- 操作时间；
-- 操作前状态；
-- 操作后状态；
-- 结果消息。
-
-## 6. OPTIONAL 完整设备接入
-
-如时间允许，可扩展：
-
-- Device Simulator；
-- TCP Socket 或 Serial；
-- HELLO；
-- HEARTBEAT；
-- STATUS；
-- TELEMETRY；
-- RESTART；
-- ACK。
-
-扩展协议进入开发前必须单独评审，不得影响 V1 必做功能。
+`ADMIN_PILE_RESTART` remains the only Admin restart API. A managed online device receives `RESTART` and the server moves `RESTARTING → AVAILABLE` only after a successful ACK; an ACK failure or timeout ends in `FAULT`. Piles never managed this run retain the legacy QTimer restart fallback.
