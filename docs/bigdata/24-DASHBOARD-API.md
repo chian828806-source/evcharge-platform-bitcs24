@@ -8,6 +8,11 @@ Base URL：`/api/v1`。所有接口为 `GET`、返回 JSON、面向分析数据�
 时间 query 使用 `from`、`to`（`YYYY-MM-DD`），站点可选 `stationId`；无 query 时由服务规定默认
 近 30 日，并在 `meta` 回显范围。金额字段一律 `revenueFen`，展示层自行除以 100。
 
+**Owner 是 C（Flask API），直接 Consumer 是 A（Dashboard Core）。** D（Dashboard UI）不得直接
+调用 Flask；它只消费 A 提供的公开 Store / ViewModel。数据链固定为 `ADS → C Flask → A API
+Client → A Adapter / Store → Public UI Contract → D Vue UI`。Qt WebSocket 可由 A 的 realtime
+adapter 合入同一 Store，但不改变历史 ADS 的 HTTP 口径。
+
 | Endpoint / ADS | 响应 `data` 字段（单位） | 空数据示例 |
 | --- | --- | --- |
 | `/dashboard/overview` / overview | `orderCount:int, energyKwh:double, revenueFen:int, onlinePileCount:int, utilizationRate:double` | `{ "orderCount":0,"energyKwh":0,"revenueFen":0,"onlinePileCount":0,"utilizationRate":0 }` |
@@ -27,4 +32,8 @@ Base URL：`/api/v1`。所有接口为 `GET`、返回 JSON、面向分析数据�
 ```
 
 `peakLevel` 仅允许 `LOW/MEDIUM/HIGH`；`predictedLoad`、`utilizationRate`、`ratio` 为 0–1。Vue
-只能按本文件消费 Flask；Qt WebSocket 若接入，仅作为单独标明的实时状态扩展。
+不直接消费本 HTTP Contract。A 必须将 API / Mock / WebSocket 转换为稳定的 Public UI Contract：
+`DashboardViewModel = { overview, energyTrend, revenueTrend, stationRanking, pileStatus,
+hourlyHeatmap, stationUtilization, prediction, dataQuality, source, loading, error }`。各 collection
+沿用上表字段；`source` 为 `mock|api|realtime`，`loading` 为布尔值，`error` 为可展示错误或 null。
+空数组、加载和错误均由 Core 正常表达，D 不负责重新取数或重算 KPI。

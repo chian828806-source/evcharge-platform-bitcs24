@@ -15,3 +15,7 @@ Socket、SQLite 业务规则、WebSocket 和 sklearn 基线仍由既有文档维
 | [27-BIGDATA-ACCEPTANCE.md](27-BIGDATA-ACCEPTANCE.md) | 演示与验收证据 |
 
 本基线的版本为 `v0.1-foundation`。后续实现只能扩展已定义契约，改变其含义必须走 CCR。
+
+最终 Ownership：A 为 Architecture / Dashboard Core / Integration；B 为 Data Pipeline 到 DWD；
+C 为 Warehouse / Analytics / Flask API；D 为 Dashboard UI / Visualization；E 为 Spark MLlib。
+其中 Dashboard 的公共 UI Contract 是 A 与 D 唯一共享边界。

@@ -19,13 +19,18 @@
 | `stations.csv` | `charging_station` | `station_id`；站点 | `station_id:int;N, station_no:string;N, name:string;N, district:string;Y, longitude:double;N, latitude:double;N, price_fen_per_kwh:int;N, service_fee_fen_per_kwh:int;N, status:string;N, created_at:timestamp;N` |
 | `piles.csv` | `charging_pile` | `pile_id`；电桩 | `pile_id:int;N, station_id:int;N, pile_no:string;N, type:string;N, power_kw:double;N, status:string;N, total_charge_count:int;N, total_charge_minutes:int;N, total_energy_kwh:double;N, updated_at:timestamp;N` |
 | `orders.csv` | `charging_order` | `order_id`；订单 | `order_id:int;N, order_no:string;N, user_id:int;N, station_id:int;N, pile_id:int;N, status:string;N, start_at:timestamp;Y, end_at:timestamp;Y, charge_minutes:int;N, energy_kwh:double;N, amount_fen:int;N, paid_at:timestamp;Y, created_at:timestamp;N` |
-| `sessions.csv` | `charging_session_history` | `source_session_key`；外部会话 | `source_session_key:string;N, station_id:int;N, start_at:timestamp;N, end_at:timestamp;N, duration_seconds:int;N, energy_kwh:double;N, source_name:string;N` |
+| `sessions.csv` | `charging_session_history` | `source_session_key`；外部会话 | `source_session_key:string;N, station_id:int;N, source_station_name:string;Y, start_at:timestamp;N, end_at:timestamp;N, duration_seconds:int;N, energy_kwh:double;N` |
 | `station_hourly_metrics.csv` | `station_hourly_metric` | `(station_id,hour_start)`；站点小时 | `station_id:int;N, hour_start:timestamp;N, total_pile_count:int;N, session_starts:int;N, energy_kwh:double;N, charging_pile_minutes:double;N, average_occupied_count:double;N, average_available_count:double;N, station_load:double;N, source_type:string;N` |
 
 `users.csv` 仅可包含上述最小分析字段；不得导出 phone、nickname、avatar、密码或钱包余额。
 `status` 的合法值与一期数据库一致：用户 `NORMAL/FROZEN`，站点 `NORMAL/DISABLED`，电桩
 `AVAILABLE/RESERVED/CHARGING/FAULT/OFFLINE/RESTARTING`，订单
 `CREATED/CHARGING/PENDING_PAYMENT/COMPLETED/CANCELLED`，电桩类型 `FAST/SLOW`。
+
+`source_station_name` 是一期 `charging_session_history` 的可空真实来源字段。数据集来源名称
+不是会话字段：它来自 `data_import_batch.source_name`；如 ingestion manifest 需要输出
+`source_name`，该字段必须标注为 **Derived Field**，转换为“按 `batch_id` 关联
+`data_import_batch` 取得的来源名称”，不得假定一期会话表含有此列。
 
 ## 3. 质量规则与注入
 

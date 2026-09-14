@@ -12,7 +12,8 @@ rolling_mean_24`；所有 lag 和窗口只使用目标时间之前的数据，�
 
 ## 2. 输出
 
-输出到 `ads_prediction`，然后通过 Flask，不直接写一期 SQLite。主键为
+输出到 `ads_prediction`，由 C 的 Flask 查询并交给 A 的 Dashboard Core，不直接写一期 SQLite。
+主键为
 `station_id + prediction_time + horizon + model_version`，字段如下：
 
 | 字段 | 规则 |

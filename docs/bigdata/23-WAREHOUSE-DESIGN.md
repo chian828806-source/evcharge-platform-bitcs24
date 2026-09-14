@@ -8,7 +8,7 @@ ODS 保留原始契约和摄取批次；DWD 是通过 DQ 规则的规范化明�
 | 层/表 | 来源 | 粒度、主键与分区 | 用途/下游 |
 | --- | --- | --- | --- |
 | `ods_user/station/pile/order/session/hourly_metric` | 22 号文档 CSV | 原文件记录；`dt,batch_id` | 可追溯原始层 |
-| `dwd_order_detail` | ods_order + station + pile | 每有效订单；`order_id`，`dt=paid_at` | 营收/电量事实 |
+| `dwd_order_detail` | ods_order + station + pile | 每合法订单；`order_id`，`dt=created_at` | 全量订单明细，供后续状态/营收分析 |
 | `dwd_charging_session_detail` | ods_session | 每有效会话；`source_session_key`，`dt=start_at` | 外部历史事实 |
 | `dwd_pile_detail` | ods_pile + station | 每电桩快照；`pile_id,dt` | 状态与容量维度 |
 | `dwd_station_hour_metric` | ods_hourly_metric | 每站每小时；`station_id,hour_start`，`dt` | 负荷主题事实 |
@@ -25,8 +25,11 @@ ODS 保留原始契约和摄取批次；DWD 是通过 DQ 规则的规范化明�
 
 ## 2. 指标口径
 
-- `revenue_fen`：仅 `COMPLETED` 订单按 `paid_at` 聚合的 `amount_fen` 之和。
-- `energy_kwh`：有效订单的 `energy_kwh` 之和；外部会话不能混入营收。
+- `revenue_fen`：DWS/ADS 从 DWD 筛选 `status = COMPLETED` 且 `paid_at` 非空，再按 `paid_at`
+  的业务日期聚合 `amount_fen`。DWD 保留 CREATED、CHARGING、PENDING_PAYMENT、CANCELLED 等
+  合法订单，故不按可空 `paid_at` 分区。
+- `energy_kwh`：营收口径中的电量与 `revenue_fen` 使用同一已支付订单筛选；外部会话只能用于
+  历史负荷/模型分析，不能混入业务营收。
 - `utilization_rate`：`charging_pile_minutes / (total_pile_count × window_minutes)`，范围 0–1；
   只包含 CHARGING，不含 RESERVED/FAULT/OFFLINE/RESTARTING。
 - `available_count`：`AVAILABLE` 电桩数；`online_count` 不含 `OFFLINE`。
