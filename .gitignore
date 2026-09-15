@@ -4,6 +4,10 @@ GIT-AGENT-HANDOFF.md
 # Dashboard V2 local Node.js dependencies and build output.
 /web-dashboard/v2/node_modules/
 /web-dashboard/v2/dist/
+/web-dashboard/v2/.env.local
+
+# Second-stage generated parquet, Spark models, reports and dashboard snapshots.
+/bigdata/runtime/
 
 # Qt Creator personal kit/run settings can contain local API keys.
 *.pro.user

@@ -1,0 +1,14 @@
+{
+  "seed": 20260915,
+  "batch_id": "BD-20260915-PIPELINE-DEMO",
+  "business_date": "2026-09-15",
+  "injection_rate": 0.02,
+  "scale": {
+    "users": 100,
+    "stations": 8,
+    "piles_per_station": 8,
+    "orders": 1000,
+    "sessions": 500,
+    "metric_days": 35
+  }
+}
