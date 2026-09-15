@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 
+# Raw/ODS 的表头以 22 号数据契约为准。生成器只生成这些字段，避免把一期敏感字段带入分析链路。
 DATASETS: dict[str, list[str]] = {
     "users": ["user_id", "status", "created_at"],
     "stations": [
@@ -77,7 +78,7 @@ def append_injections(
     count: int,
     factories: list[tuple[str, Callable[[dict[str, Any]], dict[str, Any]]]],
 ) -> tuple[list[dict[str, Any]], Counter[str]]:
-    """Append one defective copy per factory invocation without mutating valid records."""
+    """Append defective copies instead of changing valid rows, so the original business sample remains auditable."""
     injected: Counter[str] = Counter()
     for index in range(count):
         rule_id, factory = factories[index % len(factories)]
@@ -98,6 +99,7 @@ def generate(config: dict[str, Any], output_dir: Path) -> dict[str, Any]:
     districts = ["甘井子区", "沙河口区", "西岗区", "中山区", "旅顺口区"]
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # 先生成完全合法的基线数据，再额外追加脏记录，避免产生无法解释的随机错误。
     users = [
         {
             "user_id": index,
@@ -240,6 +242,8 @@ def generate(config: dict[str, Any], output_dir: Path) -> dict[str, Any]:
                     }
                 )
 
+    # 六类 DQ 问题分散注入。复制主键会同时让原记录与复制记录触发重复校验，
+    # 因此 rejected 行数可能高于 injected_rows。
     injection_counts: dict[str, Counter[str]] = {}
     users, injection_counts["users"] = append_injections(
         "users", users, max(1, round(len(users) * rate)),
@@ -304,6 +308,7 @@ def generate(config: dict[str, Any], output_dir: Path) -> dict[str, Any]:
         "sessions": sessions,
         "station_hourly_metrics": metrics,
     }
+    # manifest 是批次可追溯性的入口：ODS、质量报告、DWD 应使用同一个 batch_id。
     manifest: dict[str, Any] = {
         "batch_id": config["batch_id"],
         "business_date": config["business_date"],

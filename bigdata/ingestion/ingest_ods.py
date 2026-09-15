@@ -45,6 +45,7 @@ def prepare_target(path: str, replace: bool) -> None:
     if exists(path):
         if not replace:
             raise FileExistsError(f"HDFS target already exists: {path}. Use --replace only to replace this batch.")
+        # replace 的删除范围限制在 date + batch 的精确路径，避免误删其他演示批次。
         run_hdfs("-rm", "-r", "-f", path)
     run_hdfs("-mkdir", "-p", path)
 
@@ -68,6 +69,7 @@ def main() -> None:
             raise FileNotFoundError(f"Missing Raw CSV: {source}")
         target = f"{hdfs_root}/ods/{dataset}/dt={args.business_date}/batch={args.batch_id}"
         prepare_target(target, args.replace)
+        # ODS 保持原文件不变；清洗、类型转换和去重必须等到质量作业阶段才进行。
         run_hdfs("-put", str(source), target)
         hdfs_file = f"{target}/{source.name}"
         if not exists(hdfs_file):
@@ -77,6 +79,7 @@ def main() -> None:
             "hdfs_path": hdfs_file,
         }
 
+    # 单独的 HDFS manifest 供质量作业读取准确的 ingested_at、哈希和来源路径。
     ingestion_manifest = {
         "batch_id": args.batch_id,
         "business_date": args.business_date,

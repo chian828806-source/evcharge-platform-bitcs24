@@ -22,6 +22,7 @@ check_command 'java available' java -version
 check_command 'python3 available' python3 --version
 check_command 'spark-submit available' spark-submit --version
 check_command 'HDFS root listable' hdfs dfs -ls /
+# 只创建固定的空目录验证写权限，不触碰任何 ODS/DWD 业务批次。
 check_command 'HDFS /evcharge writable' bash -c 'hdfs dfs -mkdir -p /evcharge/_healthcheck && hdfs dfs -test -d /evcharge/_healthcheck'
 
 if ((failures > 0)); then

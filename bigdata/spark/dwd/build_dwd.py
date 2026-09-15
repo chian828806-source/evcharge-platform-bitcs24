@@ -30,10 +30,12 @@ def dwd_path(root: str, table: str, date: str, batch_id: str) -> str:
 
 
 def write_batch(frame: DataFrame, path: str, replace: bool) -> None:
+    # 默认 errorifexists 防止覆盖历史批次；演示重跑才由调用方显式传入 --replace。
     frame.write.mode("overwrite" if replace else "errorifexists").parquet(path)
 
 
 def audit_columns(alias: str) -> list[F.Column]:
+    # 每张 DWD 表都携带同一组审计字段，便于 C 追溯回摄取批次。
     return [
         F.col(f"{alias}.batch_id").alias("batch_id"),
         F.col(f"{alias}.source_file").alias("source_file"),
@@ -44,6 +46,7 @@ def audit_columns(alias: str) -> list[F.Column]:
 
 
 def build_order_detail(orders: DataFrame, stations: DataFrame, piles: DataFrame) -> DataFrame:
+    # 站点和电桩属性作为订单发生时的批次快照写入，C 无需绕过 DWD 再读 ODS。
     return orders.alias("o").join(stations.alias("s"), "station_id", "inner").join(piles.alias("p"), "pile_id", "inner").select(
         F.col("o.order_id"), F.col("o.order_no"), F.col("o.user_id"), F.col("o.station_id"),
         F.col("s.station_no"), F.col("s.name").alias("station_name"), F.col("s.district"), F.col("s.status").alias("station_status"),
@@ -54,6 +57,7 @@ def build_order_detail(orders: DataFrame, stations: DataFrame, piles: DataFrame)
 
 
 def build_session_detail(sessions: DataFrame, stations: DataFrame) -> DataFrame:
+    # 外部会话与一期订单分开保存，避免其电量被错误计入一期业务营收。
     return sessions.alias("x").join(stations.alias("s"), "station_id", "inner").select(
         F.col("x.source_session_key"), F.col("x.station_id"), F.col("s.station_no"),
         F.col("s.name").alias("station_name"), F.col("s.district"), F.col("s.status").alias("station_status"),

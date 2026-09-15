@@ -120,6 +120,7 @@ def any_of(conditions: list[F.Column]) -> F.Column:
 def add_base_checks(raw: DataFrame, dataset: str, batch_id: str, ingested_at: str) -> DataFrame:
     spec = SPECS[dataset]
     columns = spec["columns"]
+    # CSV 先统一按字符串读取。保留原值后再 cast，才能把类型错误的记录完整写入 rejected。
     frame = raw.select(*[F.col(name).cast("string").alias(name) for name in columns])
     frame = frame.withColumn("source_file", F.regexp_extract(F.input_file_name(), r"([^/]+)$", 1))
     frame = frame.withColumn("raw_record", F.to_json(F.struct(*[F.col(name) for name in columns])))
@@ -127,15 +128,18 @@ def add_base_checks(raw: DataFrame, dataset: str, batch_id: str, ingested_at: st
         frame = frame.withColumn(f"_t_{name}", F.col(name).cast(data_type))
 
     primary_key = spec["primary_key"]
+    # DQ-001：主键为空或重复。主键为空不再重复归类为 DQ-002，保证原因清晰。
     key_blank = any_of([empty_string(name) for name in primary_key])
     key_typed = [F.col(f"_t_{name}") for name in primary_key]
     duplicate = (~key_blank) & (F.count(F.lit(1)).over(Window.partitionBy(*key_typed)) > 1)
+    # DQ-002：非主键必填字段为空，或非空字符串无法转换为目标类型。
     required_non_key = [name for name in spec["required"] if name not in primary_key]
     required_missing = any_of([empty_string(name) for name in required_non_key])
     type_invalid = any_of([
         (~empty_string(name)) & F.col(f"_t_{name}").isNull()
         for name, data_type in columns.items() if data_type != "string"
     ])
+    # DQ-003、DQ-005 只在类型可解析时检查，避免一条记录出现误导性的重复原因。
     range_invalid = any_of([
         F.col(f"_t_{name}").isNotNull() & invalid(F.col(f"_t_{name}"))
         for name, invalid in spec["numeric_rules"]
@@ -182,6 +186,7 @@ def add_base_checks(raw: DataFrame, dataset: str, batch_id: str, ingested_at: st
 
 def add_fk_check(frame: DataFrame, reference: DataFrame, left_column: str, reference_column: str, temporary: str) -> DataFrame:
     reference_key = reference.select(F.col(reference_column).alias(temporary)).distinct()
+    # left join 保留待检查的原始行；关联不到才标记 DQ-006，而不是在 join 时静默丢行。
     joined = frame.join(reference_key, F.col(left_column) == F.col(temporary), "left")
     missing = F.col(left_column).isNotNull() & F.col(temporary).isNull()
     return joined.withColumn("_dq006", F.col("_dq006") | missing).drop(temporary)
@@ -218,6 +223,7 @@ def finalise(frame: DataFrame, dataset: str, business_date: str) -> tuple[DataFr
         F.when(F.col("_dq005"), F.lit("枚举值不合法")),
         F.when(F.col("_dq006"), F.lit("关联站点或电桩不存在")),
     ), lambda item: item.isNotNull())
+    # 一条记录可同时命中多条规则，因此用数组完整保存全部规则和原因。
     with_results = frame.withColumn("rule_ids", rules).withColumn("reasons", reasons)
     typed_columns = [F.col(f"_t_{name}").alias(name) for name in SPECS[dataset]["columns"]]
     accepted = with_results.where(F.size(F.col("rule_ids")) == 0).select(
@@ -255,6 +261,8 @@ def main() -> None:
             source = f"{root}/ods/{dataset}/dt={args.business_date}/batch={args.batch_id}/{dataset}.csv"
             prepared[dataset] = add_base_checks(spark.read.option("header", "true").csv(source), dataset, args.batch_id, ingested_at)
 
+        # 外键校验必须按依赖顺序执行：站点 → 电桩 → 订单；会话和小时指标只依赖站点。
+        # 下游只认可质量通过的维度记录，避免脏维度扩散到 DWD。
         valid_stations = prepared["stations"].where(~(F.col("_dq001") | F.col("_dq002") | F.col("_dq003") | F.col("_dq004") | F.col("_dq005")))
         prepared["piles"] = add_fk_check(prepared["piles"], valid_stations, "_t_station_id", "_t_station_id", "_fk_station_id")
         valid_piles = prepared["piles"].where(~(F.col("_dq001") | F.col("_dq002") | F.col("_dq003") | F.col("_dq004") | F.col("_dq005") | F.col("_dq006")))
