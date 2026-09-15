@@ -18,5 +18,17 @@ PySpark、Raw/ODS/DWD Contract。
 公共 Contract。
 ## Future Implementation
 实现 DWD 表、清洗和拒绝隔离。
+
+## Run
+
+在 Hadoop 虚拟机执行：
+
+```bash
+spark-submit bigdata/spark/dwd/build_dwd.py \
+  --business-date 2026-09-15 \
+  --batch-id BD-20260915-001
+```
+
+作业只读取 B 发布的 quality accepted 数据，输出四张 Parquet DWD 表；默认拒绝覆盖已有输出。
 ## Acceptance
 C 可只读取 DWD；非支付订单也按 `created_at` 分区保留。

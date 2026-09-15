@@ -14,7 +14,16 @@ B（Data Pipeline）。
 密钥、生产数据、机器绝对路径或业务实现。
 ## Public Contract
 HDFS 可写与 `spark-submit` 可运行的环境能力。
-## Future Implementation
-增加容器/虚拟机配置与检查脚本。
+## Run
+
+在 Hadoop 虚拟机执行：
+
+```bash
+bash bigdata/environment/check_environment.sh
+```
+
+脚本只创建可重复使用的 `/evcharge/_healthcheck` 目录，不修改一期数据库或业务数据。
+
+完整演示命令见 [B-PIPELINE-RUNBOOK.md](B-PIPELINE-RUNBOOK.md)。
 ## Acceptance
 Raw CSV 能写入 HDFS ODS，且版本与健康检查可复现。
