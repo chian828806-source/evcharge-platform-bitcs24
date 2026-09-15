@@ -14,6 +14,8 @@ PySpark、Raw/ODS/DWD Contract。
 改写 Raw、放宽质量契约、直接实现 DWS/ADS/API/ML。
 ## Public Contract
 [contracts/dwd/README.md](../../contracts/dwd/README.md)。
+字段设计提案见 [DWD-SCHEMA-DRAFT.md](DWD-SCHEMA-DRAFT.md)；该文件在 A、C 评审前不视为正式
+公共 Contract。
 ## Future Implementation
 实现 DWD 表、清洗和拒绝隔离。
 ## Acceptance
