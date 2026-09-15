@@ -23,7 +23,8 @@ export class HttpClient {
   constructor(
     private readonly baseUrl: string,
     private readonly timeoutMs: number,
-    private readonly fetchImpl: FetchLike = fetch
+    // Chromium 的原生 fetch 作为对象成员调用时必须保留 Window/globalThis 上下文。
+    private readonly fetchImpl: FetchLike = globalThis.fetch.bind(globalThis)
   ) {}
 
   async get<T>(endpoint: string, query?: Record<string, string | number | undefined>): Promise<T> {

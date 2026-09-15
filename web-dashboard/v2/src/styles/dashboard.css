@@ -1,0 +1,13 @@
+/* 大屏基础视觉：深色科技风，适配 1280px 及以上演示屏幕。 */
+:root { font-family: Inter, "Microsoft YaHei", sans-serif; color: #e8f7ff; background: #041522; font-synthesis: none; }
+* { box-sizing: border-box; } body { margin: 0; min-width: 1100px; min-height: 100vh; background: radial-gradient(circle at 50% 0, #0d3650 0, #061b2b 42%, #03111c 100%); }
+button { color: #062237; border: 0; border-radius: 5px; background: #27d8b8; padding: 8px 14px; font-weight: 700; cursor: pointer; }
+.dashboard-shell { width: min(1920px, 100%); margin: auto; padding: 18px 24px 30px; }
+.topbar { display: flex; justify-content: space-between; align-items: center; padding: 8px 5px 16px; border-bottom: 1px solid #1d5975; }
+.eyebrow { color: #39dec3; font-size: 11px; letter-spacing: .24em; }.topbar h1 { margin: 5px 0 0; font-size: 27px; letter-spacing: .08em; }
+.header-status { display: flex; gap: 12px; align-items: center; color: #a9c7dc; font-size: 13px; }.header-status time { min-width: 150px; }
+.status-dot { width: 9px; height: 9px; border-radius: 50%; background: #ffc857; box-shadow: 0 0 10px currentColor; }.status-dot.success { background: #24deb5; }.status-dot.error { background: #ff718d; }
+.notice { margin: 12px 0; padding: 9px 14px; border: 1px solid #2c6b83; background: #0a2c40cc; color: #c5dfec; font-size: 13px; text-align: center; }
+.kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 12px; }.kpi { min-height: 104px; padding: 20px 24px; }.kpi span,.kpi small { display: block; color: #8fb4c9; }.kpi strong { display: block; margin: 8px 0 4px; color: #39e4c3; font-size: 27px; }.kpi i { font-size: 13px; font-style: normal; }.kpi small { font-size: 9px; letter-spacing: .16em; }
+.grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }.panel { position: relative; min-height: 300px; padding: 12px; overflow: hidden; border: 1px solid #1e5872; background: linear-gradient(145deg, #09283dcc, #061d2dcc); box-shadow: inset 0 0 24px #0b4c6766; }.panel::before { content: ""; position: absolute; left: 0; top: 0; width: 46px; border-top: 2px solid #2de0c1; }.panel.wide { grid-column: span 2; }.panel h2 { height: 24px; margin: 0 0 4px; color: #d9f4ff; font-size: 15px; letter-spacing: .06em; }.chart-view { width: 100%; height: 248px; }.quality { position: absolute; left: 0; right: 0; bottom: 8px; margin: 0; text-align: center; color: #8fb4c9; font-size: 11px; }
+@media (max-width: 1400px) { .grid { grid-template-columns: repeat(3, 1fr); }.panel.wide { grid-column: span 2; }.kpis { grid-template-columns: repeat(5, minmax(190px, 1fr)); } }
