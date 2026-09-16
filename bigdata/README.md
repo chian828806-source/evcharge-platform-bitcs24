@@ -14,13 +14,15 @@ Qt/C++ 服务端，也不修改一期业务状态机。
 | `contracts/`、`integration/`、`scripts/`、`web-dashboard/src/core/`（规划） | A | 架构/Contract、Dashboard Core、编排、验收与集成 |
 | `web-dashboard/src/views/`、`components/`、`charts/`、`styles/`（规划） | D | Vue 页面、ECharts、交互、布局与视觉表现 |
 
-目录当前只提供接口和文档骨架。实施代码必须遵守 [contracts/README.md](contracts/README.md)，
-并在各自 feature 分支完成后才进入 `develop`。
+正式 UrbanEV 演示入口、下载说明和字段映射见
+[urbanev/README.md](urbanev/README.md)。通用随机数据生成器只保留作 Contract 和 DQ 回归夹具；
+UrbanEV 的负荷、电量、价格仍来自官方 Raw，仅缺失的用户/订单关系由固定 seed 补全并明确标记。
+实施代码必须遵守 [contracts/README.md](contracts/README.md)。
 
 ## 数据流
 
 ```text
-模拟/导出 CSV → HDFS ODS → 质量检测与清洗 → DWD → DWS → ADS → C: Flask
+业务导出/UrbanEV Raw → HDFS ODS → 质量检测与清洗 → DWD → DWS → ADS → C: Flask
                                                      │                 ↓
                                                      └→ ML 特征 → E: MLlib → ads_prediction
                                                                        ↓

@@ -32,6 +32,14 @@
 `source_name`，该字段必须标注为 **Derived Field**，转换为“按 `batch_id` 关联
 `data_import_batch` 取得的来源名称”，不得假定一期会话表含有此列。
 
+`station_hourly_metrics.source_type` 允许 `BUSINESS/CARY_SIMULATION/URBANEV`。`URBANEV`
+只用于 DOI `10.5061/dryad.np5hqc04z` 的站点级 5 分钟 Raw 经
+`bigdata/urbanev/prepare_raw.py` 映射所得数据。UrbanEV 没有用户、订单和逐会话明细；适配器可用
+固定 seed 生成匿名用户和关系完整的模拟订单/会话，但 `order_no/source_session_key` 必须使用
+`URBANEV-SYN-` 前缀，manifest 必须记录 `synthetic_dimensions`。这些记录用于联调主外键、订单表和
+大屏会话量，不得冒充真实用户或支付流水，也不得进入正式营收口径。官方站点小时电量、时长、
+占用和负荷总量必须在拆分到模拟订单前后保持不变。
+
 ## 3. 质量规则与注入
 
 | 规则 | 作用数据 | 不合格条件 | 处置 |

@@ -46,6 +46,13 @@ const filteredStations = computed(() => {
   const rows = store.stationUtilization.data ?? [];
   return keyword ? rows.filter(row => (row.stationName + ' ' + (row.date ?? '')).toLowerCase().includes(keyword)) : rows;
 });
+const predictionRows = computed(() => [...(store.prediction.data ?? [])].sort((left, right) => {
+  const timeOrder = left.predictionTime.localeCompare(right.predictionTime);
+  if (timeOrder !== 0) return timeOrder;
+  const horizonOrder = { '1h': 1, '6h': 6, '24h': 24 } as const;
+  return horizonOrder[left.horizon] - horizonOrder[right.horizon] || left.stationId - right.stationId;
+}));
+const primaryPrediction = computed(() => predictionRows.value.find(row => row.horizon === '1h') ?? predictionRows.value[0]);
 
 async function refresh() {
   if (refreshing.value) return;
@@ -54,14 +61,14 @@ async function refresh() {
 }
 
 const operationOption = computed<EChartsOption>(() => ({
-  tooltip, color: [colors[0], colors[5]], legend: { top: 2, left: 'center', itemGap: 22, itemWidth: 12, itemHeight: 8, textStyle: { color: '#667085', fontSize: 11 }, data: ['充电量', '订单量'] },
+  tooltip, color: [colors[0], colors[5]], legend: { top: 2, left: 'center', itemGap: 22, itemWidth: 12, itemHeight: 8, textStyle: { color: '#667085', fontSize: 11 }, data: ['充电量', '会话启动量'] },
   grid: { left: 58, right: 58, top: 58, bottom: 36 }, xAxis: { type: 'category', boundaryGap: false, data: store.energyTrend.data?.map(row => shortDate(row.date)) ?? [], ...axis },
-  yAxis: [{ type: 'value', name: 'kWh', nameGap: 14, nameTextStyle: { color: '#98a1b2', padding: [0, 0, 0, 6] }, ...axis }, { type: 'value', name: '订单数', nameGap: 14, nameTextStyle: { color: '#98a1b2', padding: [0, 6, 0, 0] }, ...axis }],
-  series: [{ name: '充电量', type: 'line', smooth: true, symbol: 'circle', symbolSize: 7, lineStyle: { width: 3 }, areaStyle: { color: 'rgba(49,87,213,.11)' }, data: store.energyTrend.data?.map(row => row.energyKwh) ?? [] }, { name: '订单量', type: 'line', smooth: true, yAxisIndex: 1, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, data: store.energyTrend.data?.map(row => row.orderCount) ?? [] }]
+  yAxis: [{ type: 'value', name: 'kWh', nameGap: 14, nameTextStyle: { color: '#98a1b2', padding: [0, 0, 0, 6] }, ...axis }, { type: 'value', name: '启动量', nameGap: 14, nameTextStyle: { color: '#98a1b2', padding: [0, 6, 0, 0] }, ...axis }],
+  series: [{ name: '充电量', type: 'line', smooth: true, symbol: 'circle', symbolSize: 7, lineStyle: { width: 3 }, areaStyle: { color: 'rgba(49,87,213,.11)' }, data: store.energyTrend.data?.map(row => row.energyKwh) ?? [] }, { name: '会话启动量', type: 'line', smooth: true, yAxisIndex: 1, symbol: 'none', lineStyle: { width: 2, type: 'dashed' }, data: store.energyTrend.data?.map(row => row.orderCount) ?? [] }]
 }));
 const revenueOption = computed<EChartsOption>(() => ({
   tooltip, color: [colors[0]], grid: { left: 56, right: 22, top: 24, bottom: 36 }, xAxis: { type: 'category', data: store.revenueTrend.data?.map(row => shortDate(row.date)) ?? [], ...axis },
-  yAxis: { type: 'value', name: '元', nameTextStyle: { color: '#98a1b2' }, ...axis }, series: [{ name: '营收', type: 'bar', barMaxWidth: 26, data: store.revenueTrend.data?.map(row => finite(row.revenueFen) ? row.revenueFen / 100 : 0) ?? [], itemStyle: { borderRadius: [7, 7, 0, 0], color: colors[0] } }]
+  yAxis: { type: 'value', name: '元', nameTextStyle: { color: '#98a1b2' }, ...axis }, series: [{ name: '估算收入', type: 'bar', barMaxWidth: 26, data: store.revenueTrend.data?.map(row => finite(row.revenueFen) ? row.revenueFen / 100 : 0) ?? [], itemStyle: { borderRadius: [7, 7, 0, 0], color: colors[0] } }]
 }));
 const pileOption = computed<EChartsOption>(() => ({
   color: colors, tooltip: { trigger: 'item', formatter: '{b}<br/>{c} 台 · {d}%' }, legend: { orient: 'vertical', right: 6, top: 'middle', itemWidth: 10, itemHeight: 10, textStyle: { color: '#667085', fontSize: 11 } },
@@ -74,10 +81,10 @@ const rankingOption = computed<EChartsOption>(() => {
 const heatmapOption = computed<EChartsOption>(() => ({
   tooltip: { position: 'top' }, grid: { left: 56, right: 22, top: 20, bottom: 58 }, xAxis: { type: 'category', data: Array.from({ length: 24 }, (_, i) => String(i)), ...axis },
   yAxis: { type: 'category', data: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'], ...axis }, visualMap: { min: 0, max: 1, orient: 'horizontal', left: 'center', bottom: 4, itemWidth: 12, itemHeight: 110, text: ['高', '低'], textStyle: { color: '#7e8799', fontSize: 10 }, inRange: { color: ['#edf1ff', '#9eb4f3', '#3157d5'] } },
-  series: [{ type: 'heatmap', data: store.hourlyHeatmap.data?.map(row => [Math.min(23, Math.max(0, row.hour)), Math.min(6, Math.max(0, row.dayOfWeek - 1)), Math.min(1, Math.max(0, row.utilizationRate))]) ?? [], itemStyle: { borderColor: '#fff', borderWidth: 2, borderRadius: 3 } }]
+  series: [{ type: 'heatmap', data: store.hourlyHeatmap.data?.map(row => [Math.min(23, Math.max(0, row.hour)), (Math.min(7, Math.max(1, row.dayOfWeek)) + 5) % 7, Math.min(1, Math.max(0, row.utilizationRate))]) ?? [], itemStyle: { borderColor: '#fff', borderWidth: 2, borderRadius: 3 } }]
 }));
 const predictionOption = computed<EChartsOption>(() => {
-  const rows = (store.prediction.data ?? []).slice(0, 24);
+  const rows = predictionRows.value.slice(0, 24);
   return { tooltip, color: [colors[0]], grid: { left: 54, right: 24, top: 28, bottom: 64 }, xAxis: { type: 'category', data: rows.map(row => row.stationName + '\n' + row.horizon), ...axis, axisLabel: { color: '#7e8799', fontSize: 10, interval: 0, rotate: 18 } }, yAxis: { type: 'value', min: 0, max: 1, ...axis, axisLabel: { color: '#7e8799', formatter: (value: number) => Math.round(value * 100) + '%' } }, series: [{ name: '预测负荷', type: 'line', smooth: true, symbolSize: 9, lineStyle: { width: 3 }, areaStyle: { color: 'rgba(49,87,213,.10)' }, markLine: { silent: true, data: [{ yAxis: .8, name: '高峰线' }], lineStyle: { color: colors[6], type: 'dashed' } }, data: rows.map(row => ({ value: row.predictedLoad, itemStyle: { color: row.peakLevel === 'HIGH' ? colors[6] : row.peakLevel === 'MEDIUM' ? colors[5] : colors[0] } })) }] };
 });
 const qualityOption = computed<EChartsOption>(() => ({ color: [colors[0], colors[6]], tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: ['62%', '79%'], center: ['50%', '48%'], label: { show: false }, data: [{ name: '通过', value: store.dataQuality.data?.acceptedRows ?? 0 }, { name: '拒绝', value: store.dataQuality.data?.rejectedRows ?? 0 }] }] }));
@@ -92,22 +99,22 @@ onBeforeUnmount(() => { if (timer) window.clearInterval(timer); store.stopRealti
     <main class="workspace">
       <header class="workspace-header">
         <div class="page-heading"><p class="overline">{{ sectionMeta[activeSection].eyebrow }}</p><h1>{{ sectionMeta[activeSection].title }}</h1><p>{{ sectionMeta[activeSection].description }}</p></div>
-        <label class="search-box"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg><input v-model="searchText" aria-label="搜索站点" placeholder="搜索站点名称或日期" /></label>
+        <label v-if="activeSection === 'overview' || activeSection === 'stations'" class="search-box"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg><input v-model="searchText" aria-label="搜索站点" placeholder="搜索站点名称或日期" /></label>
         <div class="header-tools"><span :class="['connection-pill', store.overview.status]"><i />{{ store.dataMode === 'mock' ? 'Mock 数据' : statusText[store.overview.status] }}</span><button class="icon-button" type="button" title="刷新全部数据" :disabled="refreshing" @click="refresh"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7" /></svg></button><div class="profile"><span>EV</span><div><strong>运营中心</strong><small>{{ now.toLocaleDateString('zh-CN') }}</small></div></div></div>
       </header>
 
       <section v-if="activeSection === 'overview'" class="page-view">
         <div class="summary-grid">
-          <article class="metric-card metric-card--primary"><div class="metric-icon">01</div><span>累计充电会话</span><strong>{{ integer(store.overview.data?.orderCount) }}</strong><small>统计周期订单总量</small></article>
+          <article class="metric-card metric-card--primary"><div class="metric-icon">01</div><span>累计充电会话</span><strong>{{ integer(store.overview.data?.orderCount) }}</strong><small>由占用量变化推导的启动量</small></article>
           <article class="metric-card"><div class="metric-icon">02</div><span>充电电量</span><strong>{{ decimal(store.overview.data?.energyKwh) }} <i>kWh</i></strong><small>统计周期总电量</small></article>
-          <article class="metric-card"><div class="metric-icon">03</div><span>运营收入</span><strong>{{ money(store.overview.data?.revenueFen) }}</strong><small>金额按接口分值转换</small></article>
-          <article class="metric-card"><div class="metric-icon">04</div><span>在线电桩</span><strong>{{ integer(store.overview.data?.onlinePileCount) }} <i>台</i></strong><small>当前在线设备</small></article>
+          <article class="metric-card"><div class="metric-icon">03</div><span>估算收入</span><strong>{{ money(store.overview.data?.revenueFen) }}</strong><small>电量按统一演示单价估算</small></article>
+          <article class="metric-card"><div class="metric-icon">04</div><span>统计桩位</span><strong>{{ integer(store.overview.data?.onlinePileCount) }} <i>台</i></strong><small>数据集站点容量，不代表心跳在线</small></article>
           <article class="metric-card"><div class="metric-icon">05</div><span>平均利用率</span><strong>{{ percent(store.overview.data?.utilizationRate) }}</strong><small>统一利用率口径</small></article>
         </div>
         <div class="overview-grid">
-          <article class="card span-2"><header class="card-header"><div><h2>充电运营趋势</h2><p>充电量与订单量变化</p></div><span class="period-chip">近 30 日</span></header><div v-if="store.energyTrend.status === 'success'" class="chart-large"><EChartView :option="operationOption" /></div><div v-else :class="stateClass(store.energyTrend)"><span>{{ statusText[store.energyTrend.status] }}</span></div></article>
+          <article class="card span-2"><header class="card-header"><div><h2>充电运营趋势</h2><p>充电量与会话启动量变化</p></div><span class="period-chip">近 14 日</span></header><div v-if="store.energyTrend.status === 'success'" class="chart-large"><EChartView :option="operationOption" /></div><div v-else :class="stateClass(store.energyTrend)"><span>{{ statusText[store.energyTrend.status] }}</span></div></article>
           <article class="card"><header class="card-header"><div><h2>电桩状态</h2><p>设备运行结构</p></div></header><div v-if="store.pileStatus.status === 'success'" class="donut-wrap"><EChartView :option="pileOption" /><div class="donut-label"><strong>{{ integer(totalPiles) }}</strong><span>电桩总数</span></div></div><div v-else :class="stateClass(store.pileStatus)"><span>{{ statusText[store.pileStatus.status] }}</span></div></article>
-          <article class="prediction-hero"><dv-border-box-8 :dur="5"><div class="prediction-content"><span class="prediction-label">AI LOAD FORECAST</span><h2>下一时段负荷</h2><div class="prediction-number"><strong>{{ percent(store.prediction.data?.[0]?.predictedLoad) }}</strong><span>{{ store.prediction.data?.[0]?.stationName ?? '等待预测数据' }}</span></div><div class="prediction-meta"><span>{{ store.prediction.data?.[0]?.horizon ?? '--' }}</span><span>预计可用 {{ integer(store.prediction.data?.[0]?.predictedAvailableCount) }} 枪</span></div></div></dv-border-box-8></article>
+          <article class="prediction-hero"><dv-border-box-8 :dur="5"><div class="prediction-content"><span class="prediction-label">AI LOAD FORECAST</span><h2>下一时段负荷</h2><div class="prediction-number"><strong>{{ percent(primaryPrediction?.predictedLoad) }}</strong><span>{{ primaryPrediction?.stationName ?? '等待预测数据' }}</span></div><div class="prediction-meta"><span>{{ primaryPrediction?.horizon ?? '--' }}</span><span>预计可用 {{ integer(primaryPrediction?.predictedAvailableCount) }} 枪</span></div></div></dv-border-box-8></article>
           <article class="card"><header class="card-header"><div><h2>营收概览</h2><p>每日收入变化</p></div></header><div v-if="store.revenueTrend.status === 'success'" class="chart-compact"><EChartView :option="revenueOption" /></div><div v-else :class="stateClass(store.revenueTrend)"><span>{{ statusText[store.revenueTrend.status] }}</span></div></article>
           <article class="card"><header class="card-header"><div><h2>站点利用率</h2><p>高利用站点概览</p></div><button class="text-button" @click="activeSection = 'stations'">查看全部</button></header><div class="utilization-list compact"><div v-for="row in filteredStations.slice(0, 4)" :key="row.stationId + '-' + row.date" class="utilization-row"><div><strong>{{ row.stationName }}</strong><small>{{ integer(row.availableCount) }}/{{ integer(row.totalPileCount) }} 空闲</small></div><span class="progress"><i :style="{ width: progressWidth(row.utilizationRate) }" /></span><b>{{ percent(row.utilizationRate) }}</b></div></div></article>
         </div>
@@ -115,7 +122,7 @@ onBeforeUnmount(() => { if (timer) window.clearInterval(timer); store.stopRealti
 
       <section v-else-if="activeSection === 'trends'" class="page-view two-column">
         <article class="card wide-card"><header class="card-header"><div><h2>充电量与订单趋势</h2><p>两个维度的同期对比分析</p></div><span class="period-chip">Energy / Orders</span></header><div v-if="store.energyTrend.status === 'success'" class="chart-full"><EChartView :option="operationOption" /></div><div v-else :class="stateClass(store.energyTrend)"><span>{{ statusText[store.energyTrend.status] }}</span></div></article>
-        <article class="card wide-card"><header class="card-header"><div><h2>营收趋势</h2><p>每日已完成订单营收</p></div><span class="period-chip">Revenue</span></header><div v-if="store.revenueTrend.status === 'success'" class="chart-full"><EChartView :option="revenueOption" /></div><div v-else :class="stateClass(store.revenueTrend)"><span>{{ statusText[store.revenueTrend.status] }}</span></div></article>
+        <article class="card wide-card"><header class="card-header"><div><h2>估算收入趋势</h2><p>按统一演示单价估算，不代表支付流水</p></div><span class="period-chip">Estimated</span></header><div v-if="store.revenueTrend.status === 'success'" class="chart-full"><EChartView :option="revenueOption" /></div><div v-else :class="stateClass(store.revenueTrend)"><span>{{ statusText[store.revenueTrend.status] }}</span></div></article>
         <article class="card full-row"><header class="card-header"><div><h2>时段利用率热力图</h2><p>星期与小时两个维度交叉分析</p></div><span class="period-chip">7 × 24</span></header><div v-if="store.hourlyHeatmap.status === 'success'" class="chart-heatmap"><EChartView :option="heatmapOption" /></div><div v-else :class="stateClass(store.hourlyHeatmap)"><span>{{ statusText[store.hourlyHeatmap.status] }}</span></div></article>
       </section>
 
@@ -126,9 +133,9 @@ onBeforeUnmount(() => { if (timer) window.clearInterval(timer); store.stopRealti
       </section>
 
       <section v-else-if="activeSection === 'prediction'" class="page-view prediction-grid">
-        <article class="prediction-hero prediction-summary"><dv-border-box-8 :dur="5"><div class="prediction-content"><span class="prediction-label">SPARK MLLIB</span><h2>负荷预测摘要</h2><p>模型结果经 Flask 与 Dashboard Core 进入当前视图。</p><div class="prediction-number"><strong>{{ percent(store.prediction.data?.[0]?.predictedLoad) }}</strong><span>{{ peakName[store.prediction.data?.[0]?.peakLevel ?? ''] ?? '暂无等级' }}</span></div><div class="prediction-meta"><span>MAE {{ decimal(store.prediction.data?.[0]?.mae, 3) }}</span><span>RMSE {{ decimal(store.prediction.data?.[0]?.rmse, 3) }}</span></div></div></dv-border-box-8></article>
+        <article class="prediction-hero prediction-summary"><dv-border-box-8 :dur="5"><div class="prediction-content"><span class="prediction-label">SPARK MLLIB</span><h2>负荷预测摘要</h2><p>模型结果经 Flask 与 Dashboard Core 进入当前视图。</p><div class="prediction-number"><strong>{{ percent(primaryPrediction?.predictedLoad) }}</strong><span>{{ peakName[primaryPrediction?.peakLevel ?? ''] ?? '暂无等级' }}</span></div><div class="prediction-meta"><span>MAE {{ decimal(primaryPrediction?.mae, 3) }}</span><span>RMSE {{ decimal(primaryPrediction?.rmse, 3) }}</span></div></div></dv-border-box-8></article>
         <article class="card prediction-chart-card"><header class="card-header"><div><h2>1h / 6h / 24h 负荷预测</h2><p>站点与预测窗口对比</p></div><span class="period-chip">MLlib</span></header><div v-if="store.prediction.status === 'success'" class="chart-full"><EChartView :option="predictionOption" /></div><div v-else :class="stateClass(store.prediction)"><span>{{ statusText[store.prediction.status] }}</span></div></article>
-        <article class="card full-row"><header class="card-header"><div><h2>预测明细</h2><p>预测时刻、负荷、可用桩与模型评价</p></div></header><div v-if="store.prediction.status === 'success'" class="station-table prediction-table"><div class="table-row table-head"><span>站点 / 时刻</span><span>窗口</span><span>峰值</span><span>预测负荷</span><span>可用桩</span><span>模型</span></div><div v-for="row in store.prediction.data" :key="row.stationId + '-' + row.predictionTime + '-' + row.horizon" class="table-row"><strong>{{ row.stationName }}<small>{{ row.predictionTime }}</small></strong><span>{{ row.horizon }}</span><span :class="'peak peak-' + row.peakLevel.toLowerCase()">{{ peakName[row.peakLevel] }}</span><b>{{ percent(row.predictedLoad) }}</b><span>{{ integer(row.predictedAvailableCount) }}</span><span>{{ row.modelName ?? '--' }}</span></div></div><div v-else :class="stateClass(store.prediction)"><span>{{ statusText[store.prediction.status] }}</span></div></article>
+        <article class="card full-row"><header class="card-header"><div><h2>预测明细</h2><p>预测时刻、负荷、可用桩与模型评价</p></div></header><div v-if="store.prediction.status === 'success'" class="station-table prediction-table"><div class="table-row table-head"><span>站点 / 时刻</span><span>窗口</span><span>峰值</span><span>预测负荷</span><span>可用桩</span><span>模型</span></div><div v-for="row in predictionRows" :key="row.stationId + '-' + row.predictionTime + '-' + row.horizon" class="table-row"><strong>{{ row.stationName }}<small>{{ row.predictionTime }}</small></strong><span>{{ row.horizon }}</span><span :class="'peak peak-' + row.peakLevel.toLowerCase()">{{ peakName[row.peakLevel] }}</span><b>{{ percent(row.predictedLoad) }}</b><span>{{ integer(row.predictedAvailableCount) }}</span><span>{{ row.modelName ?? '--' }}</span></div></div><div v-else :class="stateClass(store.prediction)"><span>{{ statusText[store.prediction.status] }}</span></div></article>
       </section>
 
       <section v-else class="page-view quality-grid">

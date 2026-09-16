@@ -26,6 +26,10 @@ Spring Boot、MySQL 和 REST 不再作为项目主架构组成部分。
 > 向 Vue + ECharts 提供**分析结果**，不替换一期 Qt/C++ 业务 Socket 服务。范围、契约和
 > 实施顺序见 [`docs/bigdata/README.md`](docs/bigdata/README.md)。
 
+第二阶段真实数据演示现从 UrbanEV 官方站点级 5 分钟 Raw 开始，依次经过 ODS、DQ、DWD、
+DWS、Spark MLlib、Flask 和 Vue 大屏。下载、导入与验收步骤见
+[`bigdata/urbanev/README.md`](bigdata/urbanev/README.md)。
+
 ## 1. 项目目标
 
 系统最终应形成真实业务数据闭环：
