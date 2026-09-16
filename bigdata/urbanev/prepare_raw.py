@@ -174,9 +174,27 @@ def load_station_info(path: Path) -> dict[str, dict[str, Any]]:
     return stations
 
 
-def choose_stations(stations: dict[str, dict[str, Any]], charge_dir: Path, limit: int) -> list[str]:
-    """Select reproducibly: largest capacities first, then numeric station id."""
-    available = [station_id for station_id in stations if (charge_dir / f"{station_id}.csv").is_file()]
+def load_pile_station_ids(path: Path) -> set[str]:
+    """Return stations that have at least one usable row in the official pile table."""
+    return {
+        station_id
+        for row in read_rows(path)
+        if (station_id := canonical_id(row.get("station_id")))
+    }
+
+
+def choose_stations(
+    stations: dict[str, dict[str, Any]],
+    charge_dir: Path,
+    pile_station_ids: set[str],
+    limit: int,
+) -> list[str]:
+    """Select reproducibly from stations complete in all three official sources."""
+    available = [
+        station_id
+        for station_id in stations
+        if station_id in pile_station_ids and (charge_dir / f"{station_id}.csv").is_file()
+    ]
     available.sort(key=lambda station_id: (-stations[station_id]["capacity"], int(station_id)))
     return available[:limit] if limit > 0 else available
 
@@ -489,7 +507,8 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
 
     charge_dir, station_info_path, pile_info_path = find_station_layout(args.dataset_root.resolve())
     station_info = load_station_info(station_info_path)
-    selected_ids = choose_stations(station_info, charge_dir, args.max_stations)
+    pile_station_ids = load_pile_station_ids(pile_info_path)
+    selected_ids = choose_stations(station_info, charge_dir, pile_station_ids, args.max_stations)
     if not selected_ids:
         raise ValueError("No station CSV filename matches station_information.csv")
 

@@ -26,6 +26,13 @@ UrbanEV station Raw (5 min)
 - 论文代码：<https://github.com/IntelligentSystemsLab/UrbanEV>
 - 论文：<https://doi.org/10.1038/s41597-025-04874-4>
 
+论文 GitHub README 同时给出了 Google Drive 与百度网盘官方镜像。当 Dryad 下载需要授权或
+无法稳定续传时，可以使用论文仓库列出的镜像；不要使用来源不明的二次打包文件。不同发布
+时间的官方压缩包大小可能不同，本次在 2026-09-16 从论文仓库所列 Google Drive 镜像取得的
+`UrbanEVDataset.zip` 为 `647305188` 字节，SHA-256 为
+`9d3f0aec34434546d082509efcdeeaea116eaa841701cc5854a9b62a27881a79`，并已通过 `unzip -t`。
+此哈希只对应该镜像当时版本，不能用于否定 Dryad 后续版本。
+
 在 Dryad 页面选择最新版本的 `UrbanEVDataset.zip`。当前官方页面标注的 2026-02-04
 版本约 320 MB。Dryad 可能要求在浏览器中完成下载；不要把网页登录信息或临时下载地址写入脚本。
 
@@ -35,6 +42,11 @@ UrbanEV station Raw (5 min)
 mkdir -p /home/hadoop/datasets/UrbanEV
 unzip ~/Downloads/UrbanEVDataset.zip -d /home/hadoop/datasets/UrbanEV
 ```
+
+完整压缩包展开约 15.6 GB；还要为 HDFS、Spark 临时目录和模型预留空间，完整导入前建议至少
+准备 25 GB 可用空间。教学虚拟机空间不足时，先只提取 `station_information.csv`、
+`pile_rated_power.csv` 和少量 `station-raw/charge_5min/<station_id>.csv` 做 8 站点验收，
+不能用已经清洗的 zone 聚合文件代替 Raw。
 
 解压后必须能找到下面三个来源：
 
@@ -124,6 +136,11 @@ python3 bigdata/urbanev/prepare_raw.py \
 可追溯但字段不完整的项目 Raw 行。它随后由现有 DQ 作业拒绝并进入 rejected，不在适配器里
 静默填补，也不会泄漏到 ML。
 
+站点选择只接受同时存在于 `station_information.csv`、`pile_rated_power.csv` 和
+`charge_5min/<station_id>.csv` 的完整站点，并在应用 `--max-stations` 限制前完成交集过滤。
+本次实测发现站点 `1077` 有站点信息和时序文件、但缺少桩功率记录，因此被自动跳过；这属于
+源数据完整性处理，不应伪造额定功率补齐。
+
 ## 4. 启动 Flask 和真实大屏
 
 流水线完成后开两个终端：
@@ -142,6 +159,11 @@ npm run dev -- --host 0.0.0.0
 浏览器打开 `http://<虚拟机IP>:5173/`。`.env.urbanev.example` 会让 UI 通过 Vite 的 `/api`
 代理读取 Flask；页面上的数据源状态应显示“数据正常”，而不是“Mock 数据”。
 
+必须在启动 Vite **之前** 创建 `.env.local`，否则前端默认使用 Mock 夹具，只会显示
+`2026-09-14` 的单点样例。修改环境变量后需要重启 Vite，单纯刷新浏览器不会重新读取启动环境。
+Flask 每次请求都会重新读取 `bigdata/runtime/demo/dashboard.json`，所以重新训练后不必重启
+Flask。当前演示关闭 Qt WebSocket 实时推送，展示的是最近一次成功批处理快照。
+
 ## 5. 验收
 
 ```bash
@@ -159,3 +181,32 @@ hdfs dfs -ls /evcharge/quality/reports/dt=2023-02-28/
 hdfs dfs -ls /evcharge/dwd/_manifests/dt=2023-02-28/
 grep -n 'URBANEV-' bigdata/runtime/demo/dashboard.json | head
 ```
+
+## 6. 已验证批次与结果
+
+2026-09-16 已在 `node100` 大数据虚拟机使用 Hadoop 3.3.0、Spark 3.4.1、Python 3.11.11
+执行批次 `URBANEV-20230228-OFFICIAL-SMOKE-V1`：
+
+| 项目 | 结果 |
+| --- | ---: |
+| 真实站点 | 8 |
+| 桩维度 | 872 |
+| 官方 5 分钟观测 | 417,024 |
+| 生成的匿名用户 | 500 |
+| 可关联模拟订单/会话 | 124,219 / 124,219 |
+| 站点小时 Raw | 34,752 |
+| DQ 接受 / 拒绝小时 | 22,943 / 11,809 |
+| DWD 订单 / 会话 / 桩 / 站点小时 | 124,219 / 124,219 / 872 / 22,943 |
+
+ML 使用严格时间切分，并与周期基线比较：
+
+| 预测跨度 | GBT MAE | GBT RMSE | GBT R² | 周期基线 MAE | 结论 |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 1h | 0.0398 | 0.0574 | 0.8980 | 0.0526 | GBT 优于基线 |
+| 6h | 0.0581 | 0.0776 | 0.8125 | 0.0514 | 测试集上基线更好 |
+| 24h | 0.0549 | 0.0745 | 0.8285 | 0.0481 | 测试集上基线更好 |
+
+因此只能宣称“完整流水线与 1h 预测有效”，不能宣称三个跨度都超过基线。6h/24h 结果提示
+仍需调参、加入天气/价格/空间邻接特征，或采用更合适的时空模型。前端 12 项 Vitest、Python
+适配/API 测试及 Vue 生产构建均已通过；Vite 构建的大包体积警告不影响本次演示，但后续可用
+动态导入拆分 ECharts。

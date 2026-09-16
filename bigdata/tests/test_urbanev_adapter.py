@@ -159,6 +159,22 @@ class UrbanEvAdapterTest(unittest.TestCase):
             with self.assertRaisesRegex(FileNotFoundError, "zone-cleaned"):
                 prepare_urbanev_raw.find_station_layout(Path(directory))
 
+    def test_station_without_pile_rows_is_skipped_before_limit_is_applied(self):
+        """An incomplete high-capacity station must not displace a complete station."""
+        with tempfile.TemporaryDirectory() as directory:
+            charge_dir = Path(directory) / "charge_5min"
+            charge_dir.mkdir()
+            for station_id in ("1001", "1002"):
+                (charge_dir / f"{station_id}.csv").touch()
+            stations = {
+                "1001": {"capacity": 100},
+                "1002": {"capacity": 20},
+            }
+            selected = prepare_urbanev_raw.choose_stations(
+                stations, charge_dir, {"1002"}, limit=1
+            )
+            self.assertEqual(selected, ["1002"])
+
 
 if __name__ == "__main__":
     unittest.main()

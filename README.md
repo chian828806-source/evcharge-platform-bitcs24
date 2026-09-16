@@ -197,3 +197,35 @@ make -j2
 和 `qt-device-simulator` 对应的可执行文件；三者与服务端位于同一台机器时均使用
 `127.0.0.1`。Qt User 的地图页依赖 Qt WebEngine 运行时，Ubuntu 上应安装
 `libqt6webenginecore6-bin`。
+
+## 8. 第二阶段 UrbanEV 大数据演示
+
+第二阶段的真实数据演示入口位于 `bigdata/urbanev/`。当前流程使用 UrbanEV 官方站点级
+5 分钟数据，依次经过 Raw 适配、HDFS ODS、PySpark 数据质量、DWD、DWS、Spark MLlib、
+Flask REST 和 Vue/ECharts 大屏，不再使用随机站点负荷冒充真实输入。
+
+```bash
+# 在大数据虚拟机中，从项目根目录执行
+bash bigdata/urbanev/run_pipeline.sh \
+  /home/hadoop/datasets/UrbanEV/unpacked/UrbanEVDataset \
+  8 \
+  URBANEV-20230228-OFFICIAL-SMOKE-V1
+
+# 终端 1：快照 API
+python3 bigdata/integration/demo_api.py
+
+# 终端 2：真实数据模式大屏
+cd web-dashboard/v2
+cp .env.urbanev.example .env.local
+npm install
+npm run dev -- --host 0.0.0.0
+```
+
+浏览器打开 `http://<虚拟机IP>:5173/`。如果页面只出现 `09-14` 单点，说明误用了 Mock
+模式；如果全部显示“加载失败”，先确认 `.env.local` 中 `VITE_DATA_MODE=real`，再检查
+Flask 的 5000 端口。真实模式使用同源 `/api/v1` 代理，前端已同时兼容相对代理地址和
+完整 Flask URL。
+
+数据下载、字段口径、磁盘要求、模拟维度边界、实测结果和验收命令见
+[`bigdata/urbanev/README.md`](bigdata/urbanev/README.md)。官方数据压缩包、展开后的 CSV、
+HDFS 数据、模型和 `bigdata/runtime/` 产物均不提交 Git。

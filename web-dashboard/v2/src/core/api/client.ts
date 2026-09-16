@@ -29,7 +29,11 @@ export class HttpClient {
 
   async get<T>(endpoint: string, query?: Record<string, string | number | undefined>): Promise<T> {
     if (!this.baseUrl) throw new DashboardApiError('configuration', 'VITE_API_BASE_URL is required in real mode.', null, endpoint);
-    const url = new URL(endpoint.replace(/^\//, ''), `${this.baseUrl.replace(/\/$/, '')}/`);
+    // Production may use an absolute Flask URL, while local Vite development uses
+    // the same-origin `/api/v1` proxy. Resolve both forms against the browser origin.
+    const origin = globalThis.location?.origin ?? 'http://localhost';
+    const base = new URL(`${this.baseUrl.replace(/\/$/, '')}/`, origin);
+    const url = new URL(endpoint.replace(/^\//, ''), base);
     Object.entries(query ?? {}).forEach(([key, value]) => {
       if (value !== undefined) url.searchParams.set(key, String(value));
     });
