@@ -5,3 +5,6 @@ ml/data/processed/*.csv -text -diff
 # SQLite 和已训练模型是二进制发布产物。
 database/*.db -text -diff
 ml/models/*.joblib -text -diff
+
+# Shell scripts run in the Hadoop Linux VM and must not acquire Windows CRLF endings.
+*.sh text eol=lf

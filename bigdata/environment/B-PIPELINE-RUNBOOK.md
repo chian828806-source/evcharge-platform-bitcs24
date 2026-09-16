@@ -7,7 +7,8 @@
 在 Hadoop 虚拟机中进入项目目录：
 
 ```bash
-cd /home/hadoop/evcharge-b-pipeline
+cd ~/EVCharge
+bash bigdata/environment/manage_services.sh start
 bash bigdata/environment/check_environment.sh
 ```
 
