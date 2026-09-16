@@ -75,11 +75,11 @@ Vite 会把 `/api` 代理到 `127.0.0.1:5000` 的 Flask。数据下载和全链�
 ## DataSource、Store 与 ViewModel
 
 `DashboardDataSource` 覆盖 24 号文档的 overview、energy/revenue trend、station ranking、pile
-status、hour heatmap、station utilization、prediction、data-quality 九项读取。Store 为每项暴露：
+status、hour heatmap、station utilization、prediction、data-quality 和 weather 十项读取。Store 为每项暴露：
 `data`、`status`（idle/loading/success/empty/error）、`error`、`lastUpdated`，以及
 `loadXxx()`、`refreshAll()`、`setDataMode()`。
 
-`DashboardViewModel` 同时包含九项资源、`source` 和独立 `realtime` 状态。API DTO 只在
+`DashboardViewModel` 同时包含十项资源、`source` 和独立 `realtime` 状态。API DTO 只在
 `api/dto.ts` 使用；`dashboardAdapter.ts` 负责字段的 null-safe 整理，不计算营收、订单、电量或
 利用率。
 
@@ -90,3 +90,13 @@ empty / error 以及 V1 Qt WebSocket 消息解析。
 
 正式契约以 `docs/bigdata/24-DASHBOARD-API.md` 为准；如 C 的 Flask 实现与该文档冲突，应发起 CCR，
 不得在 Core 中自行改变字段或单位。
+
+## 实时天气
+
+顶部天气条通过 Core 请求 Flask 的 `GET /api/v1/context/weather`。Flask 再访问 Open-Meteo，
+默认缓存 20 分钟；上游暂时失败时优先显示旧缓存，没有缓存则明确显示“天气暂不可用”。浏览器
+不直接访问 Open-Meteo，天气故障也不会阻断九项分析资源。
+
+部署时可按需覆盖 `EVCHARGE_WEATHER_CITY`、`EVCHARGE_WEATHER_LATITUDE`、
+`EVCHARGE_WEATHER_LONGITUDE`、`EVCHARGE_WEATHER_CACHE_TTL_SECONDS` 和
+`EVCHARGE_WEATHER_TIMEOUT_SECONDS`。默认值是深圳、20 分钟缓存和 4 秒超时。

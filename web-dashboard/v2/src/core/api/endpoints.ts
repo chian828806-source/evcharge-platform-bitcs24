@@ -7,5 +7,6 @@ export const dashboardEndpoints = {
   hourlyHeatmap: '/dashboard/hourly-heatmap',
   stationUtilization: '/dashboard/station-utilization',
   prediction: '/dashboard/prediction',
-  dataQualitySummary: '/data-quality/summary'
+  dataQualitySummary: '/data-quality/summary',
+  weather: '/context/weather'
 } as const;

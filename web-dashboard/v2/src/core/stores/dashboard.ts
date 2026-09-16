@@ -32,6 +32,7 @@ export const useDashboardStore = defineStore('dashboard-core', () => {
   const stationUtilization = ref(createResource<DashboardViewModel['stationUtilization']['data'] extends infer T ? NonNullable<T> : never>());
   const prediction = ref(createResource<DashboardViewModel['prediction']['data'] extends infer T ? NonNullable<T> : never>());
   const dataQuality = ref(createResource<DashboardViewModel['dataQuality']['data'] extends infer T ? NonNullable<T> : never>());
+  const weather = ref(createResource<DashboardViewModel['weather']['data'] extends infer T ? NonNullable<T> : never>());
   const realtime = ref(initialRealtime());
 
   async function load<TDto, TModel>(resource: Ref<Resource<TModel>>, request: () => Promise<ApiEnvelopeDto<TDto>>, adapt: (dto: TDto) => TModel, isEmpty: (data: TModel) => boolean = () => false): Promise<void> {
@@ -54,9 +55,10 @@ export const useDashboardStore = defineStore('dashboard-core', () => {
   const loadStationUtilization = () => load(stationUtilization, () => dataSource.getStationUtilization(), (dto) => dashboardAdapter.stationUtilization(dto.items), (rows) => rows.length === 0);
   const loadPrediction = () => load(prediction, () => dataSource.getPrediction(), (dto) => dashboardAdapter.prediction(dto.items), (rows) => rows.length === 0);
   const loadDataQuality = () => load(dataQuality, () => dataSource.getDataQualitySummary(), dashboardAdapter.dataQuality);
+  const loadWeather = () => load(weather, () => dataSource.getWeather(), dashboardAdapter.weather);
 
   async function refreshAll(): Promise<void> {
-    await Promise.all([loadOverview(), loadEnergyTrend(), loadRevenueTrend(), loadStationRanking(), loadPileStatus(), loadHourlyHeatmap(), loadStationUtilization(), loadPrediction(), loadDataQuality()]);
+    await Promise.all([loadOverview(), loadEnergyTrend(), loadRevenueTrend(), loadStationRanking(), loadPileStatus(), loadHourlyHeatmap(), loadStationUtilization(), loadPrediction(), loadDataQuality(), loadWeather()]);
   }
 
   const refreshOverview = loadOverview;
@@ -68,6 +70,7 @@ export const useDashboardStore = defineStore('dashboard-core', () => {
   const refreshStationUtilization = loadStationUtilization;
   const refreshPrediction = loadPrediction;
   const refreshDataQuality = loadDataQuality;
+  const refreshWeather = loadWeather;
 
   async function setDataMode(mode: DashboardDataMode): Promise<void> {
     dataMode.value = mode;
@@ -94,16 +97,17 @@ export const useDashboardStore = defineStore('dashboard-core', () => {
     overview: overview.value, energyTrend: energyTrend.value, revenueTrend: revenueTrend.value,
     stationRanking: stationRanking.value, pileStatus: pileStatus.value, hourlyHeatmap: hourlyHeatmap.value,
     stationUtilization: stationUtilization.value, prediction: prediction.value, dataQuality: dataQuality.value,
+    weather: weather.value,
     source: dataMode.value === 'mock' ? 'mock' : 'api', realtime: realtime.value
   }));
 
   return {
     dataMode, overview, energyTrend, revenueTrend, stationRanking, pileStatus, hourlyHeatmap,
-    stationUtilization, prediction, dataQuality, realtime, viewModel,
+    stationUtilization, prediction, dataQuality, weather, realtime, viewModel,
     loadOverview, loadEnergyTrend, loadRevenueTrend, loadStationRanking, loadPileStatus,
-    loadHourlyHeatmap, loadStationUtilization, loadPrediction, loadDataQuality, refreshAll,
+    loadHourlyHeatmap, loadStationUtilization, loadPrediction, loadDataQuality, loadWeather, refreshAll,
     refreshOverview, refreshEnergyTrend, refreshRevenueTrend, refreshStationRanking, refreshPileStatus,
-    refreshHourlyHeatmap, refreshStationUtilization, refreshPrediction, refreshDataQuality,
+    refreshHourlyHeatmap, refreshStationUtilization, refreshPrediction, refreshDataQuality, refreshWeather,
     setDataMode, setDataSourceForTesting, startRealtime, stopRealtime
   };
 });
