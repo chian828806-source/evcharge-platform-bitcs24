@@ -11,7 +11,6 @@ const store = useDashboardStore();
 const activeSection = ref<DashboardSection>('overview');
 const refreshing = ref(false);
 const now = ref(new Date());
-const searchText = ref('');
 let timer: number | undefined;
 
 const sectionMeta: Record<DashboardSection, { eyebrow: string; title: string; description: string }> = {
@@ -42,11 +41,7 @@ const qualityRate = computed(() => {
   const accepted = store.dataQuality.data?.acceptedRows;
   return finite(source) && source > 0 && finite(accepted) ? accepted / source : null;
 });
-const filteredStations = computed(() => {
-  const keyword = searchText.value.trim().toLowerCase();
-  const rows = store.stationUtilization.data ?? [];
-  return keyword ? rows.filter(row => (row.stationName + ' ' + (row.date ?? '')).toLowerCase().includes(keyword)) : rows;
-});
+const filteredStations = computed(() => store.stationUtilization.data ?? []);
 const predictionRows = computed(() => [...(store.prediction.data ?? [])].sort((left, right) => {
   const timeOrder = left.predictionTime.localeCompare(right.predictionTime);
   if (timeOrder !== 0) return timeOrder;
@@ -80,8 +75,31 @@ const rankingOption = computed<EChartsOption>(() => {
   return { tooltip, grid: { left: 132, right: 32, top: 14, bottom: 28 }, xAxis: { type: 'value', name: 'kWh', ...axis }, yAxis: { type: 'category', data: rows.map(row => row.stationName), ...axis, axisLabel: { color: '#667085', width: 116, overflow: 'truncate' } }, series: [{ name: '充电量', type: 'bar', barWidth: 13, data: rows.map(row => row.energyKwh), itemStyle: { color: colors[0], borderRadius: 7 } }] };
 });
 const heatmapOption = computed<EChartsOption>(() => ({
-  tooltip: { position: 'top' }, grid: { left: 56, right: 22, top: 20, bottom: 58 }, xAxis: { type: 'category', data: Array.from({ length: 24 }, (_, i) => String(i)), ...axis },
-  yAxis: { type: 'category', data: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'], ...axis }, visualMap: { min: 0, max: 1, orient: 'horizontal', left: 'center', bottom: 4, itemWidth: 12, itemHeight: 110, text: ['高', '低'], textStyle: { color: '#7e8799', fontSize: 10 }, inRange: { color: ['#edf1ff', '#9eb4f3', '#3157d5'] } },
+  tooltip: {
+    position: 'top',
+    backgroundColor: '#20283b',
+    borderWidth: 0,
+    textStyle: { color: '#fff' },
+    formatter: (params: any) => {
+      const [hour, dayIndex, rate] = params.value as [number, number, number];
+      const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+      const level = rate >= .8 ? '高峰' : rate >= .6 ? '繁忙' : rate >= .4 ? '适中' : rate >= .2 ? '较低' : '空闲';
+      return '<b>' + days[dayIndex] + ' ' + String(hour).padStart(2, '0') + ':00–' + String((hour + 1) % 24).padStart(2, '0') + ':00</b><br/>利用率：' + (rate * 100).toFixed(1) + '%<br/>状态：' + level;
+    }
+  },
+  grid: { left: 56, right: 22, top: 20, bottom: 78 }, xAxis: { type: 'category', data: Array.from({ length: 24 }, (_, i) => String(i)), ...axis },
+  yAxis: { type: 'category', data: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'], ...axis },
+  visualMap: {
+    type: 'piecewise', selectedMode: false, orient: 'horizontal', left: 'center', bottom: 8, itemWidth: 14, itemHeight: 14, itemGap: 16,
+    textStyle: { color: '#687386', fontSize: 10 },
+    pieces: [
+      { gte: 0, lt: .2, label: '空闲 0–20%', color: '#eef2ff' },
+      { gte: .2, lt: .4, label: '较低 20–40%', color: '#cad7fa' },
+      { gte: .4, lt: .6, label: '适中 40–60%', color: '#9fb5f2' },
+      { gte: .6, lt: .8, label: '繁忙 60–80%', color: '#6888e4' },
+      { gte: .8, lte: 1, label: '高峰 80–100%', color: '#3157d5' }
+    ]
+  },
   series: [{ type: 'heatmap', data: store.hourlyHeatmap.data?.map(row => [Math.min(23, Math.max(0, row.hour)), (Math.min(7, Math.max(1, row.dayOfWeek)) + 5) % 7, Math.min(1, Math.max(0, row.utilizationRate))]) ?? [], itemStyle: { borderColor: '#fff', borderWidth: 2, borderRadius: 3 } }]
 }));
 const predictionOption = computed<EChartsOption>(() => {
@@ -100,7 +118,6 @@ onBeforeUnmount(() => { if (timer) window.clearInterval(timer); store.stopRealti
     <main class="workspace">
       <header class="workspace-header">
         <div class="page-heading"><p class="overline">{{ sectionMeta[activeSection].eyebrow }}</p><h1>{{ sectionMeta[activeSection].title }}</h1><p>{{ sectionMeta[activeSection].description }}</p></div>
-        <label v-if="activeSection === 'overview' || activeSection === 'stations'" class="search-box"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg><input v-model="searchText" aria-label="搜索站点" placeholder="搜索站点名称或日期" /></label>
         <div class="header-tools"><div :class="['weather-pill', { stale: store.weather.data?.isStale }]" :title="store.weather.data?.isStale ? '当前显示缓存或降级数据' : 'Open-Meteo 实时天气'"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 16.5a4 4 0 0 1 .8-7.92A5.5 5.5 0 0 1 18.4 10.5 3 3 0 0 1 18 16.5Z" /><path d="M8 5.5 6.5 4M12 4V2M16 5.5 17.5 4" /></svg><div><strong>{{ store.weather.data?.city ?? '深圳' }} · {{ store.weather.data?.weatherText ?? (store.weather.status === 'loading' ? '天气加载中' : '天气暂不可用') }}</strong><small v-if="store.weather.data?.available">{{ temperature(store.weather.data.temperature) }} · 体感 {{ temperature(store.weather.data.apparentTemperature) }} · 湿度 {{ integer(store.weather.data.humidity) }}% · 风速 {{ decimal(store.weather.data.windSpeed) }} km/h</small><small v-else>实时天气暂不可用</small></div></div><span :class="['connection-pill', store.overview.status]"><i />{{ store.dataMode === 'mock' ? 'Mock 数据' : statusText[store.overview.status] }}</span><button class="icon-button" type="button" title="刷新全部数据" :disabled="refreshing" @click="refresh"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7" /></svg></button><div class="profile"><span>EV</span><div><strong>运营中心</strong><small>{{ now.toLocaleDateString('zh-CN') }}</small></div></div></div>
       </header>
 
