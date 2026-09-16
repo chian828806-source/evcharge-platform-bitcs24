@@ -27,7 +27,8 @@ ODS 保留原始契约和摄取批次；DWD 是通过 DQ 规则的规范化明�
 
 - `revenue_fen`：DWS/ADS 从 DWD 筛选 `status = COMPLETED` 且 `paid_at` 非空，再按 `paid_at`
   的业务日期聚合 `amount_fen`。DWD 保留 CREATED、CHARGING、PENDING_PAYMENT、CANCELLED 等
-  合法订单，故不按可空 `paid_at` 分区。
+  合法订单，故不按可空 `paid_at` 分区。UrbanEV 补全关系使用的 `order_no LIKE 'URBANEV-SYN-%'`
+  必须排除在正式营收之外；它只用于演示关系完整性和估算指标。
 - `energy_kwh`：营收口径中的电量与 `revenue_fen` 使用同一已支付订单筛选；外部会话只能用于
   历史负荷/模型分析，不能混入业务营收。
 - `utilization_rate`：`charging_pile_minutes / (total_pile_count × window_minutes)`，范围 0–1；

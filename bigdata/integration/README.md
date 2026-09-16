@@ -16,12 +16,19 @@ B 的 DWD、C 的 API、E 的预测、Core 的公开 ViewModel。
 27 号验收清单与 Dashboard Public UI Contract。
 ## 当前 Demo 实现
 
-`run_full_demo.sh` 是单一的端到端演示入口，顺序调用 B 已实现的生成、ODS、质量和 DWD
+`run_full_demo.sh` 是合成数据 Contract 回归入口，顺序调用 B 已实现的生成、ODS、质量和 DWD
 作业，再调用 `build_demo_dws.py` 生成临时 DWS，最后运行 E 的 MLlib 作业。每一步使用
 同一 `business_date` 和 `batch_id`，任一步失败都会停止，不能用手工 JSON 跳过。
 
 ```bash
 bash bigdata/integration/run_full_demo.sh
+```
+
+真实数据演示使用 `bigdata/urbanev/run_pipeline.sh`。该入口从官方站点级 5 分钟 Raw 开始，
+不调用随机生成器，并继续复用同一 ODS/DQ/DWD/DWS/ML/API 链路：
+
+```bash
+bash bigdata/urbanev/run_pipeline.sh /home/hadoop/datasets/UrbanEV 8
 ```
 
 `build_demo_dws.py` 只在 C 的正式 DWS 尚未提交时使用。它读取公开的
@@ -35,7 +42,7 @@ station-ranking, pile-status, hourly-heatmap, station-utilization, prediction}`�
 `GET /api/v1/data-quality/summary`。
 
 服务每次请求都会读取 `bigdata/runtime/demo/dashboard.json`，因此 ML 作业发布新批次后
-无需重启 Flask。快照不存在时会返回带独立批次号的联调样本，不能与真实分析批次混淆。
+无需重启 Flask。快照不存在或损坏时返回 `409 BATCH_NOT_READY`，不会用联调样本冒充真实批次。
 
 ```bash
 cd /home/hadoop/workspace/evcharge-platform-bitcs24-develop-ml

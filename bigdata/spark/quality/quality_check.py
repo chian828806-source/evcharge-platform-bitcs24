@@ -88,7 +88,7 @@ SPECS: dict[str, dict[str, Any]] = {
         },
         "primary_key": ["station_id", "hour_start"],
         "required": ["station_id", "hour_start", "total_pile_count", "session_starts", "energy_kwh", "charging_pile_minutes", "average_occupied_count", "average_available_count", "station_load", "source_type"],
-        "enums": {"source_type": ["BUSINESS", "CARY_SIMULATION"]},
+        "enums": {"source_type": ["BUSINESS", "CARY_SIMULATION", "URBANEV"]},
         "numeric_rules": [
             ("total_pile_count", lambda value: value <= 0),
             ("session_starts", lambda value: value < 0),

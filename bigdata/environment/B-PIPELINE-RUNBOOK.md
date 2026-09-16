@@ -7,9 +7,13 @@
 在 Hadoop 虚拟机中进入项目目录：
 
 ```bash
-cd /home/hadoop/evcharge-b-pipeline
+cd ~/EVCharge
+bash bigdata/environment/manage_services.sh start all
 bash bigdata/environment/check_environment.sh
 ```
+
+如果当前机器只配置了 HDFS、没有 ResourceManager/NodeManager，UrbanEV 本地演示可改用
+`manage_services.sh start hdfs`；B 的正式五服务验收仍必须使用 `all`。
 
 如果 HDFS 显示 Safe Mode 导致无法写入，先确认状态：
 
@@ -100,6 +104,9 @@ dwd_station_hour_metric
 ```
 
 这些 Parquet 数据是交给 C 开发 DWS、ADS 和 Flask API 的唯一上游输入。C 不应绕过 DWD 读取 ODS。
+
+UrbanEV 真实数据适配器同样必须先生成冻结 Raw Contract，再复用本手册的 ODS、DQ 和 DWD，
+不能让 ML 或大屏直接读取论文 CSV。完整入口见 `bigdata/urbanev/run_pipeline.sh`。
 
 ## 6. 重跑同一批次
 

@@ -36,52 +36,12 @@ CANONICAL_RESOURCES = tuple(
 )
 
 
-def fallback_snapshot() -> dict[str, Any]:
-    """训练尚未运行时返回完整的小样本，使前端仍可独立联调。"""
-    generated = datetime.now(timezone.utc).isoformat()
-    return {
-        "meta": {"batchId": "PIPELINE-DEMO-FALLBACK", "generatedAt": generated,
-                 "notice": "接口使用内置联调样本；运行完整流水线后自动切换为当前批次结果。"},
-        "overview": {"orderCount": 286, "energyKwh": 1842.4, "revenueFen": 221088,
-                     "onlinePileCount": 128, "utilizationRate": 0.63},
-        "energyTrend": {"items": [{"date": "2023-02-26", "energyKwh": 1690.2, "orderCount": 252},
-                                    {"date": "2023-02-27", "energyKwh": 1778.6, "orderCount": 271},
-                                    {"date": "2023-02-28", "energyKwh": 1842.4, "orderCount": 286}]},
-        "revenueTrend": {"items": [{"date": "2023-02-26", "revenueFen": 202824, "orderCount": 252},
-                                     {"date": "2023-02-27", "revenueFen": 213432, "orderCount": 271},
-                                     {"date": "2023-02-28", "revenueFen": 221088, "orderCount": 286}]},
-        "stationRanking": {"items": [{"stationId": 102, "stationName": "演示站点 102", "district": "演示区域",
-            "energyKwh": 486.2, "revenueFen": 58344, "utilizationRate": 0.78, "rank": 1},
-            {"stationId": 104, "stationName": "演示站点 104", "district": "演示区域",
-             "energyKwh": 394.8, "revenueFen": 47376, "utilizationRate": 0.66, "rank": 2}]},
-        "pileStatus": {"items": [{"status": "CHARGING", "count": 81, "ratio": 0.6328},
-                                   {"status": "AVAILABLE", "count": 47, "ratio": 0.3672}]},
-        "hourlyHeatmap": {"items": [{"dayOfWeek": day, "hour": hour,
-            "energyKwh": round(12 + hour * 1.7 + day * 2.1, 2),
-            "utilizationRate": round(min(0.92, 0.18 + hour / 35 + day / 50), 4)}
-            for day in range(1, 8) for hour in range(24)]},
-        "stationUtilization": {"items": [{"stationId": 102, "stationName": "演示站点 102", "date": "2023-02-28",
-            "utilizationRate": 0.78, "availableCount": 16, "totalPileCount": 72},
-            {"stationId": 104, "stationName": "演示站点 104", "date": "2023-02-28",
-             "utilizationRate": 0.66, "availableCount": 19, "totalPileCount": 56}]},
-        "prediction": {"items": [{"stationId": 102, "stationName": "演示站点 102", "predictionTime": "2023-02-28 23:00:00",
-            "horizon": horizon, "predictedLoad": load, "predictedAvailableCount": available,
-            "peakLevel": level, "modelName": "SparkMLlib-GBT", "mae": 0.071, "rmse": 0.098}
-            for horizon, load, available, level in (("1h", 0.72, 20, "HIGH"), ("6h", 0.61, 28, "MEDIUM"), ("24h", 0.55, 32, "MEDIUM"))]},
-        "dataQuality": {"sourceRows": 34752, "acceptedRows": 34590, "rejectedRows": 162,
-                        "rules": [{"ruleId": "INVALID_TIMESTAMP", "count": 0},
-                                  {"ruleId": "MISSING_VALUE", "count": 37},
-                                  {"ruleId": "OUT_OF_CAPACITY_RANGE", "count": 125}]},
-    }
-
-
 def read_snapshot() -> dict[str, Any]:
-    """读取 UTF-8 JSON；文件缺失或损坏时降级到可辨识的联调样本。"""
-    try:
-        import json
-        return json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return fallback_snapshot()
+    """读取 ML 发布的 UTF-8 JSON；真实模式禁止用联调样本冒充完成批次。"""
+    import json
+    if not SNAPSHOT_PATH.is_file():
+        raise FileNotFoundError(f"Dashboard snapshot is not ready: {SNAPSHOT_PATH}")
+    return json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8"))
 
 
 def envelope(snapshot: dict[str, Any], data: Any):
@@ -124,7 +84,13 @@ def create_app() -> Flask:
         key = RESOURCE_NAMES.get(normalized)
         if key is None:
             return jsonify({"error": {"code": "NOT_FOUND", "message": "Unknown dashboard resource."}}), 404
-        snapshot = read_snapshot()
+        try:
+            snapshot = read_snapshot()
+        except (OSError, ValueError) as error:
+            return jsonify({"error": {
+                "code": "BATCH_NOT_READY",
+                "message": str(error),
+            }}), 409
         return envelope(snapshot, filter_items(normalized, snapshot[key]))
 
     return app

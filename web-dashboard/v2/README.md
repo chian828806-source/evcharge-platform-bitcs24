@@ -1,9 +1,9 @@
-# EVCharge Dashboard V2 Core
+# EVCharge Dashboard V2
 
 ## 目的
 
-本工程是 Phase 2 的 Dashboard 数据层，不是大屏 UI。它将 Flask 分析 API、Mock 和一期 Qt
-WebSocket 分别接入，再发布稳定的 Pinia Store / `DashboardViewModel` 给 UI 使用。
+本工程包含 Phase 2 的 Dashboard Core 和正式第一版大屏 UI。Core 将 Flask 分析 API、Mock 和
+一期 Qt WebSocket 分别接入，再发布稳定的 Pinia Store / `DashboardViewModel` 给五个 Vue 页面。
 
 ```text
 ADS → Flask → Core API/Adapter/Store → Public ViewModel → D: Vue + ECharts UI
@@ -14,7 +14,8 @@ Qt Dashboard WebSocket → Core realtime adapter ────────┘
 
 - Vue 3、Vite、TypeScript、Pinia、Vitest、浏览器 `fetch`；不安装 ECharts。
 - `../` 是一期稳定的原生 JavaScript Dashboard V1，保持原样、可独立运行。
-- `v2/` 是新的 Core 工程；`App.vue` 仅为开发验证 Shell，不是正式页面。
+- `v2/` 是新的 Core + UI 工程；`App.vue` 提供运营总览、趋势分析、站点分析、智能预测和
+  数据质量五个正式页面。
 
 ## 目录
 
@@ -60,6 +61,16 @@ npm run build
 
 Mock Mode 可完整运行。Real Mode 只调用 C 将来实现的 API；服务不存在时 Store 以 `error` 状态表达
 连接失败，不会伪造 Flask/Spark/ADS 结果。Realtime 是独立资源，不会静默覆盖历史分析 KPI。
+
+UrbanEV 完整流水线生成快照后，使用仓库提供的真实模式模板：
+
+```bash
+cp .env.urbanev.example .env.local
+npm run dev -- --host 0.0.0.0
+```
+
+Vite 会把 `/api` 代理到 `127.0.0.1:5000` 的 Flask。数据下载和全链路运行见
+[`../../bigdata/urbanev/README.md`](../../bigdata/urbanev/README.md)。
 
 ## DataSource、Store 与 ViewModel
 
