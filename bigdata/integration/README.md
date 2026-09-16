@@ -14,7 +14,34 @@ B 的 DWD、C 的 API、E 的预测、Core 的公开 ViewModel。
 替代各 Owner 实现、手工 JSON 跳过失败步骤或视觉 UI 实现。
 ## Public Contract
 27 号验收清单与 Dashboard Public UI Contract。
-## Future Implementation
-增加 contract/E2E 检查器。
+## 当前 Demo 实现
+
+`run_full_demo.sh` 是单一的端到端演示入口，顺序调用 B 已实现的生成、ODS、质量和 DWD
+作业，再调用 `build_demo_dws.py` 生成临时 DWS，最后运行 E 的 MLlib 作业。每一步使用
+同一 `business_date` 和 `batch_id`，任一步失败都会停止，不能用手工 JSON 跳过。
+
+```bash
+bash bigdata/integration/run_full_demo.sh
+```
+
+`build_demo_dws.py` 只在 C 的正式 DWS 尚未提交时使用。它读取公开的
+`dwd_station_hour_metric` 并进行同粒度字段投影，不修改 B 的任何输出。
+`pipeline_demo_config.json` 将小时历史长度设为 35 天，满足 `lag_168`、24h 标签和
+连续训练/验证/测试切分；它不覆盖 B 的默认生成器配置。
+
+`demo_api.py` 按 [24-DASHBOARD-API.md](../../docs/bigdata/24-DASHBOARD-API.md)
+提供九个冻结路径：`GET /api/v1/dashboard/{overview, energy-trend, revenue-trend,
+station-ranking, pile-status, hourly-heatmap, station-utilization, prediction}`，以及
+`GET /api/v1/data-quality/summary`。
+
+服务每次请求都会读取 `bigdata/runtime/demo/dashboard.json`，因此 ML 作业发布新批次后
+无需重启 Flask。快照不存在时会返回带独立批次号的联调样本，不能与真实分析批次混淆。
+
+```bash
+cd /home/hadoop/workspace/evcharge-platform-bitcs24-develop-ml
+python3 bigdata/integration/demo_api.py
+```
+
+默认监听 `0.0.0.0:5000`，健康检查为 `GET /health`。
 ## Acceptance
 `generator → ingestion → quality/DWD → warehouse → ML → API → Core → UI` 可按 batch 追溯。

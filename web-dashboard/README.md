@@ -2,6 +2,10 @@
 
 `web-dashboard/` 是 EVCharge 的浏览器运营展示模块。它只负责将服务端 WebSocket 推送转换为页面指标、表格和 ECharts 数据；不访问 SQLite、不包含 Qt 业务逻辑，也不重新实现服务端。
 
+> V1 是 Phase 1 的稳定原生 JavaScript Dashboard，保留在当前目录并继续可独立运行。Phase 2 的
+> Vue 3 Dashboard V2 Core 位于 [`v2/README.md`](v2/README.md)：它只实现数据层，后续 UI 与
+> ECharts 视觉实现由 D 在独立分支负责。
+
 ## 当前完成内容
 
 - `DashboardWebSocketClient`：连接 `/dashboard`、发送 `DASHBOARD_SUBSCRIBE`、处理 `DASHBOARD_UPDATE`、安全忽略非法消息、指数退避重连并在重连后自动订阅。
