@@ -11,4 +11,5 @@ export class MockDashboardDataSource implements DashboardDataSource {
   getStationUtilization = async () => dashboardFixtures.stationUtilization();
   getPrediction = async () => dashboardFixtures.prediction();
   getDataQualitySummary = async () => dashboardFixtures.dataQuality();
+  getWeather = async () => dashboardFixtures.weather();
 }

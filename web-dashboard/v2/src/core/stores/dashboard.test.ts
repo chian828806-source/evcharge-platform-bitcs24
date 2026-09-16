@@ -33,4 +33,11 @@ describe('dashboard core store', () => {
     await store.loadOverview();
     expect(store.overview).toMatchObject({ status: 'error', error: { message: 'offline' } });
   });
+
+  it('loads weather as an independent auxiliary resource', async () => {
+    const store = useDashboardStore();
+    store.setDataSourceForTesting(new MockDashboardDataSource());
+    await store.loadWeather();
+    expect(store.weather).toMatchObject({ status: 'success', data: { city: '深圳', temperature: 28.4 } });
+  });
 });

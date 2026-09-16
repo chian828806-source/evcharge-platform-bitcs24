@@ -36,7 +36,14 @@ class DashboardApiTest(unittest.TestCase):
             "prediction": {"items": []},
             "dataQuality": {"sourceRows": 0, "acceptedRows": 0, "rejectedRows": 0, "rules": []},
         }), encoding="utf-8")
-        self.client = demo_api.create_app().test_client()
+        self.weather = {
+            "city": "深圳", "temperature": 28.4, "apparentTemperature": 31.2,
+            "humidity": 76, "precipitation": 0.0, "windSpeed": 12.3,
+            "weatherCode": 2, "weatherText": "多云",
+            "updatedAt": "2026-09-16T18:30:00+08:00", "available": True,
+            "isStale": False, "source": "open-meteo",
+        }
+        self.client = demo_api.create_app(lambda: self.weather).test_client()
 
     def test_health(self):
         self.assertEqual(self.client.get("/health").status_code, 200)
@@ -56,6 +63,41 @@ class DashboardApiTest(unittest.TestCase):
         response = self.client.get("/api/v1/dashboard/overview")
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.get_json()["error"]["code"], "BATCH_NOT_READY")
+
+    def test_weather_is_independent_from_batch_snapshot(self):
+        demo_api.SNAPSHOT_PATH.unlink()
+        response = self.client.get("/api/v1/context/weather")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["data"], self.weather)
+
+
+class WeatherServiceTest(unittest.TestCase):
+    """验证天气码映射、缓存复用与失败降级，不访问公网。"""
+
+    def test_maps_open_meteo_and_reuses_cache(self):
+        calls = []
+
+        def fetcher(url, timeout):
+            calls.append((url, timeout))
+            return {"current": {
+                "time": "2026-09-16T18:30", "temperature_2m": 28.4,
+                "apparent_temperature": 31.2, "relative_humidity_2m": 76,
+                "precipitation": 0, "weather_code": 2, "wind_speed_10m": 12.3,
+            }}
+
+        service = demo_api.WeatherService(fetcher=fetcher, clock=lambda: 100.0)
+        self.assertEqual(service.current()["weatherText"], "多云")
+        self.assertEqual(service.current()["temperature"], 28.4)
+        self.assertEqual(len(calls), 1)
+
+    def test_returns_transparent_unavailable_data_without_cache(self):
+        def failing_fetcher(url, timeout):
+            raise OSError("offline")
+
+        weather = demo_api.WeatherService(fetcher=failing_fetcher).current()
+        self.assertFalse(weather["available"])
+        self.assertIsNone(weather["temperature"])
+        self.assertEqual(weather["weatherText"], "暂不可用")
 
 
 if __name__ == "__main__":

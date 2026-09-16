@@ -11,4 +11,9 @@ describe('dashboardAdapter', () => {
     const [prediction] = dashboardAdapter.prediction([{ stationId: 1, stationName: '', predictionTime: '2026-09-15 10:00:00', horizon: '1h', predictedLoad: 0.6, predictedAvailableCount: 3, peakLevel: 'MEDIUM', modelName: null, mae: null, rmse: null }]);
     expect(prediction).toMatchObject({ stationName: '—', predictedLoad: 0.6, peakLevel: 'MEDIUM' });
   });
+
+  it('preserves nullable weather values so unavailable data is not fabricated', () => {
+    expect(dashboardAdapter.weather({ city: '深圳', temperature: null, apparentTemperature: null, humidity: null, precipitation: null, windSpeed: null, weatherCode: null, weatherText: '暂不可用', updatedAt: null, available: false, isStale: true, source: 'unavailable' }))
+      .toMatchObject({ city: '深圳', temperature: null, available: false, isStale: true });
+  });
 });

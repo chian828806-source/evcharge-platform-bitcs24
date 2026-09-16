@@ -2,7 +2,8 @@ import { HttpClient } from '../api/client';
 import { dashboardEndpoints } from '../api/endpoints';
 import type {
   ApiEnvelopeDto, DataQualitySummaryDto, EnergyTrendItemDto, HourlyHeatmapItemDto, ItemsDto,
-  OverviewDto, PileStatusItemDto, PredictionItemDto, RevenueTrendItemDto, StationRankingItemDto, StationUtilizationItemDto
+  OverviewDto, PileStatusItemDto, PredictionItemDto, RevenueTrendItemDto, StationRankingItemDto, StationUtilizationItemDto,
+  WeatherDto
 } from '../api/dto';
 import type { DashboardDataSource, DashboardQuery } from './DashboardDataSource';
 
@@ -19,4 +20,5 @@ export class FlaskDashboardDataSource implements DashboardDataSource {
   getStationUtilization(query?: DashboardQuery): Promise<ApiEnvelopeDto<ItemsDto<StationUtilizationItemDto>>> { return this.client.get(dashboardEndpoints.stationUtilization, asQuery(query)); }
   getPrediction(query?: DashboardQuery): Promise<ApiEnvelopeDto<ItemsDto<PredictionItemDto>>> { return this.client.get(dashboardEndpoints.prediction, asQuery(query)); }
   getDataQualitySummary(): Promise<ApiEnvelopeDto<DataQualitySummaryDto>> { return this.client.get(dashboardEndpoints.dataQualitySummary); }
+  getWeather(): Promise<ApiEnvelopeDto<WeatherDto>> { return this.client.get(dashboardEndpoints.weather); }
 }

@@ -1,6 +1,7 @@
 import type {
   ApiEnvelopeDto, DataQualitySummaryDto, EnergyTrendItemDto, HourlyHeatmapItemDto, ItemsDto,
-  OverviewDto, PileStatusItemDto, PredictionItemDto, RevenueTrendItemDto, StationRankingItemDto, StationUtilizationItemDto
+  OverviewDto, PileStatusItemDto, PredictionItemDto, RevenueTrendItemDto, StationRankingItemDto, StationUtilizationItemDto,
+  WeatherDto
 } from '../api/dto';
 
 export interface DashboardQuery { from?: string; to?: string; stationId?: number; }
@@ -15,4 +16,5 @@ export interface DashboardDataSource {
   getStationUtilization(query?: DashboardQuery): Promise<ApiEnvelopeDto<ItemsDto<StationUtilizationItemDto>>>;
   getPrediction(query?: DashboardQuery): Promise<ApiEnvelopeDto<ItemsDto<PredictionItemDto>>>;
   getDataQualitySummary(): Promise<ApiEnvelopeDto<DataQualitySummaryDto>>;
+  getWeather(): Promise<ApiEnvelopeDto<WeatherDto>>;
 }

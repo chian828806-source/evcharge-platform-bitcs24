@@ -1,10 +1,10 @@
 import type {
   DataQualitySummaryDto, EnergyTrendItemDto, OverviewDto, PileStatusItemDto, PredictionItemDto,
-  RevenueTrendItemDto, StationRankingItemDto, StationUtilizationItemDto, HourlyHeatmapItemDto
+  RevenueTrendItemDto, StationRankingItemDto, StationUtilizationItemDto, HourlyHeatmapItemDto, WeatherDto
 } from '../api/dto';
 import type {
   DashboardOverview, DataQualitySummary, EnergyTrendItem, HourlyHeatmapItem, PileStatusItem,
-  PredictionItem, RevenueTrendItem, StationRankingItem, StationUtilizationItem
+  PredictionItem, RevenueTrendItem, StationRankingItem, StationUtilizationItem, WeatherContext
 } from '../models/dashboard';
 
 const finite = (value: number, fallback = 0): number => Number.isFinite(value) ? value : fallback;
@@ -38,5 +38,14 @@ export const dashboardAdapter = {
   },
   dataQuality(dto: DataQualitySummaryDto): DataQualitySummary {
     return { sourceRows: finite(dto.sourceRows), acceptedRows: finite(dto.acceptedRows), rejectedRows: finite(dto.rejectedRows), rules: (dto.rules ?? []).map((rule) => ({ ruleId: text(rule.ruleId), count: finite(rule.count) })) };
+  },
+  weather(dto: WeatherDto): WeatherContext {
+    const nullable = (value: number | null): number | null => value !== null && Number.isFinite(value) ? value : null;
+    return {
+      city: text(dto.city), temperature: nullable(dto.temperature), apparentTemperature: nullable(dto.apparentTemperature),
+      humidity: nullable(dto.humidity), precipitation: nullable(dto.precipitation), windSpeed: nullable(dto.windSpeed),
+      weatherCode: nullable(dto.weatherCode), weatherText: text(dto.weatherText), updatedAt: dto.updatedAt || null,
+      available: Boolean(dto.available), isStale: Boolean(dto.isStale), source: dto.source
+    };
   }
 };
