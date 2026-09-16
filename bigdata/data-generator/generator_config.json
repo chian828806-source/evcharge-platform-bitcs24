@@ -1,0 +1,14 @@
+{
+  "seed": 20260915,
+  "batch_id": "BD-20260915-001",
+  "business_date": "2026-09-15",
+  "injection_rate": 0.02,
+  "scale": {
+    "users": 200,
+    "stations": 60,
+    "piles_per_station": 4,
+    "orders": 2000,
+    "sessions": 600,
+    "metric_days": 14
+  }
+}

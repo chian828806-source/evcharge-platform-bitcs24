@@ -14,7 +14,18 @@ Raw/ODS Contract、environment 输出。
 修改 Raw 值、直接写 DWS/ADS 或伪造成功标记。
 ## Public Contract
 批次号、哈希、行数、路径和摄取时间。
-## Future Implementation
-实现幂等摄取和失败恢复。
+## Run
+
+在 Hadoop 虚拟机执行：
+
+```bash
+python3 bigdata/ingestion/ingest_ods.py \
+  --raw-dir output/raw/BD-20260915-001 \
+  --business-date 2026-09-15 \
+  --batch-id BD-20260915-001
+```
+
+默认拒绝覆盖已存在批次。只有明确确认需要重传同一批次时，才增加 `--replace`；该选项仅删除该批次
+对应的 HDFS ODS 路径。
 ## Acceptance
 文件可列举/读取，失败不发布 success manifest。

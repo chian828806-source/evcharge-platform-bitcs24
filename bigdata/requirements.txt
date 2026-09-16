@@ -1,0 +1,4 @@
+# Runtime and test dependencies for the BigData pipeline and Dashboard demo API.
+Flask>=2.2,<3.0
+Flask-Cors>=4.0,<5.0
+pyspark>=3.5,<4.0
