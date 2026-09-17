@@ -2,26 +2,19 @@
 <script setup lang="ts">
 import type { EChartsOption } from 'echarts';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import DashboardNav, { type DashboardSection } from './components/DashboardNav.vue';
 import EChartView from './components/EChartView.vue';
 import type { Resource, ResourceStatus } from './core/models/dashboard';
 import { useDashboardStore } from './core/stores/dashboard';
 
 const store = useDashboardStore();
-const activeSection = ref<DashboardSection>('overview');
 const predictionHorizons = ['1h', '6h', '24h'] as const;
 const selectedHorizon = ref<typeof predictionHorizons[number]>('1h');
 const refreshing = ref(false);
 const now = ref(new Date());
 let timer: number | undefined;
+let rotationTimer: number | undefined;
+const stationPage = ref(0);
 
-const sectionMeta: Record<DashboardSection, { eyebrow: string; title: string; description: string }> = {
-  overview: { eyebrow: 'EVCHARGE ANALYTICS', title: '运营数据总览', description: '核心经营指标与设备运行态势' },
-  trends: { eyebrow: 'ENERGY & REVENUE', title: '趋势分析', description: '充电电量、订单与营收的周期变化' },
-  stations: { eyebrow: 'STATION INSIGHTS', title: '站点分析', description: '站点贡献、利用率与资源分布' },
-  prediction: { eyebrow: 'ML FORECAST', title: '智能负载预测', description: '1h / 6h / 24h 负荷与可用资源预测' },
-  quality: { eyebrow: 'DATA GOVERNANCE', title: '数据质量', description: '清洗结果、异常规则与数据可信度' }
-};
 const colors = ['#3157d5', '#6b87e8', '#93acf2', '#c2d0f8', '#e7ecfb', '#f2a766', '#dc6675'];
 const axis = { axisLine: { lineStyle: { color: '#e5eaf2' } }, axisTick: { show: false }, axisLabel: { color: '#7e8799', fontSize: 11 }, splitLine: { lineStyle: { color: '#edf1f6', type: 'dashed' as const } } };
 const tooltip = { trigger: 'axis' as const, backgroundColor: '#20283b', borderWidth: 0, textStyle: { color: '#fff' } };
@@ -50,9 +43,13 @@ const predictionRows = computed(() => [...(store.prediction.data ?? [])].sort((l
   const horizonOrder = { '1h': 1, '6h': 6, '24h': 24 } as const;
   return horizonOrder[left.horizon] - horizonOrder[right.horizon] || left.stationId - right.stationId;
 }));
-const primaryPrediction = computed(() => predictionRows.value.find(row => row.horizon === '1h') ?? predictionRows.value[0]);
 const visiblePredictions = computed(() => predictionRows.value.filter(row => row.horizon === selectedHorizon.value));
 const selectedPrediction = computed(() => visiblePredictions.value[0]);
+const screenStations = computed(() => {
+  const rows = filteredStations.value;
+  const offset = (stationPage.value % Math.max(1, Math.ceil(rows.length / 5))) * 5;
+  return rows.slice(offset, offset + 5);
+});
 
 async function refresh() {
   if (refreshing.value) return;
@@ -112,20 +109,25 @@ const predictionOption = computed<EChartsOption>(() => {
 });
 const qualityOption = computed<EChartsOption>(() => ({ color: [colors[0], colors[6]], tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: ['62%', '79%'], center: ['50%', '48%'], label: { show: false }, data: [{ name: '通过', value: store.dataQuality.data?.acceptedRows ?? 0 }, { name: '拒绝', value: store.dataQuality.data?.rejectedRows ?? 0 }] }] }));
 
-onMounted(async () => { await refresh(); store.startRealtime(); timer = window.setInterval(refresh, 30_000); });
-onBeforeUnmount(() => { if (timer) window.clearInterval(timer); store.stopRealtime(); });
+onMounted(() => {
+  void refresh(); store.startRealtime();
+  timer = window.setInterval(refresh, 30_000);
+  rotationTimer = window.setInterval(() => {
+    selectedHorizon.value = predictionHorizons[(predictionHorizons.indexOf(selectedHorizon.value) + 1) % predictionHorizons.length];
+    stationPage.value += 1;
+  }, 10_000);
+});
+onBeforeUnmount(() => { if (timer) window.clearInterval(timer); if (rotationTimer) window.clearInterval(rotationTimer); store.stopRealtime(); });
 </script>
 
 <template>
-  <div class="app-frame">
-    <DashboardNav :active="activeSection" @select="activeSection = $event" />
+  <div class="app-frame single-screen">
     <main class="workspace">
       <header class="workspace-header">
-        <div class="page-heading"><p class="overline">{{ sectionMeta[activeSection].eyebrow }}</p><h1>{{ sectionMeta[activeSection].title }}</h1><p>{{ sectionMeta[activeSection].description }}</p></div>
-        <div class="header-tools"><div :class="['weather-pill', { stale: store.weather.data?.isStale }]" :title="store.weather.data?.isStale ? '当前显示缓存或降级数据' : 'Open-Meteo 实时天气'"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 16.5a4 4 0 0 1 .8-7.92A5.5 5.5 0 0 1 18.4 10.5 3 3 0 0 1 18 16.5Z" /><path d="M8 5.5 6.5 4M12 4V2M16 5.5 17.5 4" /></svg><div><strong>{{ store.weather.data?.city ?? '深圳' }} · {{ store.weather.data?.weatherText ?? (store.weather.status === 'loading' ? '天气加载中' : '天气暂不可用') }}</strong><small v-if="store.weather.data?.available">{{ temperature(store.weather.data.temperature) }} · 体感 {{ temperature(store.weather.data.apparentTemperature) }} · 湿度 {{ integer(store.weather.data.humidity) }}% · 风速 {{ decimal(store.weather.data.windSpeed) }} km/h</small><small v-else>实时天气暂不可用</small></div></div><span :class="['connection-pill', store.overview.status]"><i />{{ store.dataMode === 'mock' ? 'Mock 数据' : statusText[store.overview.status] }}</span><button class="icon-button" type="button" title="刷新全部数据" :disabled="refreshing" @click="refresh"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7" /></svg></button><div class="profile"><span>EV</span><div><strong>运营中心</strong><small>{{ now.toLocaleDateString('zh-CN') }}</small></div></div></div>
+        <div class="page-heading"><p class="overline">EVCHARGE ANALYTICS</p><h1>充电运营数据大屏</h1><p>运营趋势 · 站点资源 · 智能预测 · 数据质量</p></div>
+        <div class="header-tools"><div :class="['weather-pill', { stale: store.weather.data?.isStale }]" :title="store.weather.data?.isStale ? '当前显示缓存或降级数据' : 'Open-Meteo 实时天气'"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 16.5a4 4 0 0 1 .8-7.92A5.5 5.5 0 0 1 18.4 10.5 3 3 0 0 1 18 16.5Z" /><path d="M8 5.5 6.5 4M12 4V2M16 5.5 17.5 4" /></svg><div><strong>{{ store.weather.data?.city ?? '深圳' }} · {{ store.weather.data?.weatherText ?? (store.weather.status === 'loading' ? '天气加载中' : '天气暂不可用') }}</strong><small v-if="store.weather.data?.available">{{ temperature(store.weather.data.temperature) }} · 体感 {{ temperature(store.weather.data.apparentTemperature) }} · 湿度 {{ integer(store.weather.data.humidity) }}% · 风速 {{ decimal(store.weather.data.windSpeed) }} km/h</small><small v-else>实时天气暂不可用</small></div></div><span :class="['connection-pill', store.overview.status]"><i />{{ store.dataMode === 'mock' ? 'Mock 数据' : statusText[store.overview.status] }}</span><div class="profile"><span>EV</span><div><strong>运营中心</strong><small>{{ now.toLocaleDateString('zh-CN') }}</small></div></div></div>
       </header>
-
-      <section v-if="activeSection === 'overview'" class="page-view">
+      <section class="page-view screen-view" aria-label="充电运营数据总览">
         <div class="summary-grid">
           <article class="metric-card metric-card--primary"><div class="metric-icon">01</div><span>累计充电会话</span><strong>{{ integer(store.overview.data?.orderCount) }}</strong><small>由占用量变化推导的启动量</small></article>
           <article class="metric-card"><div class="metric-icon">02</div><span>充电电量</span><strong>{{ decimal(store.overview.data?.energyKwh) }} <i>kWh</i></strong><small>统计周期总电量</small></article>
@@ -133,48 +135,27 @@ onBeforeUnmount(() => { if (timer) window.clearInterval(timer); store.stopRealti
           <article class="metric-card"><div class="metric-icon">04</div><span>统计桩位</span><strong>{{ integer(store.overview.data?.onlinePileCount) }} <i>台</i></strong><small>数据集站点容量，不代表心跳在线</small></article>
           <article class="metric-card"><div class="metric-icon">05</div><span>平均利用率</span><strong>{{ percent(store.overview.data?.utilizationRate) }}</strong><small>统一利用率口径</small></article>
         </div>
-        <div class="overview-grid">
-          <article class="card span-2"><header class="card-header"><div><h2>充电运营趋势</h2><p>充电量与会话启动量变化</p></div><span class="period-chip">近 14 日</span></header><div v-if="store.energyTrend.status === 'success'" class="chart-large"><EChartView :option="operationOption" /></div><div v-else :class="stateClass(store.energyTrend)"><span>{{ statusText[store.energyTrend.status] }}</span></div></article>
+        <div class="screen-grid">
+          <article class="card screen-trend"><header class="card-header"><div><h2>充电运营趋势</h2><p>充电量与会话启动量变化</p></div><span class="period-chip">近 14 日</span></header><div v-if="store.energyTrend.status === 'success'" class="chart-large"><EChartView :option="operationOption" /></div><div v-else :class="stateClass(store.energyTrend)"><span>{{ statusText[store.energyTrend.status] }}</span></div></article>
           <article class="card"><header class="card-header"><div><h2>电桩状态</h2><p>设备运行结构</p></div></header><div v-if="store.pileStatus.status === 'success'" class="donut-wrap"><EChartView :option="pileOption" /><div class="donut-label"><strong>{{ integer(totalPiles) }}</strong><span>电桩总数</span></div></div><div v-else :class="stateClass(store.pileStatus)"><span>{{ statusText[store.pileStatus.status] }}</span></div></article>
-          <article class="prediction-hero"><dv-border-box-8 :dur="5"><div class="prediction-content"><span class="prediction-label">AI LOAD FORECAST</span><h2>下一时段负荷</h2><div class="prediction-number"><strong>{{ percent(primaryPrediction?.predictedLoad) }}</strong><span>{{ primaryPrediction?.stationName ?? '等待预测数据' }}</span></div><div class="prediction-meta"><span>{{ primaryPrediction?.horizon ?? '--' }}</span><span>预计可用 {{ integer(primaryPrediction?.predictedAvailableCount) }} 枪</span></div></div></dv-border-box-8></article>
           <article class="card"><header class="card-header"><div><h2>营收概览</h2><p>每日收入变化</p></div></header><div v-if="store.revenueTrend.status === 'success'" class="chart-compact"><EChartView :option="revenueOption" /></div><div v-else :class="stateClass(store.revenueTrend)"><span>{{ statusText[store.revenueTrend.status] }}</span></div></article>
-          <article class="card"><header class="card-header"><div><h2>站点利用率</h2><p>高利用站点概览</p></div><button class="text-button" @click="activeSection = 'stations'">查看全部</button></header><div class="utilization-list compact"><div v-for="row in filteredStations.slice(0, 4)" :key="row.stationId + '-' + row.date" class="utilization-row"><div><strong>{{ row.stationName }}</strong><small>{{ integer(row.availableCount) }}/{{ integer(row.totalPileCount) }} 空闲</small></div><span class="progress"><i :style="{ width: progressWidth(row.utilizationRate) }" /></span><b>{{ percent(row.utilizationRate) }}</b></div></div></article>
-        </div>
-      </section>
-
-      <section v-else-if="activeSection === 'trends'" class="page-view two-column">
-        <article class="card wide-card"><header class="card-header"><div><h2>充电量与订单趋势</h2><p>两个维度的同期对比分析</p></div><span class="period-chip">Energy / Orders</span></header><div v-if="store.energyTrend.status === 'success'" class="chart-full"><EChartView :option="operationOption" /></div><div v-else :class="stateClass(store.energyTrend)"><span>{{ statusText[store.energyTrend.status] }}</span></div></article>
-        <article class="card wide-card"><header class="card-header"><div><h2>估算收入趋势</h2><p>按统一演示单价估算，不代表支付流水</p></div><span class="period-chip">Estimated</span></header><div v-if="store.revenueTrend.status === 'success'" class="chart-full"><EChartView :option="revenueOption" /></div><div v-else :class="stateClass(store.revenueTrend)"><span>{{ statusText[store.revenueTrend.status] }}</span></div></article>
-        <article class="card full-row"><header class="card-header"><div><h2>时段利用率热力图</h2><p>星期与小时两个维度交叉分析</p></div><span class="period-chip">7 × 24</span></header><div v-if="store.hourlyHeatmap.status === 'success'" class="chart-heatmap"><EChartView :option="heatmapOption" /></div><div v-else :class="stateClass(store.hourlyHeatmap)"><span>{{ statusText[store.hourlyHeatmap.status] }}</span></div></article>
-      </section>
-
-      <section v-else-if="activeSection === 'stations'" class="page-view two-column">
-        <article class="card wide-card"><header class="card-header"><div><h2>站点充电量排行</h2><p>按充电贡献对比</p></div><span class="period-chip">TOP 8</span></header><div v-if="store.stationRanking.status === 'success'" class="chart-full"><EChartView :option="rankingOption" /></div><div v-else :class="stateClass(store.stationRanking)"><span>{{ statusText[store.stationRanking.status] }}</span></div></article>
-        <article class="card wide-card"><header class="card-header"><div><h2>电桩状态分布</h2><p>空闲、充电、故障及离线</p></div><span class="period-chip">{{ integer(totalPiles) }} 台</span></header><div v-if="store.pileStatus.status === 'success'" class="chart-full pile-full"><EChartView :option="pileOption" /></div><div v-else :class="stateClass(store.pileStatus)"><span>{{ statusText[store.pileStatus.status] }}</span></div></article>
-        <article class="card full-row"><header class="card-header"><div><h2>站点资源明细</h2><p>名称、日期、利用率与可用电桩</p></div><span class="period-chip">{{ filteredStations.length }} 条</span></header><div v-if="store.stationUtilization.status === 'success'" class="station-table"><div class="table-row table-head"><span>站点</span><span>日期</span><span>空闲 / 总数</span><span>利用率</span></div><div v-for="row in filteredStations" :key="row.stationId + '-' + row.date" class="table-row"><strong>{{ row.stationName }}</strong><span>{{ row.date || '--' }}</span><span>{{ integer(row.availableCount) }} / {{ integer(row.totalPileCount) }}</span><div class="table-progress"><span class="progress"><i :style="{ width: progressWidth(row.utilizationRate) }" /></span><b>{{ percent(row.utilizationRate) }}</b></div></div><div v-if="filteredStations.length === 0" class="table-empty">没有匹配的站点</div></div><div v-else :class="stateClass(store.stationUtilization)"><span>{{ statusText[store.stationUtilization.status] }}</span></div></article>
-      </section>
-
-      <section v-else-if="activeSection === 'prediction'" class="page-view prediction-grid">
-        <article class="prediction-hero prediction-summary"><dv-border-box-8 :dur="5"><div class="prediction-content"><span class="prediction-label">SPARK MLLIB · {{ selectedHorizon }}</span><h2>负荷预测摘要</h2><p>{{ selectedPrediction?.stationName ?? '当前窗口暂无预测数据' }}</p><div class="prediction-number"><strong>{{ percent(selectedPrediction?.predictedLoad) }}</strong><span>{{ peakName[selectedPrediction?.peakLevel ?? ''] ?? '暂无等级' }}</span></div><div class="prediction-meta"><span>MAE {{ decimal(selectedPrediction?.mae, 3) }}</span><span>RMSE {{ decimal(selectedPrediction?.rmse, 3) }}</span></div></div></dv-border-box-8></article>
-        <article class="card prediction-chart-card">
+          <article class="card screen-heatmap"><header class="card-header"><div><h2>时段利用率热力图</h2><p>星期与小时两个维度交叉分析</p></div><span class="period-chip">7 × 24</span></header><div v-if="store.hourlyHeatmap.status === 'success'" class="chart-heatmap"><EChartView :option="heatmapOption" /></div><div v-else :class="stateClass(store.hourlyHeatmap)"><span>{{ statusText[store.hourlyHeatmap.status] }}</span></div></article>
+          <article class="card screen-ranking"><header class="card-header"><div><h2>站点充电量排行</h2><p>按充电贡献对比</p></div><span class="period-chip">TOP 8</span></header><div v-if="store.stationRanking.status === 'success'" class="chart-full"><EChartView :option="rankingOption" /></div><div v-else :class="stateClass(store.stationRanking)"><span>{{ statusText[store.stationRanking.status] }}</span></div></article>
+          <article class="card screen-stations"><header class="card-header"><div><h2>站点利用率</h2><p>高利用站点概览</p></div><span class="period-chip">自动轮播</span></header><div class="utilization-list compact"><div v-for="row in screenStations" :key="row.stationId + '-' + row.date" class="utilization-row"><div><strong>{{ row.stationName }}</strong><small>{{ integer(row.availableCount) }}/{{ integer(row.totalPileCount) }} 空闲</small></div><span class="progress"><i :style="{ width: progressWidth(row.utilizationRate) }" /></span><b>{{ percent(row.utilizationRate) }}</b></div></div></article>
+          <article class="card screen-prediction"><dv-border-box-8 :dur="5"><div class="screen-prediction-inner">
           <header class="card-header prediction-header">
             <div><h2>{{ selectedHorizon }} 负荷预测</h2><p>同一预测窗口下的站点负荷对比</p></div>
-            <div class="horizon-switch" role="group" aria-label="选择预测窗口">
-              <button v-for="horizon in predictionHorizons" :key="horizon" type="button" :class="{ active: selectedHorizon === horizon }" :aria-pressed="selectedHorizon === horizon" @click="selectedHorizon = horizon">{{ horizon }}</button>
-            </div>
-          </header>
+            <div class="horizon-switch" aria-label="预测窗口，每10秒自动轮播"><span v-for="horizon in predictionHorizons" :key="horizon" :class="{ active: selectedHorizon === horizon }">{{ horizon }}</span></div>
+          </header><div class="screen-prediction-summary"><strong>{{ percent(selectedPrediction?.predictedLoad) }}</strong><span>{{ selectedPrediction?.stationName ?? '暂无预测数据' }} · {{ peakName[selectedPrediction?.peakLevel ?? ''] ?? '--' }} · 可用 {{ integer(selectedPrediction?.predictedAvailableCount) }} 枪</span><small>MAE {{ decimal(selectedPrediction?.mae, 3) }} · RMSE {{ decimal(selectedPrediction?.rmse, 3) }}</small></div>
           <div v-if="store.prediction.status === 'success' && visiblePredictions.length" class="chart-full"><EChartView :option="predictionOption" /></div>
           <div v-else-if="store.prediction.status === 'success'" class="table-empty">{{ selectedHorizon }} 窗口暂无预测数据</div>
           <div v-else :class="stateClass(store.prediction)"><span>{{ statusText[store.prediction.status] }}</span></div>
-        </article>
-        <article class="card full-row"><header class="card-header"><div><h2>{{ selectedHorizon }} 预测明细</h2><p>预测时刻、负荷、可用桩与模型评价</p></div><span class="period-chip">{{ visiblePredictions.length }} 条</span></header><div v-if="store.prediction.status === 'success'" class="station-table prediction-table"><div class="table-row table-head"><span>站点 / 时刻</span><span>窗口</span><span>峰值</span><span>预测负荷</span><span>可用桩</span><span>模型</span></div><div v-for="row in visiblePredictions" :key="row.stationId + '-' + row.predictionTime + '-' + row.horizon" class="table-row"><strong>{{ row.stationName }}<small>{{ row.predictionTime }}</small></strong><span>{{ row.horizon }}</span><span :class="'peak peak-' + row.peakLevel.toLowerCase()">{{ peakName[row.peakLevel] }}</span><b>{{ percent(row.predictedLoad) }}</b><span>{{ integer(row.predictedAvailableCount) }}</span><span>{{ row.modelName ?? '--' }}</span></div><div v-if="!visiblePredictions.length" class="table-empty">{{ selectedHorizon }} 窗口暂无预测数据</div></div><div v-else :class="stateClass(store.prediction)"><span>{{ statusText[store.prediction.status] }}</span></div></article>
+        </div></dv-border-box-8></article>
+          <article class="card screen-quality"><header class="card-header"><div><h2>清洗通过率</h2><p>有效数据占源数据比例</p></div><span class="quality-badge">QUALITY</span></header><div v-if="store.dataQuality.status === 'success'" class="quality-layout"><div class="quality-chart"><EChartView :option="qualityOption" /><div class="quality-center"><strong>{{ percent(qualityRate) }}</strong><span>通过率</span></div></div><dl><div><dt>源数据</dt><dd>{{ integer(store.dataQuality.data?.sourceRows) }}</dd></div><div><dt>通过</dt><dd class="success-text">{{ integer(store.dataQuality.data?.acceptedRows) }}</dd></div><div><dt>拒绝</dt><dd class="danger-text">{{ integer(store.dataQuality.data?.rejectedRows) }}</dd></div></dl></div><div v-else :class="stateClass(store.dataQuality)"><span>{{ statusText[store.dataQuality.status] }}</span></div></article>
+          <article class="card screen-rules"><header class="card-header"><div><h2>异常规则统计</h2><p>按 DQ 规则追踪拒绝原因</p></div><span class="period-chip">{{ store.dataQuality.data?.rules.length ?? 0 }} 项规则</span></header><div v-if="store.dataQuality.status === 'success'" class="rule-list"><div v-for="rule in store.dataQuality.data?.rules" :key="rule.ruleId" class="rule-row"><span>{{ rule.ruleId }}</span><div class="rule-bar"><i :style="{ width: progressWidth((rule.count || 0) / Math.max(1, store.dataQuality.data?.rejectedRows || 1)) }" /></div><strong>{{ integer(rule.count) }}</strong></div><div v-if="!store.dataQuality.data?.rules.length" class="table-empty">当前批次没有异常规则记录</div></div><div v-else :class="stateClass(store.dataQuality)"><span>{{ statusText[store.dataQuality.status] }}</span></div></article>
+        </div>
       </section>
-
-      <section v-else class="page-view quality-grid">
-        <article class="card quality-summary"><header class="card-header"><div><h2>清洗通过率</h2><p>有效数据占源数据比例</p></div><span class="quality-badge">QUALITY</span></header><div v-if="store.dataQuality.status === 'success'" class="quality-layout"><div class="quality-chart"><EChartView :option="qualityOption" /><div class="quality-center"><strong>{{ percent(qualityRate) }}</strong><span>通过率</span></div></div><dl><div><dt>源数据</dt><dd>{{ integer(store.dataQuality.data?.sourceRows) }}</dd></div><div><dt>通过</dt><dd class="success-text">{{ integer(store.dataQuality.data?.acceptedRows) }}</dd></div><div><dt>拒绝</dt><dd class="danger-text">{{ integer(store.dataQuality.data?.rejectedRows) }}</dd></div></dl></div><div v-else :class="stateClass(store.dataQuality)"><span>{{ statusText[store.dataQuality.status] }}</span></div></article>
-        <article class="card quality-rules"><header class="card-header"><div><h2>异常规则统计</h2><p>按 DQ 规则追踪拒绝原因</p></div><span class="period-chip">{{ store.dataQuality.data?.rules.length ?? 0 }} 项规则</span></header><div v-if="store.dataQuality.status === 'success'" class="rule-list"><div v-for="rule in store.dataQuality.data?.rules" :key="rule.ruleId" class="rule-row"><span>{{ rule.ruleId }}</span><div class="rule-bar"><i :style="{ width: progressWidth((rule.count || 0) / Math.max(1, store.dataQuality.data?.rejectedRows || 1)) }" /></div><strong>{{ integer(rule.count) }}</strong></div><div v-if="!store.dataQuality.data?.rules.length" class="table-empty">当前批次没有异常规则记录</div></div><div v-else :class="stateClass(store.dataQuality)"><span>{{ statusText[store.dataQuality.status] }}</span></div></article>
-      </section>
-      <footer><span>数据来源：Dashboard Core · {{ store.dataMode === 'mock' ? 'Mock 演示模式' : 'Flask API 模式' }}</span><span>最近刷新：{{ now.toLocaleString('zh-CN') }}</span></footer>
+      <footer><span>数据来源：Dashboard Core · {{ store.dataMode === 'mock' ? 'Mock 演示模式' : 'Flask API 模式' }}</span><span>预测窗口每10秒自动轮播 · 数据每30秒自动刷新 · {{ now.toLocaleString('zh-CN') }}</span></footer>
     </main>
   </div>
 </template>
