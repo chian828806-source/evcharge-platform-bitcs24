@@ -146,7 +146,7 @@ python3 bigdata/urbanev/prepare_raw.py \
 流水线完成后开两个终端：
 
 ```bash
-python3 bigdata/integration/demo_api.py
+python3 bigdata/api/app.py
 ```
 
 ```bash
@@ -161,8 +161,8 @@ npm run dev -- --host 0.0.0.0
 
 必须在启动 Vite **之前** 创建 `.env.local`，否则前端默认使用 Mock 夹具，只会显示
 `2026-09-14` 的单点样例。修改环境变量后需要重启 Vite，单纯刷新浏览器不会重新读取启动环境。
-Flask 每次请求都会重新读取 `bigdata/runtime/demo/dashboard.json`，所以重新训练后不必重启
-Flask。当前演示关闭 Qt WebSocket 实时推送，展示的是最近一次成功批处理快照。
+Flask 每次请求都会重新读取 C 的 ADS 快照，并在批次一致时合并 E 的预测快照，所以重新计算或
+训练后不必重启 Flask。当前演示关闭 Qt WebSocket 实时推送，展示的是最近一次成功批处理快照。
 
 ## 5. 验收
 
