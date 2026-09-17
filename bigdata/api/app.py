@@ -51,6 +51,15 @@ class SnapshotStore:
         snapshot = load_json(self.ads_path)
         if not isinstance(snapshot.get("meta"), dict):
             raise ValueError("ADS snapshot does not contain metadata")
+        meta = snapshot["meta"]
+        if not isinstance(meta.get("batchId"), str) or not meta.get("generatedAt"):
+            raise ValueError("ADS snapshot metadata is incomplete")
+        for key in ("rangeFrom", "rangeTo"):
+            if key in meta:
+                date.fromisoformat(str(meta[key]))
+        required = (*RESOURCE_NAMES.values(), "_query")
+        if any(key not in snapshot for key in required) or not isinstance(snapshot["_query"].get("stationDays"), list):
+            raise ValueError("ADS snapshot is incomplete")
         if self.ml_path.is_file():
             ml = load_json(self.ml_path)
             if ml.get("meta", {}).get("batchId") == snapshot["meta"].get("batchId"):
@@ -168,7 +177,11 @@ def filtered_resource(snapshot: dict[str, Any], resource: str) -> Any:
     days = selected_station_days(snapshot, start, end, station_id)
     if resource == "overview":
         result = aggregate_days(days)
-        result["onlinePileCount"] = snapshot["overview"].get("onlinePileCount", 0)
+        if station_id is None:
+            result["onlinePileCount"] = snapshot["overview"].get("onlinePileCount", 0)
+        else:
+            latest_day = max(days, key=lambda row: row["date"], default=None)
+            result["onlinePileCount"] = int(latest_day.get("totalPileCount", 0)) if latest_day else 0
         return result
     if resource in {"energy-trend", "revenue-trend"}:
         grouped: dict[str, list[dict[str, Any]]] = {}
@@ -228,11 +241,12 @@ def create_app(store: SnapshotStore | None = None, weather_provider: Callable[[]
             return jsonify({"error": {"code": "NOT_FOUND", "message": "Unknown dashboard resource."}}), 404
         try:
             snapshot = snapshots.read()
+        except (OSError, json.JSONDecodeError, KeyError, ValueError) as error:
+            return jsonify({"error": {"code": "BATCH_NOT_READY", "message": str(error)}}), 409
+        try:
             data = filtered_resource(snapshot, normalized)
         except ValueError as error:
             return jsonify({"error": {"code": "INVALID_QUERY", "message": str(error)}}), 400
-        except (OSError, json.JSONDecodeError, KeyError) as error:
-            return jsonify({"error": {"code": "BATCH_NOT_READY", "message": str(error)}}), 409
         meta = snapshot["meta"]
         start, end, _ = query_window(snapshot) if normalized not in {"pile-status", "hourly-heatmap", "data-quality/summary"} else (None, None, None)
         response_meta = {"batchId": meta["batchId"], "generatedAt": meta["generatedAt"]}
