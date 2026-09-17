@@ -9,6 +9,8 @@ import { useDashboardStore } from './core/stores/dashboard';
 
 const store = useDashboardStore();
 const activeSection = ref<DashboardSection>('overview');
+const predictionHorizons = ['1h', '6h', '24h'] as const;
+const selectedHorizon = ref<typeof predictionHorizons[number]>('1h');
 const refreshing = ref(false);
 const now = ref(new Date());
 let timer: number | undefined;
@@ -49,6 +51,8 @@ const predictionRows = computed(() => [...(store.prediction.data ?? [])].sort((l
   return horizonOrder[left.horizon] - horizonOrder[right.horizon] || left.stationId - right.stationId;
 }));
 const primaryPrediction = computed(() => predictionRows.value.find(row => row.horizon === '1h') ?? predictionRows.value[0]);
+const visiblePredictions = computed(() => predictionRows.value.filter(row => row.horizon === selectedHorizon.value));
+const selectedPrediction = computed(() => visiblePredictions.value[0]);
 
 async function refresh() {
   if (refreshing.value) return;
@@ -103,7 +107,7 @@ const heatmapOption = computed<EChartsOption>(() => ({
   series: [{ type: 'heatmap', data: store.hourlyHeatmap.data?.map(row => [Math.min(23, Math.max(0, row.hour)), (Math.min(7, Math.max(1, row.dayOfWeek)) + 5) % 7, Math.min(1, Math.max(0, row.utilizationRate))]) ?? [], itemStyle: { borderColor: '#fff', borderWidth: 2, borderRadius: 3 } }]
 }));
 const predictionOption = computed<EChartsOption>(() => {
-  const rows = predictionRows.value.slice(0, 24);
+  const rows = visiblePredictions.value;
   return { tooltip, color: [colors[0]], grid: { left: 54, right: 24, top: 28, bottom: 64 }, xAxis: { type: 'category', data: rows.map(row => row.stationName + '\n' + row.horizon), ...axis, axisLabel: { color: '#7e8799', fontSize: 10, interval: 0, rotate: 18 } }, yAxis: { type: 'value', min: 0, max: 1, ...axis, axisLabel: { color: '#7e8799', formatter: (value: number) => Math.round(value * 100) + '%' } }, series: [{ name: '预测负荷', type: 'line', smooth: true, symbolSize: 9, lineStyle: { width: 3 }, areaStyle: { color: 'rgba(49,87,213,.10)' }, markLine: { silent: true, data: [{ yAxis: .8, name: '高峰线' }], lineStyle: { color: colors[6], type: 'dashed' } }, data: rows.map(row => ({ value: row.predictedLoad, itemStyle: { color: row.peakLevel === 'HIGH' ? colors[6] : row.peakLevel === 'MEDIUM' ? colors[5] : colors[0] } })) }] };
 });
 const qualityOption = computed<EChartsOption>(() => ({ color: [colors[0], colors[6]], tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: ['62%', '79%'], center: ['50%', '48%'], label: { show: false }, data: [{ name: '通过', value: store.dataQuality.data?.acceptedRows ?? 0 }, { name: '拒绝', value: store.dataQuality.data?.rejectedRows ?? 0 }] }] }));
@@ -151,9 +155,19 @@ onBeforeUnmount(() => { if (timer) window.clearInterval(timer); store.stopRealti
       </section>
 
       <section v-else-if="activeSection === 'prediction'" class="page-view prediction-grid">
-        <article class="prediction-hero prediction-summary"><dv-border-box-8 :dur="5"><div class="prediction-content"><span class="prediction-label">SPARK MLLIB</span><h2>负荷预测摘要</h2><p>模型结果经 Flask 与 Dashboard Core 进入当前视图。</p><div class="prediction-number"><strong>{{ percent(primaryPrediction?.predictedLoad) }}</strong><span>{{ peakName[primaryPrediction?.peakLevel ?? ''] ?? '暂无等级' }}</span></div><div class="prediction-meta"><span>MAE {{ decimal(primaryPrediction?.mae, 3) }}</span><span>RMSE {{ decimal(primaryPrediction?.rmse, 3) }}</span></div></div></dv-border-box-8></article>
-        <article class="card prediction-chart-card"><header class="card-header"><div><h2>1h / 6h / 24h 负荷预测</h2><p>站点与预测窗口对比</p></div><span class="period-chip">MLlib</span></header><div v-if="store.prediction.status === 'success'" class="chart-full"><EChartView :option="predictionOption" /></div><div v-else :class="stateClass(store.prediction)"><span>{{ statusText[store.prediction.status] }}</span></div></article>
-        <article class="card full-row"><header class="card-header"><div><h2>预测明细</h2><p>预测时刻、负荷、可用桩与模型评价</p></div></header><div v-if="store.prediction.status === 'success'" class="station-table prediction-table"><div class="table-row table-head"><span>站点 / 时刻</span><span>窗口</span><span>峰值</span><span>预测负荷</span><span>可用桩</span><span>模型</span></div><div v-for="row in predictionRows" :key="row.stationId + '-' + row.predictionTime + '-' + row.horizon" class="table-row"><strong>{{ row.stationName }}<small>{{ row.predictionTime }}</small></strong><span>{{ row.horizon }}</span><span :class="'peak peak-' + row.peakLevel.toLowerCase()">{{ peakName[row.peakLevel] }}</span><b>{{ percent(row.predictedLoad) }}</b><span>{{ integer(row.predictedAvailableCount) }}</span><span>{{ row.modelName ?? '--' }}</span></div></div><div v-else :class="stateClass(store.prediction)"><span>{{ statusText[store.prediction.status] }}</span></div></article>
+        <article class="prediction-hero prediction-summary"><dv-border-box-8 :dur="5"><div class="prediction-content"><span class="prediction-label">SPARK MLLIB · {{ selectedHorizon }}</span><h2>负荷预测摘要</h2><p>{{ selectedPrediction?.stationName ?? '当前窗口暂无预测数据' }}</p><div class="prediction-number"><strong>{{ percent(selectedPrediction?.predictedLoad) }}</strong><span>{{ peakName[selectedPrediction?.peakLevel ?? ''] ?? '暂无等级' }}</span></div><div class="prediction-meta"><span>MAE {{ decimal(selectedPrediction?.mae, 3) }}</span><span>RMSE {{ decimal(selectedPrediction?.rmse, 3) }}</span></div></div></dv-border-box-8></article>
+        <article class="card prediction-chart-card">
+          <header class="card-header prediction-header">
+            <div><h2>{{ selectedHorizon }} 负荷预测</h2><p>同一预测窗口下的站点负荷对比</p></div>
+            <div class="horizon-switch" role="group" aria-label="选择预测窗口">
+              <button v-for="horizon in predictionHorizons" :key="horizon" type="button" :class="{ active: selectedHorizon === horizon }" :aria-pressed="selectedHorizon === horizon" @click="selectedHorizon = horizon">{{ horizon }}</button>
+            </div>
+          </header>
+          <div v-if="store.prediction.status === 'success' && visiblePredictions.length" class="chart-full"><EChartView :option="predictionOption" /></div>
+          <div v-else-if="store.prediction.status === 'success'" class="table-empty">{{ selectedHorizon }} 窗口暂无预测数据</div>
+          <div v-else :class="stateClass(store.prediction)"><span>{{ statusText[store.prediction.status] }}</span></div>
+        </article>
+        <article class="card full-row"><header class="card-header"><div><h2>{{ selectedHorizon }} 预测明细</h2><p>预测时刻、负荷、可用桩与模型评价</p></div><span class="period-chip">{{ visiblePredictions.length }} 条</span></header><div v-if="store.prediction.status === 'success'" class="station-table prediction-table"><div class="table-row table-head"><span>站点 / 时刻</span><span>窗口</span><span>峰值</span><span>预测负荷</span><span>可用桩</span><span>模型</span></div><div v-for="row in visiblePredictions" :key="row.stationId + '-' + row.predictionTime + '-' + row.horizon" class="table-row"><strong>{{ row.stationName }}<small>{{ row.predictionTime }}</small></strong><span>{{ row.horizon }}</span><span :class="'peak peak-' + row.peakLevel.toLowerCase()">{{ peakName[row.peakLevel] }}</span><b>{{ percent(row.predictedLoad) }}</b><span>{{ integer(row.predictedAvailableCount) }}</span><span>{{ row.modelName ?? '--' }}</span></div><div v-if="!visiblePredictions.length" class="table-empty">{{ selectedHorizon }} 窗口暂无预测数据</div></div><div v-else :class="stateClass(store.prediction)"><span>{{ statusText[store.prediction.status] }}</span></div></article>
       </section>
 
       <section v-else class="page-view quality-grid">
