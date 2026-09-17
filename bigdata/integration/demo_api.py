@@ -80,13 +80,13 @@ class WeatherService:
         self._lock = threading.Lock()
 
     @staticmethod
-    def unavailable() -> dict[str, Any]:
-        """在没有任何可用缓存时返回显式空值，不伪造实时天气。"""
+    def demo_fallback() -> dict[str, Any]:
+        """上游离线时显示明确标注的演示天气，避免影响大屏演示。"""
         return {
-            "city": WEATHER_CITY, "temperature": None, "apparentTemperature": None,
-            "humidity": None, "precipitation": None, "windSpeed": None,
-            "weatherCode": None, "weatherText": "暂不可用", "updatedAt": None,
-            "available": False, "isStale": True, "source": "unavailable",
+            "city": WEATHER_CITY, "temperature": 26.0, "apparentTemperature": 27.0,
+            "humidity": 60, "precipitation": 0.0, "windSpeed": 3.0,
+            "weatherCode": 0, "weatherText": "晴（演示）", "updatedAt": None,
+            "available": True, "isStale": True, "source": "demo-static",
         }
 
     def _url(self) -> str:
@@ -123,7 +123,7 @@ class WeatherService:
         }
 
     def current(self) -> dict[str, Any]:
-        """优先返回有效缓存；上游失败时返回过期缓存或显式不可用对象。"""
+        """优先返回有效缓存；上游失败时返回过期缓存或明确标注的演示天气。"""
         now = self._clock()
         with self._lock:
             if self._cache is not None and now - self._cached_at < WEATHER_CACHE_TTL_SECONDS:
@@ -133,7 +133,7 @@ class WeatherService:
         except (OSError, ValueError, KeyError, TypeError):
             with self._lock:
                 if self._cache is None:
-                    return self.unavailable()
+                    return self.demo_fallback()
                 stale = deepcopy(self._cache)
             stale.update({"isStale": True, "source": "cache"})
             return stale

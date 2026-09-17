@@ -94,8 +94,8 @@ empty / error 以及 V1 Qt WebSocket 消息解析。
 ## 实时天气
 
 顶部天气条通过 Core 请求 Flask 的 `GET /api/v1/context/weather`。Flask 再访问 Open-Meteo，
-默认缓存 20 分钟；上游暂时失败时优先显示旧缓存，没有缓存则明确显示“天气暂不可用”。浏览器
-不直接访问 Open-Meteo，天气故障也不会阻断九项分析资源。
+默认缓存 20 分钟；上游暂时失败时优先显示旧缓存，没有缓存则显示明确标注的“晴（演示）”静态兜底值。
+浏览器不直接访问 Open-Meteo，天气故障也不会阻断九项分析资源。
 
 部署时可按需覆盖 `EVCHARGE_WEATHER_CITY`、`EVCHARGE_WEATHER_LATITUDE`、
 `EVCHARGE_WEATHER_LONGITUDE`、`EVCHARGE_WEATHER_CACHE_TTL_SECONDS` 和

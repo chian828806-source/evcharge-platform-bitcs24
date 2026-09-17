@@ -90,14 +90,14 @@ class WeatherServiceTest(unittest.TestCase):
         self.assertEqual(service.current()["temperature"], 28.4)
         self.assertEqual(len(calls), 1)
 
-    def test_returns_transparent_unavailable_data_without_cache(self):
+    def test_returns_labeled_demo_weather_without_cache(self):
         def failing_fetcher(url, timeout):
             raise OSError("offline")
 
         weather = demo_api.WeatherService(fetcher=failing_fetcher).current()
-        self.assertFalse(weather["available"])
-        self.assertIsNone(weather["temperature"])
-        self.assertEqual(weather["weatherText"], "暂不可用")
+        self.assertTrue(weather["available"])
+        self.assertEqual(weather["weatherText"], "晴（演示）")
+        self.assertEqual(weather["source"], "demo-static")
 
 
 if __name__ == "__main__":
