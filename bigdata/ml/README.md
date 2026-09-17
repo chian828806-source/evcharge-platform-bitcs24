@@ -11,7 +11,7 @@ E（Spark MLlib）。
 
 ## Input
 
-- `dws_station_hour`：C 的正式 DWS，或端到端 Demo 的临时 DWS 桥接输出。
+- `dws_station_hour`：C 的正式 DWS。
 - 同一 `batch_id` 的质量报告：用于把 B 的 DQ 统计传递给演示 API 和大屏。
 
 输入字段：
@@ -55,26 +55,25 @@ bash bigdata/integration/run_full_demo.sh
 
 ```text
 B: generator → ODS → DQ → DWD
-Demo bridge: DWD → dws_station_hour
+C: DWD → SparkSQL DWS/ADS
 E: DWS → features → MLlib → ads_prediction
-Flask/Dashboard: 读取 dashboard.json
+Flask/Dashboard: 读取 C 的 ADS 快照并合并同批次预测
 ```
 
-`build_demo_dws.py` 只是 C 的正式数仓作业尚未提交时使用的直通桥。C 发布正式
-`dws_station_hour` 后，编排脚本只需替换 DWS 生产步骤，ML 作业及其字段不需要修改。
+`build_demo_dws.py` 仅保留作历史联调参考，正式编排使用 C 的 `build_warehouse.py`。
 
 也可以单独重跑 ML：
 
 ```bash
 spark-submit bigdata/ml/jobs/station_load_demo.py \
-  --dws-input hdfs:///evcharge/dws/dws_station_hour/batch=BD-20260915-DEMO \
+  --dws-input hdfs:///evcharge/dws/dws_station_hour/dt=2026-09-15/batch=BD-20260915-DEMO \
   --quality-report hdfs:///evcharge/quality/reports/dt=2026-09-15/batch=BD-20260915-DEMO
 ```
 
 ## Boundary with B and C
 
 - B 的生成器、ODS、DQ 和 DWD 实现保持原样，ML 只消费其公开产物。
-- Demo 桥不修改上游分区，也不冒充 C 的正式 DWS 实现。
+- C 的 DWS/ADS 作业不修改 B 的上游分区。
 - E 只发布模型、评估报告与预测结果，不实现 Flask 或 Vue。
 - C 可读取 `ads_prediction`，不需要读取模型文件。
 

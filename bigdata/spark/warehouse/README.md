@@ -14,7 +14,17 @@ DWD Contract、SparkSQL、Warehouse Design。
 Raw 重清洗、Vue/ECharts、ML 训练或绕过 DWD。
 ## Public Contract
 [23-WAREHOUSE-DESIGN.md](../../../docs/bigdata/23-WAREHOUSE-DESIGN.md)。
-## Future Implementation
-补充各层建表、ETL 与指标 SQL。
+## Run
+
+```bash
+spark-submit bigdata/spark/warehouse/build_warehouse.py \
+  --business-date 2026-09-15 \
+  --batch-id BD-20260915-DEMO \
+  --replace
+```
+
+作业只读取同批次的四张 DWD 表，使用 Spark SQL 发布四张 DWS、六张 ADS、批次 manifest，
+同时原子更新 Flask 使用的 `bigdata/runtime/warehouse/dashboard.json`。营收和业务电量仅统计
+`COMPLETED + paid_at` 的真实订单，排除 `URBANEV-SYN-%` 关系补全记录。
 ## Acceptance
 每张输出表有粒度、主键、分区、批次和下游用途。
