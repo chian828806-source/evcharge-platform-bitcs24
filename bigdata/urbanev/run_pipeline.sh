@@ -9,7 +9,7 @@ batch_id="${3:-URBANEV-20230228-RAW-V1}"
 business_date="2023-02-28"
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 raw_dir="${project_root}/bigdata/runtime/urbanev/raw/${batch_id}"
-dws_path="hdfs:///evcharge/dws/dws_station_hour/batch=${batch_id}"
+dws_path="hdfs:///evcharge/dws/dws_station_hour/dt=${business_date}/batch=${batch_id}"
 quality_report="hdfs:///evcharge/quality/reports/dt=${business_date}/batch=${batch_id}"
 
 cd "${project_root}"
@@ -43,9 +43,10 @@ spark-submit bigdata/spark/dwd/build_dwd.py \
   --batch-id "${batch_id}" \
   --replace
 
-spark-submit bigdata/integration/build_demo_dws.py \
+spark-submit bigdata/spark/warehouse/build_warehouse.py \
   --business-date "${business_date}" \
   --batch-id "${batch_id}" \
+  --snapshot-output bigdata/runtime/warehouse/dashboard.json \
   --replace
 
 spark-submit bigdata/ml/jobs/station_load_demo.py \
@@ -53,4 +54,4 @@ spark-submit bigdata/ml/jobs/station_load_demo.py \
   --quality-report "${quality_report}" \
   --output bigdata/runtime/demo
 
-echo "UrbanEV workflow completed: bigdata/runtime/demo/dashboard.json"
+echo "UrbanEV workflow completed: C ADS and E prediction snapshots are ready."

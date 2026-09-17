@@ -14,7 +14,8 @@ DWS/ADS/ML Contract。
 Vue UI、SQLite 业务写入或模型训练内部实现。
 ## Public Contract
 ADS 字段对应 23 号文档和 24 号 HTTP Contract。
-## Future Implementation
-实现 ADS SQL、血缘和刷新检查。
+## Implementation
+`../build_warehouse.py` 发布 overview、站点排行、能耗趋势、营收趋势、桩状态和小时热力六类
+ADS。E 的 `ads_prediction` 由 Flask 按相同 `batchId` 合并，批次不一致时不会混用。
 ## Acceptance
 每个 API 字段可回溯到 ADS、DWS 和 batch。

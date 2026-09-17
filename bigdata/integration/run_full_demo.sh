@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 依次运行 B 数据管道、临时 DWS 桥、E 的 MLlib 作业，生成 Flask/大屏可直接读取的结果。
+# 依次运行 B 数据管道、C 的正式数仓、E 的 MLlib 作业，生成 Flask/大屏可直接读取的结果。
 
 set -euo pipefail
 
@@ -7,7 +7,7 @@ business_date="${1:-2026-09-15}"
 batch_id="${2:-BD-20260915-DEMO}"
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 raw_dir="${project_root}/bigdata/runtime/raw/${batch_id}"
-dws_path="hdfs:///evcharge/dws/dws_station_hour/batch=${batch_id}"
+dws_path="hdfs:///evcharge/dws/dws_station_hour/dt=${business_date}/batch=${batch_id}"
 quality_report="hdfs:///evcharge/quality/reports/dt=${business_date}/batch=${batch_id}"
 
 cd "${project_root}"
@@ -40,9 +40,10 @@ spark-submit bigdata/spark/dwd/build_dwd.py \
   --batch-id "${batch_id}" \
   --replace
 
-spark-submit bigdata/integration/build_demo_dws.py \
+spark-submit bigdata/spark/warehouse/build_warehouse.py \
   --business-date "${business_date}" \
   --batch-id "${batch_id}" \
+  --snapshot-output bigdata/runtime/warehouse/dashboard.json \
   --replace
 
 spark-submit bigdata/ml/jobs/station_load_demo.py \
@@ -50,4 +51,5 @@ spark-submit bigdata/ml/jobs/station_load_demo.py \
   --quality-report "${quality_report}" \
   --output bigdata/runtime/demo
 
-echo "Demo 数据已生成：bigdata/runtime/demo/dashboard.json"
+echo "C 数仓快照：bigdata/runtime/warehouse/dashboard.json"
+echo "E 预测快照：bigdata/runtime/demo/dashboard.json"
